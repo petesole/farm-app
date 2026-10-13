@@ -6,7 +6,7 @@ import { ThemedView } from "@/components/themed-view";
 import { supabase } from "../../../supabase";
 
 type Field = {tracecode_id:number;tracecode_name:string;tracecode_size:number|null;fuel_budget_name:string|null};
-type Programme = {sequence_no:number;tracecode_id:number;vehicle_job_id:number;vehicle_job_name:string;target_dap:number|null;calculated_quantity:number|null;planned_operations:number|null;total_budget_litres:number|null;budget_trip_count:number|null;class_code:string|null;fuel_plan_method:string|null;fuel_plan_unit:string|null};
+type Programme = {description:string|null;sequence_no:number;tracecode_id:number;vehicle_job_id:number;vehicle_job_name:string;target_dap:number|null;calculated_quantity:number|null;planned_operations:number|null;total_budget_litres:number|null;budget_trip_count:number|null;class_code:string|null;fuel_plan_method:string|null;fuel_plan_unit:string|null};
 type Schedule = {tracecode_id:number;planned_planting_date:string|null;actual_planting_date:string|null};
 type Actual = {tracecode_id:number;vehicle_job_id:number;actual_litres:number|null;completed_operations:number|null};
 type Cleared = {tracecode_id:number;vehicle_job_id:number;target_dap:number;sequence_no:number};
@@ -46,7 +46,7 @@ export default function FuelWeeklyPlanScreen() {
       setLoading(true);setError(null);
       const [f,p,s,a,h,m]=await Promise.all([
         supabase.from("fuel_tracecode_budget_summary_v").select("tracecode_id,tracecode_name,tracecode_size,fuel_budget_name"),
-        supabase.from("fuel_budget_activity_v").select("sequence_no,tracecode_id,vehicle_job_id,vehicle_job_name,target_dap,calculated_quantity,planned_operations,total_budget_litres,budget_trip_count,class_code,fuel_plan_method,fuel_plan_unit").limit(10000),
+        supabase.from("fuel_budget_activity_v").select("description,sequence_no,tracecode_id,vehicle_job_id,vehicle_job_name,target_dap,calculated_quantity,planned_operations,total_budget_litres,budget_trip_count,class_code,fuel_plan_method,fuel_plan_unit").limit(10000),
         supabase.from("tracecode").select("tracecode_id,planned_planting_date,actual_planting_date").limit(10000),
         supabase.from("fuel_tracecode_activity_summary_v").select("tracecode_id,vehicle_job_id,actual_litres,completed_operations").limit(10000),
         supabase.from("fuel_historical_completion").select("tracecode_id,vehicle_job_id,target_dap,sequence_no").limit(10000),
@@ -205,6 +205,7 @@ function Choice({label,selected,onPress}:{label:string;selected:boolean;onPress:
 function JobLine({r,estimate,admin=false,saving=false,confirming=false,onComplete,onCancel,onConfirm}:{r:Row;estimate:number;admin?:boolean;saving?:boolean;confirming?:boolean;onComplete?:()=>void;onCancel?:()=>void;onConfirm?:()=>void}){
   return <View style={s.job}>
     <View style={s.line}><ThemedText style={s.bold}>{r.fieldName} · {r.vehicle_job_name}</ThemedText><ThemedText>{r.scheduledDate}{r.overdue?" · Overdue":""}</ThemedText></View>
+    {r.description?.trim()?<ThemedText>{r.description.trim()}</ThemedText>:null}
     <ThemedText style={s.small}>Field {fmt(r.fieldHa)} ha · DAP {r.target_dap} · {r.class_code||"Unassigned"} · {fmt(n(r.calculated_quantity))} {unit(r)}</ThemedText>
     <ThemedText>Estimated fuel remaining: <ThemedText style={s.bold}>{fmt(estimate)} L</ThemedText></ThemedText>
     <ThemedText style={s.small}>Planned operations: {fmt(n(r.planned_operations),0)} · Unfinished: {fmt(r.remainingOperations,0)} · Job/field fuel actual to date: {fmt(r.actualLitres)} L</ThemedText>
