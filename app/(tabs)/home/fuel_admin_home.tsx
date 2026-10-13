@@ -95,6 +95,13 @@ export default function FuelAdminHomeScreen() {
         <ThemedText style={styles.buttonText}>Fuel Planning</ThemedText>
       </Pressable>
 
+      <Pressable
+        style={styles.button}
+        onPress={() => router.push("/(tabs)/home/fuel_weekly_plan" as any)}
+      >
+        <ThemedText style={styles.buttonText}>Weekly Fuel Planning</ThemedText>
+      </Pressable>
+
       <ThemedText style={styles.heading}>Daily Functions</ThemedText>
 
       <Pressable
