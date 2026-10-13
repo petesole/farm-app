@@ -68,6 +68,9 @@ type ProgrammeRow = {
   actualQty: number;
   remainingQty: number;
   dueTrips: number;
+  estimatedFuelLitres: number;
+  actualFuelLitres: number;
+  fieldHectares: number;
   unit: string;
 };
 
@@ -201,24 +204,29 @@ export default function FuelPlanningScreen() {
         actualQty: 0,
         remainingQty: 0,
         dueTrips: 0,
+        estimatedFuelLitres: 0,
+        actualFuelLitres: 0,
+        fieldHectares: n(selectedTrace?.tracecode_size),
         unit: qtyUnit(row),
       };
 
       current.dueQty += n(row.calculated_quantity);
       current.dueTrips += n(row.budget_trip_count);
+      current.estimatedFuelLitres += n(row.total_budget_litres);
       byJob.set(row.vehicle_job_id, current);
     }
 
     for (const [jobId, row] of byJob.entries()) {
       const actual = activitySummary.find((x) => x.vehicle_job_id === jobId);
       row.actualQty = n(actual?.total_quantity_done);
+      row.actualFuelLitres = n(actual?.actual_litres);
       row.remainingQty = Math.max(row.dueQty - row.actualQty, 0);
     }
 
     return Array.from(byJob.values()).sort((a, b) =>
       a.vehicle_job_name.localeCompare(b.vehicle_job_name)
     );
-  }, [activities, activitySummary]);
+  }, [activities, activitySummary, selectedTrace?.tracecode_size]);
 
   const upcoming = useMemo(() => {
     const dap = selectedTrace?.current_dap;
@@ -361,9 +369,16 @@ export default function FuelPlanningScreen() {
                                 {row.vehicle_job_name}
                               </ThemedText>
                               <ThemedText style={styles.smallText}>
-                                Due {fmt(row.dueQty, row.unit === "ha" ? 1 : 2)} {row.unit}
+                                Field area {fmt(row.fieldHectares, 1)} ha
+                                {" · "}Due {fmt(row.dueQty, row.unit === "ha" ? 1 : 2)} {row.unit}
                                 {" · "}Actual {fmt(row.actualQty, row.unit === "ha" ? 1 : 2)} {row.unit}
                                 {" · "}Remaining {fmt(row.remainingQty, row.unit === "ha" ? 1 : 2)} {row.unit}
+                              </ThemedText>
+                              <ThemedText style={styles.fuelFigures}>
+                                Estimated fuel (incl. budgeted travel): {fmt(row.estimatedFuelLitres, 1)} L
+                              </ThemedText>
+                              <ThemedText style={styles.fuelFigures}>
+                                Actual fuel recorded for this job / field: {fmt(row.actualFuelLitres, 1)} L
                               </ThemedText>
                               {row.dueTrips > 0 ? (
                                 <ThemedText style={styles.smallText}>
@@ -553,6 +568,10 @@ const styles = StyleSheet.create({
   smallText: {
     fontSize: 12,
     opacity: 0.75,
+  },
+  fuelFigures: {
+    fontSize: 13,
+    fontWeight: "600",
   },
   emptyText: {
     opacity: 0.7,
