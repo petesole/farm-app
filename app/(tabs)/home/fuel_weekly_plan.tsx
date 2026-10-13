@@ -8,8 +8,8 @@ import { supabase } from "../../../supabase";
 type Field = {tracecode_id:number;tracecode_name:string;tracecode_size:number|null;fuel_budget_name:string|null};
 type Programme = {tracecode_id:number;vehicle_job_id:number;vehicle_job_name:string;target_dap:number|null;calculated_quantity:number|null;planned_operations:number|null;total_budget_litres:number|null;budget_trip_count:number|null;class_code:string|null;fuel_plan_method:string|null;fuel_plan_unit:string|null};
 type Schedule = {tracecode_id:number;planned_planting_date:string|null;actual_planting_date:string|null};
-type Actual = {tracecode_id:number;vehicle_job_id:number;actual_litres:number|null};
-type Row = Programme & {key:string;fieldName:string;fieldHa:number;scheduledDate:string;actualLitres:number};
+type Actual = {tracecode_id:number;vehicle_job_id:number;actual_litres:number|null;completed_operations:number|null};
+type Row = Programme & {key:string;fieldName:string;fieldHa:number;scheduledDate:string;actualLitres:number;remainingOperations:number;overdue:boolean};
 const toDate = (value:string) => {const parts=value.slice(0,10).split("-").map(Number);return new Date(Date.UTC(parts[0],parts[1]-1,parts[2]));};
 const iso = (date:Date) => date.toISOString().slice(0,10);
 const shift = (value:string, days:number) => {const d=toDate(value);d.setUTCDate(d.getUTCDate()+days);return iso(d);};
@@ -27,6 +27,10 @@ export default function FuelWeeklyPlanScreen() {
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState<string|null>(null);
   const [version,setVersion]=useState(0);
+  const [traceFilter,setTraceFilter]=useState<number|null>(null);
+  const [jobFilter,setJobFilter]=useState<number|null>(null);
+  const [classFilter,setClassFilter]=useState<string>("ALL");
+  const [sortBy,setSortBy]=useState<"date"|"trace"|"job"|"class">("date");
   const refresh=useCallback(()=>setVersion(x=>x+1),[]);
   useEffect(()=>{
     let active=true;
@@ -36,7 +40,7 @@ export default function FuelWeeklyPlanScreen() {
         supabase.from("fuel_tracecode_budget_summary_v").select("tracecode_id,tracecode_name,tracecode_size,fuel_budget_name"),
         supabase.from("fuel_budget_activity_v").select("tracecode_id,vehicle_job_id,vehicle_job_name,target_dap,calculated_quantity,planned_operations,total_budget_litres,budget_trip_count,class_code,fuel_plan_method,fuel_plan_unit").limit(10000),
         supabase.from("tracecode").select("tracecode_id,planned_planting_date,actual_planting_date").limit(10000),
-        supabase.from("fuel_tracecode_activity_summary_v").select("tracecode_id,vehicle_job_id,actual_litres").limit(10000),
+        supabase.from("fuel_tracecode_activity_summary_v").select("tracecode_id,vehicle_job_id,actual_litres,completed_operations").limit(10000),
       ]);
       if(!active)return;
       const err=f.error||p.error||s.error||a.error;
@@ -50,30 +54,66 @@ export default function FuelWeeklyPlanScreen() {
   const weekEnd=shift(week,6);
   const scheduled=useMemo(()=>{
     const fieldMap=new Map(fields.map(f=>[f.tracecode_id,f]));
-    const dateMap=new Map(schedules.map(s=>[s.tracecode_id,s.actual_planting_date || s.planned_planting_date]));
+    const dateMap=new Map(schedules.map(d=>[d.tracecode_id,d.actual_planting_date||d.planned_planting_date]));
     const actualMap=new Map<string,number>();
-    for(const a of actuals){const key=`${a.tracecode_id}:${a.vehicle_job_id}`;actualMap.set(key,(actualMap.get(key)||0)+n(a.actual_litres));}
-    const rows:Row[]=[];
-    programmes.forEach((p,i)=>{
-      const field=fieldMap.get(p.tracecode_id), start=dateMap.get(p.tracecode_id);
-      if(!field||!start||p.target_dap==null)return;
+    const doneMap=new Map<string,number>();
+    for(const a of actuals){
+      const k=`${a.tracecode_id}:${a.vehicle_job_id}`;
+      actualMap.set(k,(actualMap.get(k)||0)+n(a.actual_litres));
+      doneMap.set(k,(doneMap.get(k)||0)+n(a.completed_operations));
+    }
+    const grouped=new Map<string,{p:Programme;date:string;index:number}[]>();
+    programmes.forEach((p,index)=>{
+      const start=dateMap.get(p.tracecode_id);
+      if(!fieldMap.has(p.tracecode_id)||!start||p.target_dap==null)return;
       const date=shift(start,p.target_dap);
-      if(date<week||date>weekEnd)return;
-      const key=`${p.tracecode_id}:${p.vehicle_job_id}`;
-      rows.push({...p,key:`${key}:${p.target_dap}:${i}`,fieldName:field.tracecode_name,fieldHa:n(field.tracecode_size),scheduledDate:date,actualLitres:actualMap.get(key)||0});
+      if(date>weekEnd)return;
+      const k=`${p.tracecode_id}:${p.vehicle_job_id}`;
+      grouped.set(k,[...(grouped.get(k)||[]),{p,date,index}]);
     });
-    return rows.sort((a,b)=>a.scheduledDate.localeCompare(b.scheduledDate)||a.fieldName.localeCompare(b.fieldName));
-  },[fields,programmes,schedules,actuals,week,weekEnd]);
-  const total=scheduled.reduce((sum,r)=>sum+n(r.total_budget_litres),0);
+    const rows:Row[]=[];
+    for(const [k,items] of grouped){
+      let done=doneMap.get(k)||0;
+      items.sort((a,b)=>a.date.localeCompare(b.date)||a.index-b.index);
+      for(const {p,date,index} of items){
+        const field=fieldMap.get(p.tracecode_id)!;
+        const count=Math.max(0,n(p.planned_operations));
+        const completed=Math.min(count,done);
+        done=Math.max(0,done-completed);
+        const remaining=count-completed;
+        if(count>0&&remaining<=0)continue;
+        rows.push({...p,key:`${k}:${p.target_dap}:${index}`,
+          fieldName:field.tracecode_name,fieldHa:n(field.tracecode_size),
+          scheduledDate:date,actualLitres:actualMap.get(k)||0,
+          remainingOperations:remaining,overdue:date<week});
+      }
+    }
+    return rows;
+  },[fields,programmes,schedules,actuals,weekEnd]);
+  const jobOptions=useMemo(()=>[...new Map(programmes.map(p=>[p.vehicle_job_id,p.vehicle_job_name])).entries()].sort((a,b)=>a[1].localeCompare(b[1])),[programmes]);
+  const classOptions=useMemo(()=>[...new Set(programmes.map(p=>p.class_code||"Unassigned"))].sort(),[programmes]);
+  const filtered=useMemo(()=>{
+    return scheduled.filter(r=>(traceFilter==null||r.tracecode_id===traceFilter)&&(jobFilter==null||r.vehicle_job_id===jobFilter)&&(classFilter==="ALL"||(r.class_code||"Unassigned")===classFilter))
+      .sort((a,b)=>{
+        if(sortBy==="trace")return a.fieldName.localeCompare(b.fieldName)||a.scheduledDate.localeCompare(b.scheduledDate);
+        if(sortBy==="job")return a.vehicle_job_name.localeCompare(b.vehicle_job_name)||a.scheduledDate.localeCompare(b.scheduledDate);
+        if(sortBy==="class")return (a.class_code||"").localeCompare(b.class_code||"")||a.scheduledDate.localeCompare(b.scheduledDate);
+        return Number(b.overdue)-Number(a.overdue)||a.scheduledDate.localeCompare(b.scheduledDate);
+      });
+  },[scheduled,traceFilter,jobFilter,classFilter,sortBy]);
+  const litresRemaining=(r:Row)=>n(r.total_budget_litres)*(n(r.planned_operations)>0?r.remainingOperations/n(r.planned_operations):1);
+  const total=filtered.reduce((sum,r)=>sum+litresRemaining(r),0);
+  const overdueRows=filtered.filter(r=>r.overdue);
+  const thisWeekRows=filtered.filter(r=>!r.overdue);
   const missingDates=useMemo(()=>{
     const dates=new Map(schedules.map(s=>[s.tracecode_id,s.actual_planting_date || s.planned_planting_date]));
     return fields.filter(f=>!dates.get(f.tracecode_id));
   },[fields,schedules]);
   const byClass=useMemo(()=>{
     const grouped=new Map<string,{litres:number;jobs:number}>();
-    for(const r of scheduled){const key=r.class_code||"Unassigned";const current=grouped.get(key)||{litres:0,jobs:0};current.litres+=n(r.total_budget_litres);current.jobs++;grouped.set(key,current);}
+    for(const r of filtered){const key=r.class_code||"Unassigned";const current=grouped.get(key)||{litres:0,jobs:0};current.litres+=litresRemaining(r);current.jobs++;grouped.set(key,current);}
     return [...grouped.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
-  },[scheduled]);
+  },[filtered]);
   return <ScrollView contentContainerStyle={s.page}>
     <View style={s.header}>
       <ThemedText type="title">Weekly Fuel Planning</ThemedText>
@@ -88,6 +128,28 @@ export default function FuelWeeklyPlanScreen() {
       </View>
       <ThemedText style={s.small}>Read-only draft plan: actual planting date takes priority when recorded; otherwise planned planting date drives DAP scheduling. Changing either date recalculates the plan on refresh.</ThemedText>
     </ThemedView>
+    <ThemedView style={s.card}>
+      <ThemedText type="subtitle">Filter and sort</ThemedText>
+      <ThemedText style={s.small}>TraceCode</ThemedText>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}><View style={s.nav}>
+        <Choice label="All fields" selected={traceFilter===null} onPress={()=>setTraceFilter(null)}/>
+        {fields.map(f=><Choice key={f.tracecode_id} label={f.tracecode_name} selected={traceFilter===f.tracecode_id} onPress={()=>setTraceFilter(f.tracecode_id)}/>)}
+      </View></ScrollView>
+      <ThemedText style={s.small}>Job</ThemedText>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}><View style={s.nav}>
+        <Choice label="All jobs" selected={jobFilter===null} onPress={()=>setJobFilter(null)}/>
+        {jobOptions.map(([id,name])=><Choice key={id} label={name} selected={jobFilter===id} onPress={()=>setJobFilter(id)}/>)}
+      </View></ScrollView>
+      <ThemedText style={s.small}>Tractor class</ThemedText>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}><View style={s.nav}>
+        <Choice label="All classes" selected={classFilter==="ALL"} onPress={()=>setClassFilter("ALL")}/>
+        {classOptions.map(name=><Choice key={name} label={name} selected={classFilter===name} onPress={()=>setClassFilter(name)}/>)}
+      </View></ScrollView>
+      <ThemedText style={s.small}>Sort order</ThemedText>
+      <View style={[s.nav,{flexWrap:"wrap"}]}>
+        {(["date","trace","job","class"] as const).map(k=><Choice key={k} label={k==="date"?"Due date":k==="trace"?"TraceCode":k==="job"?"Job":"Tractor class"} selected={sortBy===k} onPress={()=>setSortBy(k)}/>)}
+      </View>
+    </ThemedView>
     {loading?<ActivityIndicator/>:error?<ThemedView style={s.card}><ThemedText style={s.error}>{error}</ThemedText></ThemedView>:<>
       <ThemedView style={s.card}>
         <ThemedText type="subtitle">Weekly requirement: {fmt(total)} L</ThemedText>
@@ -96,17 +158,28 @@ export default function FuelWeeklyPlanScreen() {
       </ThemedView>
       {missingDates.length>0?<ThemedView style={s.card}><ThemedText style={s.error}>{missingDates.length} field(s) have neither a planned nor an actual planting date and cannot be scheduled.</ThemedText><ThemedText style={s.small}>{missingDates.map(f=>f.tracecode_name).join(", ")}</ThemedText></ThemedView>:null}
       <ThemedView style={s.card}>
-        <ThemedText type="subtitle">Jobs scheduled this week</ThemedText>
-        {scheduled.length===0?<ThemedText>No jobs scheduled for this week from the available planting dates and DAP values.</ThemedText>:scheduled.map(r=><View key={r.key} style={s.job}>
-          <View style={s.line}><ThemedText style={s.bold}>{r.fieldName} · {r.vehicle_job_name}</ThemedText><ThemedText>{r.scheduledDate}</ThemedText></View>
-          <ThemedText style={s.small}>Field {fmt(r.fieldHa)} ha · DAP {r.target_dap} · {r.class_code||"Class unassigned"} · {fmt(n(r.calculated_quantity))} {unit(r)}</ThemedText>
-          <View style={s.line}><ThemedText>Estimated incl. budgeted travel: <ThemedText style={s.bold}>{fmt(n(r.total_budget_litres))} L</ThemedText></ThemedText></View>
-          <ThemedText style={s.small}>Job / field actual to date: {fmt(r.actualLitres)} L · {fmt(n(r.budget_trip_count),0)} budget trips</ThemedText>
-        </View>)}
+        <ThemedText type="subtitle">Overdue jobs carried forward ({overdueRows.length})</ThemedText>
+        <ThemedText style={s.small}>Unfinished jobs scheduled before this week. Fuel issued does not count as completion.</ThemedText>
+        {overdueRows.length===0?<ThemedText>No overdue jobs recorded.</ThemedText>:overdueRows.map(r=><JobLine key={r.key} r={r} estimate={litresRemaining(r)} />)}
       </ThemedView>
-      <ThemedText style={s.small}>Actual fuel above is the job/field total to date, not fuel issued specifically for this week. Issuing against a plan and completion tracking will be connected separately; no fuel is issued by this screen.</ThemedText>
+      <ThemedView style={s.card}>
+        <ThemedText type="subtitle">Jobs scheduled this week ({thisWeekRows.length})</ThemedText>
+        {thisWeekRows.length===0?<ThemedText>No scheduled jobs for this week.</ThemedText>:thisWeekRows.map(r=><JobLine key={r.key} r={r} estimate={litresRemaining(r)} />)}
+      </ThemedView>
+      <ThemedText style={s.small}>Fuel actuals are cumulative for the job/field. Carry-forward uses recorded completed_operations (allocated to earliest passes first); manually completed or skipped jobs not captured there still need explicit status controls. Remaining litres are estimates proportional to unfinished operations.</ThemedText>
     </>}
   </ScrollView>;
+}
+function Choice({label,selected,onPress}:{label:string;selected:boolean;onPress:()=>void}){
+  return <Pressable onPress={onPress} style={[s.button,selected&&s.selected]}><ThemedText style={selected?s.bold:undefined}>{label}</ThemedText></Pressable>;
+}
+function JobLine({r,estimate}:{r:Row;estimate:number}){
+  return <View style={s.job}>
+    <View style={s.line}><ThemedText style={s.bold}>{r.fieldName} · {r.vehicle_job_name}</ThemedText><ThemedText>{r.scheduledDate}{r.overdue?" · Overdue":""}</ThemedText></View>
+    <ThemedText style={s.small}>Field {fmt(r.fieldHa)} ha · DAP {r.target_dap} · {r.class_code||"Unassigned"} · {fmt(n(r.calculated_quantity))} {unit(r)}</ThemedText>
+    <ThemedText>Estimated fuel remaining: <ThemedText style={s.bold}>{fmt(estimate)} L</ThemedText></ThemedText>
+    <ThemedText style={s.small}>Planned operations: {fmt(n(r.planned_operations),0)} · Unfinished: {fmt(r.remainingOperations,0)} · Job/field fuel actual to date: {fmt(r.actualLitres)} L</ThemedText>
+  </View>;
 }
 const s=StyleSheet.create({
   page:{padding:18,paddingBottom:40,gap:12},header:{flexDirection:"row",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"},
@@ -117,5 +190,5 @@ const s=StyleSheet.create({
   summary:{flexDirection:"row",justifyContent:"space-between",borderTopWidth:1,borderColor:"rgba(120,120,120,.2)",paddingTop:8},
   job:{borderTopWidth:1,borderColor:"rgba(120,120,120,.25)",paddingTop:12,gap:5},
   line:{flexDirection:"row",justifyContent:"space-between",flexWrap:"wrap",gap:10},
-  error:{color:"red"},
+  error:{color:"red"},selected:{borderWidth:2,backgroundColor:"rgba(120,120,120,.12)"},
 });
