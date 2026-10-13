@@ -86,6 +86,15 @@ export default function FuelAdminHomeScreen() {
         <ThemedText style={styles.buttonText}>Fuel Received Edit</ThemedText>
       </Pressable>
 
+      <ThemedText style={styles.heading}>Budget Management</ThemedText>
+
+      <Pressable
+        style={styles.button}
+        onPress={() => router.push("/(tabs)/home/fuel_budget_manage" as any)}
+      >
+        <ThemedText style={styles.buttonText}>Fuel Budgets</ThemedText>
+      </Pressable>
+
       <ThemedText style={styles.heading}>Planning</ThemedText>
 
       <Pressable
