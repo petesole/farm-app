@@ -127,6 +127,13 @@ export default function FuelAdminHomeScreen() {
 
       <Pressable
         style={styles.button}
+        onPress={() => router.push("/(tabs)/home/fuel_field_report" as any)}
+      >
+        <ThemedText style={styles.buttonText}>Fuel Report per Field</ThemedText>
+      </Pressable>
+
+      <Pressable
+        style={styles.button}
         onPress={() => router.push("/(tabs)/home/fuel_monthly_allocations" as any)}
       >
         <ThemedText style={styles.buttonText}>Monthly Allocations</ThemedText>
