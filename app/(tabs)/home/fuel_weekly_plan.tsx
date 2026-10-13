@@ -7,7 +7,7 @@ import { supabase } from "../../../supabase";
 
 type Field = {tracecode_id:number;tracecode_name:string;tracecode_size:number|null;fuel_budget_name:string|null};
 type Programme = {tracecode_id:number;vehicle_job_id:number;vehicle_job_name:string;target_dap:number|null;calculated_quantity:number|null;planned_operations:number|null;total_budget_litres:number|null;budget_trip_count:number|null;class_code:string|null;fuel_plan_method:string|null;fuel_plan_unit:string|null};
-type Schedule = {tracecode_id:number;start_date:string|null};
+type Schedule = {tracecode_id:number;planned_planting_date:string|null;actual_planting_date:string|null};
 type Actual = {tracecode_id:number;vehicle_job_id:number;actual_litres:number|null};
 type Row = Programme & {key:string;fieldName:string;fieldHa:number;scheduledDate:string;actualLitres:number};
 const toDate = (value:string) => {const parts=value.slice(0,10).split("-").map(Number);return new Date(Date.UTC(parts[0],parts[1]-1,parts[2]));};
@@ -35,7 +35,7 @@ export default function FuelWeeklyPlanScreen() {
       const [f,p,s,a]=await Promise.all([
         supabase.from("fuel_tracecode_budget_summary_v").select("tracecode_id,tracecode_name,tracecode_size,fuel_budget_name"),
         supabase.from("fuel_budget_activity_v").select("tracecode_id,vehicle_job_id,vehicle_job_name,target_dap,calculated_quantity,planned_operations,total_budget_litres,budget_trip_count,class_code,fuel_plan_method,fuel_plan_unit").limit(10000),
-        supabase.from("tracecode").select("tracecode_id,start_date").limit(10000),
+        supabase.from("tracecode").select("tracecode_id,planned_planting_date,actual_planting_date").limit(10000),
         supabase.from("fuel_tracecode_activity_summary_v").select("tracecode_id,vehicle_job_id,actual_litres").limit(10000),
       ]);
       if(!active)return;
@@ -50,7 +50,7 @@ export default function FuelWeeklyPlanScreen() {
   const weekEnd=shift(week,6);
   const scheduled=useMemo(()=>{
     const fieldMap=new Map(fields.map(f=>[f.tracecode_id,f]));
-    const dateMap=new Map(schedules.map(s=>[s.tracecode_id,s.start_date]));
+    const dateMap=new Map(schedules.map(s=>[s.tracecode_id,s.actual_planting_date || s.planned_planting_date]));
     const actualMap=new Map<string,number>();
     for(const a of actuals){const key=`${a.tracecode_id}:${a.vehicle_job_id}`;actualMap.set(key,(actualMap.get(key)||0)+n(a.actual_litres));}
     const rows:Row[]=[];
@@ -66,7 +66,7 @@ export default function FuelWeeklyPlanScreen() {
   },[fields,programmes,schedules,actuals,week,weekEnd]);
   const total=scheduled.reduce((sum,r)=>sum+n(r.total_budget_litres),0);
   const missingDates=useMemo(()=>{
-    const dates=new Map(schedules.map(s=>[s.tracecode_id,s.start_date]));
+    const dates=new Map(schedules.map(s=>[s.tracecode_id,s.actual_planting_date || s.planned_planting_date]));
     return fields.filter(f=>!dates.get(f.tracecode_id));
   },[fields,schedules]);
   const byClass=useMemo(()=>{
@@ -86,7 +86,7 @@ export default function FuelWeeklyPlanScreen() {
         <View style={s.dates}><ThemedText style={s.bold}>{week} to {weekEnd}</ThemedText><Pressable onPress={()=>setWeek(monday(iso(new Date())))}><ThemedText style={s.small}>Current week</ThemedText></Pressable></View>
         <Pressable style={s.button} onPress={()=>setWeek(v=>shift(v,7))}><ThemedText>Next →</ThemedText></Pressable>
       </View>
-      <ThemedText style={s.small}>Read-only draft plan based on each field's existing start_date and activity DAP. Dates and budget litres are not modified here.</ThemedText>
+      <ThemedText style={s.small}>Read-only draft plan: actual planting date takes priority when recorded; otherwise planned planting date drives DAP scheduling. Changing either date recalculates the plan on refresh.</ThemedText>
     </ThemedView>
     {loading?<ActivityIndicator/>:error?<ThemedView style={s.card}><ThemedText style={s.error}>{error}</ThemedText></ThemedView>:<>
       <ThemedView style={s.card}>
@@ -94,7 +94,7 @@ export default function FuelWeeklyPlanScreen() {
         <ThemedText>{scheduled.length} scheduled activity entries across {new Set(scheduled.map(r=>r.tracecode_id)).size} fields</ThemedText>
         {byClass.map(([name,v])=><View key={name} style={s.summary}><ThemedText>{name}</ThemedText><ThemedText style={s.bold}>{fmt(v.litres)} L · {v.jobs} jobs</ThemedText></View>)}
       </ThemedView>
-      {missingDates.length>0?<ThemedView style={s.card}><ThemedText style={s.error}>{missingDates.length} field(s) have no start_date and cannot be scheduled.</ThemedText><ThemedText style={s.small}>{missingDates.map(f=>f.tracecode_name).join(", ")}</ThemedText></ThemedView>:null}
+      {missingDates.length>0?<ThemedView style={s.card}><ThemedText style={s.error}>{missingDates.length} field(s) have neither a planned nor an actual planting date and cannot be scheduled.</ThemedText><ThemedText style={s.small}>{missingDates.map(f=>f.tracecode_name).join(", ")}</ThemedText></ThemedView>:null}
       <ThemedView style={s.card}>
         <ThemedText type="subtitle">Jobs scheduled this week</ThemedText>
         {scheduled.length===0?<ThemedText>No jobs scheduled for this week from the available planting dates and DAP values.</ThemedText>:scheduled.map(r=><View key={r.key} style={s.job}>
