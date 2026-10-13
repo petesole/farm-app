@@ -1,6 +1,6 @@
 // app/(tabs)/home/fuel_weekly_plan.tsx
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { supabase } from "../../../supabase";
@@ -30,6 +30,8 @@ export default function FuelWeeklyPlanScreen() {
   const [canClear,setCanClear]=useState(false);
   const [clearError,setClearError]=useState<string|null>(null);
   const [savingKey,setSavingKey]=useState<string|null>(null);
+  const [confirmKey,setConfirmKey]=useState<string|null>(null);
+  const [saveMessage,setSaveMessage]=useState<string|null>(null);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState<string|null>(null);
   const [version,setVersion]=useState(0);
@@ -66,10 +68,13 @@ export default function FuelWeeklyPlanScreen() {
     if(!canClear)return;
     const k=clearedKey({...r,target_dap:r.target_dap!});
     setSavingKey(k);
+    setSaveMessage(null);
     const record={tracecode_id:r.tracecode_id,vehicle_job_id:r.vehicle_job_id,target_dap:r.target_dap!,sequence_no:r.sequence_no};
     const response=mark?await supabase.from("fuel_historical_completion").insert(record):await supabase.from("fuel_historical_completion").delete().match(record);
     setSavingKey(null);
-    if(response.error){Alert.alert("Unable to save",response.error.message);return;}
+    if(response.error){setSaveMessage("Unable to save: "+response.error.message);return;}
+    setConfirmKey(null);
+    setSaveMessage("Historical job marked complete.");
     refresh();
   };
   const weekEnd=shift(week,6);
@@ -179,11 +184,12 @@ export default function FuelWeeklyPlanScreen() {
         {byClass.map(([name,v])=><View key={name} style={s.summary}><ThemedText>{name}</ThemedText><ThemedText style={s.bold}>{fmt(v.litres)} L · {v.jobs} jobs</ThemedText></View>)}
       </ThemedView>
       {missingDates.length>0?<ThemedView style={s.card}><ThemedText style={s.error}>{missingDates.length} field(s) have neither a planned nor an actual planting date and cannot be scheduled.</ThemedText><ThemedText style={s.small}>{missingDates.map(f=>f.tracecode_name).join(", ")}</ThemedText></ThemedView>:null}
+      {saveMessage?<ThemedView style={s.card}><ThemedText>{saveMessage}</ThemedText></ThemedView>:null}
       {clearError?<ThemedView style={s.card}><ThemedText style={s.error}>Historical completion unavailable: {clearError}. The database migration and admin membership must be configured.</ThemedText></ThemedView>:null}
       <ThemedView style={s.card}>
         <ThemedText type="subtitle">Overdue jobs carried forward ({overdueRows.length})</ThemedText>
         <ThemedText style={s.small}>Unfinished jobs scheduled before this week. Fuel issued does not count as completion.</ThemedText>
-        {overdueRows.length===0?<ThemedText>No overdue jobs recorded.</ThemedText>:overdueRows.map(r=><JobLine key={r.key} r={r} estimate={litresRemaining(r)} admin={canClear} saving={savingKey===clearedKey({...r,target_dap:r.target_dap!})} onComplete={()=>Alert.alert("Clear historical job?",`${r.fieldName} — ${r.vehicle_job_name}. This removes it from the weekly backlog but does not alter fuel actuals.`,[{text:"Cancel",style:"cancel"},{text:"Mark completed",onPress:()=>changeClear(r,true)}])} />)}
+        {overdueRows.length===0?<ThemedText>No overdue jobs recorded.</ThemedText>:overdueRows.map(r=><JobLine key={r.key} r={r} estimate={litresRemaining(r)} admin={canClear} saving={savingKey===clearedKey({...r,target_dap:r.target_dap!})} confirming={confirmKey===clearedKey({...r,target_dap:r.target_dap!})} onComplete={()=>setConfirmKey(clearedKey({...r,target_dap:r.target_dap!}))} onCancel={()=>setConfirmKey(null)} onConfirm={()=>changeClear(r,true)} />)}
       </ThemedView>
       <ThemedView style={s.card}>
         <ThemedText type="subtitle">Jobs scheduled this week ({thisWeekRows.length})</ThemedText>
@@ -196,13 +202,13 @@ export default function FuelWeeklyPlanScreen() {
 function Choice({label,selected,onPress}:{label:string;selected:boolean;onPress:()=>void}){
   return <Pressable onPress={onPress} style={[s.button,selected&&s.selected]}><ThemedText style={selected?s.bold:undefined}>{label}</ThemedText></Pressable>;
 }
-function JobLine({r,estimate,admin=false,saving=false,onComplete}:{r:Row;estimate:number;admin?:boolean;saving?:boolean;onComplete?:()=>void}){
+function JobLine({r,estimate,admin=false,saving=false,confirming=false,onComplete,onCancel,onConfirm}:{r:Row;estimate:number;admin?:boolean;saving?:boolean;confirming?:boolean;onComplete?:()=>void;onCancel?:()=>void;onConfirm?:()=>void}){
   return <View style={s.job}>
     <View style={s.line}><ThemedText style={s.bold}>{r.fieldName} · {r.vehicle_job_name}</ThemedText><ThemedText>{r.scheduledDate}{r.overdue?" · Overdue":""}</ThemedText></View>
     <ThemedText style={s.small}>Field {fmt(r.fieldHa)} ha · DAP {r.target_dap} · {r.class_code||"Unassigned"} · {fmt(n(r.calculated_quantity))} {unit(r)}</ThemedText>
     <ThemedText>Estimated fuel remaining: <ThemedText style={s.bold}>{fmt(estimate)} L</ThemedText></ThemedText>
     <ThemedText style={s.small}>Planned operations: {fmt(n(r.planned_operations),0)} · Unfinished: {fmt(r.remainingOperations,0)} · Job/field fuel actual to date: {fmt(r.actualLitres)} L</ThemedText>
-    {admin&&r.overdue&&onComplete?<Pressable disabled={saving} style={s.button} onPress={onComplete}><ThemedText style={s.bold}>{saving?"Saving…":"Mark historical job completed"}</ThemedText></Pressable>:null}
+    {admin&&r.overdue&&onComplete?(confirming?<View style={s.confirm}><ThemedText style={s.bold}>Confirm historical completion for this field and job?</ThemedText><ThemedText style={s.small}>Removes this programme entry from the backlog. Fuel actuals are unchanged.</ThemedText><View style={s.nav}><Pressable disabled={saving} style={s.button} onPress={onCancel}><ThemedText>Cancel</ThemedText></Pressable><Pressable disabled={saving} style={s.button} onPress={onConfirm}><ThemedText style={s.bold}>{saving?"Saving…":"Confirm completed"}</ThemedText></Pressable></View></View>:<Pressable disabled={saving} style={s.button} onPress={onComplete}><ThemedText style={s.bold}>Mark historical job completed</ThemedText></Pressable>):null}
   </View>;
 }
 const s=StyleSheet.create({
@@ -214,5 +220,6 @@ const s=StyleSheet.create({
   summary:{flexDirection:"row",justifyContent:"space-between",borderTopWidth:1,borderColor:"rgba(120,120,120,.2)",paddingTop:8},
   job:{borderTopWidth:1,borderColor:"rgba(120,120,120,.25)",paddingTop:12,gap:5},
   line:{flexDirection:"row",justifyContent:"space-between",flexWrap:"wrap",gap:10},
+  confirm:{borderWidth:1,borderColor:"rgba(120,120,120,.4)",borderRadius:8,padding:10,gap:8},
   error:{color:"red"},selected:{borderWidth:2,backgroundColor:"rgba(120,120,120,.12)"},
 });
