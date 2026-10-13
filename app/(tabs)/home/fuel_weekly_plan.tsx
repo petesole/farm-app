@@ -1,14 +1,16 @@
 // app/(tabs)/home/fuel_weekly_plan.tsx
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { supabase } from "../../../supabase";
 
 type Field = {tracecode_id:number;tracecode_name:string;tracecode_size:number|null;fuel_budget_name:string|null};
-type Programme = {tracecode_id:number;vehicle_job_id:number;vehicle_job_name:string;target_dap:number|null;calculated_quantity:number|null;planned_operations:number|null;total_budget_litres:number|null;budget_trip_count:number|null;class_code:string|null;fuel_plan_method:string|null;fuel_plan_unit:string|null};
+type Programme = {sequence_no:number;tracecode_id:number;vehicle_job_id:number;vehicle_job_name:string;target_dap:number|null;calculated_quantity:number|null;planned_operations:number|null;total_budget_litres:number|null;budget_trip_count:number|null;class_code:string|null;fuel_plan_method:string|null;fuel_plan_unit:string|null};
 type Schedule = {tracecode_id:number;planned_planting_date:string|null;actual_planting_date:string|null};
 type Actual = {tracecode_id:number;vehicle_job_id:number;actual_litres:number|null;completed_operations:number|null};
+type Cleared = {tracecode_id:number;vehicle_job_id:number;target_dap:number;sequence_no:number};
+const clearedKey=(r:Cleared)=>`${r.tracecode_id}:${r.vehicle_job_id}:${r.target_dap}:${r.sequence_no}`;
 type Row = Programme & {key:string;fieldName:string;fieldHa:number;scheduledDate:string;actualLitres:number;remainingOperations:number;overdue:boolean};
 const toDate = (value:string) => {const parts=value.slice(0,10).split("-").map(Number);return new Date(Date.UTC(parts[0],parts[1]-1,parts[2]));};
 const iso = (date:Date) => date.toISOString().slice(0,10);
@@ -24,6 +26,10 @@ export default function FuelWeeklyPlanScreen() {
   const [programmes,setProgrammes]=useState<Programme[]>([]);
   const [schedules,setSchedules]=useState<Schedule[]>([]);
   const [actuals,setActuals]=useState<Actual[]>([]);
+  const [cleared,setCleared]=useState<Cleared[]>([]);
+  const [canClear,setCanClear]=useState(false);
+  const [clearError,setClearError]=useState<string|null>(null);
+  const [savingKey,setSavingKey]=useState<string|null>(null);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState<string|null>(null);
   const [version,setVersion]=useState(0);
@@ -36,13 +42,18 @@ export default function FuelWeeklyPlanScreen() {
     let active=true;
     (async()=>{
       setLoading(true);setError(null);
-      const [f,p,s,a]=await Promise.all([
+      const [f,p,s,a,h,m]=await Promise.all([
         supabase.from("fuel_tracecode_budget_summary_v").select("tracecode_id,tracecode_name,tracecode_size,fuel_budget_name"),
-        supabase.from("fuel_budget_activity_v").select("tracecode_id,vehicle_job_id,vehicle_job_name,target_dap,calculated_quantity,planned_operations,total_budget_litres,budget_trip_count,class_code,fuel_plan_method,fuel_plan_unit").limit(10000),
+        supabase.from("fuel_budget_activity_v").select("sequence_no,tracecode_id,vehicle_job_id,vehicle_job_name,target_dap,calculated_quantity,planned_operations,total_budget_litres,budget_trip_count,class_code,fuel_plan_method,fuel_plan_unit").limit(10000),
         supabase.from("tracecode").select("tracecode_id,planned_planting_date,actual_planting_date").limit(10000),
         supabase.from("fuel_tracecode_activity_summary_v").select("tracecode_id,vehicle_job_id,actual_litres,completed_operations").limit(10000),
+        supabase.from("fuel_historical_completion").select("tracecode_id,vehicle_job_id,target_dap,sequence_no").limit(10000),
+        supabase.from("fuel_plan_admin").select("user_id").limit(1),
       ]);
       if(!active)return;
+      setCanClear(!m.error && (m.data?.length??0)>0);
+      setClearError(h.error?.message??m.error?.message??null);
+      setCleared(h.error?[]:(h.data??[]) as Cleared[]);
       const err=f.error||p.error||s.error||a.error;
       if(err){setError(err.message);setFields([]);setProgrammes([]);setSchedules([]);setActuals([]);}
       else{setFields((f.data??[]) as Field[]);setProgrammes((p.data??[]) as Programme[]);setSchedules((s.data??[]) as Schedule[]);setActuals((a.data??[]) as Actual[]);}
@@ -51,6 +62,16 @@ export default function FuelWeeklyPlanScreen() {
     return()=>{active=false;};
   },[version]);
 
+  const changeClear=async (r:Row, mark:boolean)=>{
+    if(!canClear)return;
+    const k=clearedKey({...r,target_dap:r.target_dap!});
+    setSavingKey(k);
+    const record={tracecode_id:r.tracecode_id,vehicle_job_id:r.vehicle_job_id,target_dap:r.target_dap!,sequence_no:r.sequence_no};
+    const response=mark?await supabase.from("fuel_historical_completion").insert(record):await supabase.from("fuel_historical_completion").delete().match(record);
+    setSavingKey(null);
+    if(response.error){Alert.alert("Unable to save",response.error.message);return;}
+    refresh();
+  };
   const weekEnd=shift(week,6);
   const scheduled=useMemo(()=>{
     const fieldMap=new Map(fields.map(f=>[f.tracecode_id,f]));
@@ -76,6 +97,7 @@ export default function FuelWeeklyPlanScreen() {
       let done=doneMap.get(k)||0;
       items.sort((a,b)=>a.date.localeCompare(b.date)||a.index-b.index);
       for(const {p,date,index} of items){
+        if(cleared.some(h=>clearedKey(h)===clearedKey({...p,target_dap:p.target_dap!})))continue;
         const field=fieldMap.get(p.tracecode_id)!;
         const count=Math.max(0,n(p.planned_operations));
         const completed=Math.min(count,done);
@@ -89,7 +111,7 @@ export default function FuelWeeklyPlanScreen() {
       }
     }
     return rows;
-  },[fields,programmes,schedules,actuals,weekEnd]);
+  },[fields,programmes,schedules,actuals,cleared,weekEnd]);
   const jobOptions=useMemo(()=>[...new Map(programmes.map(p=>[p.vehicle_job_id,p.vehicle_job_name])).entries()].sort((a,b)=>a[1].localeCompare(b[1])),[programmes]);
   const classOptions=useMemo(()=>[...new Set(programmes.map(p=>p.class_code||"Unassigned"))].sort(),[programmes]);
   const filtered=useMemo(()=>{
@@ -157,10 +179,11 @@ export default function FuelWeeklyPlanScreen() {
         {byClass.map(([name,v])=><View key={name} style={s.summary}><ThemedText>{name}</ThemedText><ThemedText style={s.bold}>{fmt(v.litres)} L · {v.jobs} jobs</ThemedText></View>)}
       </ThemedView>
       {missingDates.length>0?<ThemedView style={s.card}><ThemedText style={s.error}>{missingDates.length} field(s) have neither a planned nor an actual planting date and cannot be scheduled.</ThemedText><ThemedText style={s.small}>{missingDates.map(f=>f.tracecode_name).join(", ")}</ThemedText></ThemedView>:null}
+      {clearError?<ThemedView style={s.card}><ThemedText style={s.error}>Historical completion unavailable: {clearError}. The database migration and admin membership must be configured.</ThemedText></ThemedView>:null}
       <ThemedView style={s.card}>
         <ThemedText type="subtitle">Overdue jobs carried forward ({overdueRows.length})</ThemedText>
         <ThemedText style={s.small}>Unfinished jobs scheduled before this week. Fuel issued does not count as completion.</ThemedText>
-        {overdueRows.length===0?<ThemedText>No overdue jobs recorded.</ThemedText>:overdueRows.map(r=><JobLine key={r.key} r={r} estimate={litresRemaining(r)} />)}
+        {overdueRows.length===0?<ThemedText>No overdue jobs recorded.</ThemedText>:overdueRows.map(r=><JobLine key={r.key} r={r} estimate={litresRemaining(r)} admin={canClear} saving={savingKey===clearedKey({...r,target_dap:r.target_dap!})} onComplete={()=>Alert.alert("Clear historical job?",`${r.fieldName} — ${r.vehicle_job_name}. This removes it from the weekly backlog but does not alter fuel actuals.`,[{text:"Cancel",style:"cancel"},{text:"Mark completed",onPress:()=>changeClear(r,true)}])} />)}
       </ThemedView>
       <ThemedView style={s.card}>
         <ThemedText type="subtitle">Jobs scheduled this week ({thisWeekRows.length})</ThemedText>
@@ -173,12 +196,13 @@ export default function FuelWeeklyPlanScreen() {
 function Choice({label,selected,onPress}:{label:string;selected:boolean;onPress:()=>void}){
   return <Pressable onPress={onPress} style={[s.button,selected&&s.selected]}><ThemedText style={selected?s.bold:undefined}>{label}</ThemedText></Pressable>;
 }
-function JobLine({r,estimate}:{r:Row;estimate:number}){
+function JobLine({r,estimate,admin=false,saving=false,onComplete}:{r:Row;estimate:number;admin?:boolean;saving?:boolean;onComplete?:()=>void}){
   return <View style={s.job}>
     <View style={s.line}><ThemedText style={s.bold}>{r.fieldName} · {r.vehicle_job_name}</ThemedText><ThemedText>{r.scheduledDate}{r.overdue?" · Overdue":""}</ThemedText></View>
     <ThemedText style={s.small}>Field {fmt(r.fieldHa)} ha · DAP {r.target_dap} · {r.class_code||"Unassigned"} · {fmt(n(r.calculated_quantity))} {unit(r)}</ThemedText>
     <ThemedText>Estimated fuel remaining: <ThemedText style={s.bold}>{fmt(estimate)} L</ThemedText></ThemedText>
     <ThemedText style={s.small}>Planned operations: {fmt(n(r.planned_operations),0)} · Unfinished: {fmt(r.remainingOperations,0)} · Job/field fuel actual to date: {fmt(r.actualLitres)} L</ThemedText>
+    {admin&&r.overdue&&onComplete?<Pressable disabled={saving} style={s.button} onPress={onComplete}><ThemedText style={s.bold}>{saving?"Saving…":"Mark historical job completed"}</ThemedText></Pressable>:null}
   </View>;
 }
 const s=StyleSheet.create({
