@@ -1,3 +1,4 @@
+import {fuelDateISO} from "../fuel_admin_dates";
 // app/home/rainfall/rainfall_record.tsx
 import { supabase } from "@/supabase";
 import { router } from "expo-router";
@@ -23,13 +24,7 @@ function isoToDisplay(iso: string) {
   return `${d}/${m}/${y}`;
 }
 
-function displayToIso(display: string) {
-  const parts = display.trim().split("/");
-  if (parts.length !== 3) return "";
-  const [d, m, y] = parts;
-  if (!d || !m || !y || y.length !== 4) return "";
-  return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
-}
+function displayToIso(display: string) { return fuelDateISO(display) ?? ""; }
 
 function todayISO() {
   return new Date().toISOString().slice(0, 10);
