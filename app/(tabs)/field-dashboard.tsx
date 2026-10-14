@@ -26,6 +26,7 @@ type FieldReportRow = {
   growdays: number | null;
   growweeks: number | null;
   plant_population: number | null;
+  fuel_budget_name?: string | null;
 };
 
 type AppRole = "ADMIN" | "MANAGER" | "IRRIGATOR" | "VIEWER" | "UNKNOWN";
@@ -117,7 +118,23 @@ export default function FieldDashboard() {
       return;
     }
 
-    setRows((data ?? []) as FieldReportRow[]);
+    // Fuel budget belongs to the TraceCode, not the permanent field.
+    // Fetch it separately so the existing field_report_v2 view needs no changes.
+    const budgetRes=await supabase.from("tracecode")
+      .select("tracecode_id,fuel_budget:fuel_budget_id(fuel_budget_name)")
+      .limit(10000);
+    if(budgetRes.error){
+      console.log("field fuel budget lookup error:",budgetRes.error.message);
+    }
+    const budgetNames=new Map<number,string|null>(
+      (budgetRes.data??[]).map((r:any)=>[
+        r.tracecode_id,
+        (Array.isArray(r.fuel_budget)?r.fuel_budget[0]?.fuel_budget_name:r.fuel_budget?.fuel_budget_name)??null
+      ])
+    );
+    setRows(((data??[]) as FieldReportRow[]).map(r=>({
+      ...r,fuel_budget_name:r.tracecode_id==null?null:budgetNames.get(r.tracecode_id)??null
+    })));
     setLoading(false);
   }, []);
 
@@ -302,6 +319,7 @@ export default function FieldDashboard() {
             <View style={[styles.row, styles.headerRow]}>
               <Text style={[styles.cell, styles.headerText, styles.cSeason]}>Season</Text>
               <Text style={[styles.cell, styles.headerText, styles.cCrop]}>Crop</Text>
+              <Text style={[styles.cell, styles.headerText, styles.cFuelBudget]}>Fuel Budget</Text>
               <Text style={[styles.cell, styles.headerText, styles.cTraceId]}>Trace ID</Text>
               <Text style={[styles.cell, styles.headerText, styles.cTrace]}>Tracecode</Text>
               <Text style={[styles.cell, styles.headerText, styles.cSize]}>Size</Text>
@@ -318,6 +336,7 @@ export default function FieldDashboard() {
               <View key={r.tracecode_id ?? idx} style={[styles.row, idx % 2 === 1 && styles.rowAlt]}>
                 <Text style={[styles.cell, styles.cSeason]}>{r.season_name ?? ""}</Text>
                 <Text style={[styles.cell, styles.cCrop]}>{r.crop_name ?? ""}</Text>
+                <Text style={[styles.cell, styles.cFuelBudget]}>{r.fuel_budget_name ?? "—"}</Text>
                 <Text style={[styles.cell, styles.cTraceId]}>{r.tracecode_id ?? ""}</Text>
                 <Text style={[styles.cell, styles.cTrace]}>{r.tracecode_name ?? ""}</Text>
                 <Text style={[styles.cell, styles.cSize]}>{formatSize(r.tracecode_size)}</Text>
@@ -454,6 +473,7 @@ const styles = StyleSheet.create({
 
   cSeason: { width: 90 },
   cCrop: { width: 110 },
+  cFuelBudget: { width: 180 },
   cTraceId: { width: 90 },
   cTrace: { width: 120 },
   cSize: { width: 70 },
