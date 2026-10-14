@@ -20,7 +20,7 @@ function toDisplay(d: Date) {
 }
 
 function parseDisplay(s: string): Date | null {
-  const m = /^(\\d{1,2}\\/\\d{1,2}(?:\\/\\d{4})?)\\s+(\\d{1,2}):(\\d{2})$/.exec(s.trim());
+  const m = /^(\d{1,2}\/\d{1,2}(?:\/\d{4})?)\s+(\d{1,2}):(\d{2})$/.exec(s.trim());
   if (!m) return null;
 
   const iso=fuelDateISO(m[1]); if(!iso)return null;
