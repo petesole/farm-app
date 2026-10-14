@@ -33,6 +33,22 @@ export default function FuelIssueEdit(){
   if(meterValue!==null&&(!Number.isFinite(meterValue)||meterValue<0)){setError("Invalid meter reading.");return;}
   const vehicle=vehicles.find(v=>v.vehicle_id===vehicleId);
   if(vehicle?.has_meter&&meterValue===null){setError("Enter the vehicle meter reading.");return;}
+  if(vehicle?.has_meter&&meterValue!==null){
+   // Compare against the adjacent recorded readings in chronological order.
+   // On the same date the issue ID establishes the sequence.
+   const q=await supabase.from("fuel_issue")
+    .select("fuel_issue_id,fuel_issue_date,meter_reading")
+    .eq("vehicle_id",vehicleId).not("meter_reading","is",null)
+    .order("fuel_issue_date",{ascending:true})
+    .order("fuel_issue_id",{ascending:true}).limit(10000);
+   if(q.error){setError("Meter history could not be checked: "+q.error.message);return;}
+   const history=(q.data??[]).filter(r=>r.fuel_issue_id!==editing?.fuel_issue_id);
+   const index=history.findIndex(r=>r.fuel_issue_date>date||(r.fuel_issue_date===date&&(editing===null||r.fuel_issue_id>(editing?.fuel_issue_id??0))));
+   const prev=index===0?null:index<0?history[history.length-1]:history[index-1];
+   const next=index<0?null:history[index];
+   if(prev&&meterValue<Number(prev.meter_reading)){setError("Reading must be at least "+prev.meter_reading+" (previous reading on "+prev.fuel_issue_date+").");return;}
+   if(next&&meterValue>Number(next.meter_reading)){setError("Reading cannot exceed "+next.meter_reading+" (next reading on "+next.fuel_issue_date+").");return;}
+  }
   setSaving(true);setError("");
   const payload={fuel_issue_date:date,vehicle_id:vehicleId,fuel_issued:qty,meter_reading:vehicle?.has_meter?meterValue:null,notes:notes.trim()||null};
   const result=editing===null?await supabase.from("fuel_issue").insert(payload).select("fuel_issue_id"):await supabase.from("fuel_issue").update(payload).eq("fuel_issue_id",editing.fuel_issue_id).select("fuel_issue_id");
