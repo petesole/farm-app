@@ -1,3 +1,4 @@
+import {fuelDateDisplay,fuelDateISO} from "./fuel_admin_dates";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { Picker } from "@react-native-picker/picker";
@@ -9,6 +10,7 @@ type Dip = { fuel_dip_id:number; fuel_dip_date:string; fuel_dip_type_id:number; 
 type Type = { fuel_dip_type_id:number; fuel_dip_type_name:string };
 const today = () => { const d=new Date(); return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-"); };
 export default function FuelDipEdit(){
+ const [dateInput,setDateInput]=useState(()=>fuelDateDisplay(today()));
  const [date,setDate]=useState(today());
  const [dips,setDips]=useState<Dip[]>([]);
  const [types,setTypes]=useState<Type[]>([]);
@@ -20,8 +22,8 @@ export default function FuelDipEdit(){
  const [error,setError]=useState("");
  const [notice,setNotice]=useState("");
  async function load(d:string){
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(d)){setError("Date must be YYYY-MM-DD.");return;}
-  setLoading(true);setError("");setEditing(undefined);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d)){setError("Invalid date.");return;}
+  setLoading(true);setError("");setEditing(undefined);setDate(d);setDateInput(fuelDateDisplay(d));
   const [a,b]=await Promise.all([
    supabase.from("fuel_dip").select("fuel_dip_id,fuel_dip_date,fuel_dip_type_id,dip_reading").eq("fuel_dip_date",d).order("fuel_dip_type_id"),
    supabase.from("fuel_dip_type").select("fuel_dip_type_id,fuel_dip_type_name").order("fuel_dip_type_id")
@@ -31,6 +33,7 @@ export default function FuelDipEdit(){
   setLoading(false);
  }
  useEffect(()=>{load(today());},[]);
+ function findDate(){const iso=fuelDateISO(dateInput);if(!iso){setError("Enter a valid date, e.g. 5/12 or 05/12/2026.");return;}load(iso);}
  const exists=(id:number)=>dips.some(d=>d.fuel_dip_type_id===id);
  function choose(d:Dip|null,id:number){
   setEditing(d);setTypeId(id);setReading(d?String(d.dip_reading):"");setError("");setNotice("");
@@ -55,14 +58,14 @@ export default function FuelDipEdit(){
   <View style={styles.card}>
    <ThemedText type="subtitle">Select date</ThemedText>
    <View style={styles.row}>
-    <TextInput style={[styles.input,{flex:1}]} value={date} onChangeText={setDate} placeholder="YYYY-MM-DD"/>
-    <Pressable style={styles.btn} onPress={()=>load(date)}><ThemedText>Find</ThemedText></Pressable>
+    <TextInput style={[styles.input,{flex:1}]} value={dateInput} onChangeText={setDateInput} placeholder="dd/mm/yyyy or 5/12"/>
+    <Pressable style={styles.btn} onPress={findDate}><ThemedText>Find</ThemedText></Pressable>
    </View>
   </View>
   {!!error&&<ThemedText style={styles.error}>{error}</ThemedText>}
   {!!notice&&<ThemedText>{notice}</ThemedText>}
   {loading?<ActivityIndicator/>:<View style={styles.card}>
-   <ThemedText type="subtitle">Dips on {date}</ThemedText>
+   <ThemedText type="subtitle">Dips on {fuelDateDisplay(date)}</ThemedText>
    {dips.map(d=><Pressable key={d.fuel_dip_id} style={styles.btn} onPress={()=>choose(d,d.fuel_dip_type_id)}>
     <ThemedText>{types.find(t=>t.fuel_dip_type_id===d.fuel_dip_type_id)?.fuel_dip_type_name??"Dip"}: {d.dip_reading} L — Edit</ThemedText>
    </Pressable>)}
