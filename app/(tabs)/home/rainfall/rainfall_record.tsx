@@ -116,7 +116,7 @@ export default function RainfallRecordScreen() {
 
     const iso = displayToIso(dateDisplay);
     if (!iso) {
-      setStatus("❌ Invalid date. Use DD/MM/YYYY (e.g. 02/03/2026).");
+      setStatus("❌ Invalid date. Use DD/MM/YYYY or D/M (e.g. 5/12).");
       return;
     }
 
