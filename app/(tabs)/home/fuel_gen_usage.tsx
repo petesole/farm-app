@@ -1,3 +1,4 @@
+import {fuelDateISO} from "./fuel_admin_dates";
 // app/(tabs)/fuel_gen_usage.tsx
 import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -28,21 +29,7 @@ function isoToDMY(iso: string) {
   return `${d}/${m}/${y}`;
 }
 
-function dmyToISO(dmy: string) {
-  // DD/MM/YYYY -> YYYY-MM-DD (returns null if invalid)
-  const s = String(dmy ?? '').trim();
-  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (!m) return null;
-  const dd = Number(m[1]);
-  const mm = Number(m[2]);
-  const yyyy = Number(m[3]);
-  if (yyyy < 1900 || mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
-
-  const dt = new Date(yyyy, mm - 1, dd);
-  if (dt.getFullYear() !== yyyy || dt.getMonth() !== mm - 1 || dt.getDate() !== dd) return null;
-
-  return `${yyyy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
-}
+function dmyToISO(dmy: string) { return fuelDateISO(dmy); }
 
 function n0(x: any) {
   const v = Number(x);
