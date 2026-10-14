@@ -21,6 +21,9 @@ const monday = (value:string) => {const d=toDate(value);d.setUTCDate(d.getUTCDat
 const fmt=(v:number,dp=1)=>v.toLocaleString(undefined,{minimumFractionDigits:dp,maximumFractionDigits:dp});
 const n=(v:number|null|undefined)=>Number(v??0);
 const unit=(r:Programme)=>r.fuel_plan_method==="HA"?"ha":r.fuel_plan_unit||"units";
+// Harvesting is scheduled under its own machinery filter while retaining
+// the Large Tractor rates already calculated by the Supabase budget view.
+const displayClass=(r:Programme)=>/^harvest/i.test(r.vehicle_job_name?.trim()||"")?"Harvester":r.class_code||"Unassigned";
 
 export default function FuelWeeklyPlanScreen() {
   const [week,setWeek]=useState(()=>monday(iso(new Date())));
@@ -156,7 +159,7 @@ export default function FuelWeeklyPlanScreen() {
     (skip==="crop"||cropFilter===null||r.cropId===cropFilter)&&
     (skip==="trace"||traceFilter===null||r.tracecode_id===traceFilter)&&
     (skip==="job"||jobFilter===null||r.vehicle_job_id===jobFilter)&&
-    (skip==="class"||classFilter==="ALL"||(r.class_code||"Unassigned")===classFilter);
+    (skip==="class"||classFilter==="ALL"||displayClass(r)===classFilter);
   const cropOptions=useMemo(()=>{
     const ids=new Set(scheduled.filter(r=>matches(r,"crop")).map(r=>r.cropId));
     return crops.filter(cr=>ids.has(cr.crop_id));
@@ -166,12 +169,12 @@ export default function FuelWeeklyPlanScreen() {
     return fields.filter(f=>ids.has(f.tracecode_id)).sort((a,b)=>a.tracecode_name.localeCompare(b.tracecode_name));
   },[scheduled,fields,cropFilter,jobFilter,classFilter]);
   const jobOptions=useMemo(()=>[...new Map(scheduled.filter(r=>matches(r,"job")).map(r=>[r.vehicle_job_id,r.vehicle_job_name])).entries()].sort((a,b)=>a[1].localeCompare(b[1])),[scheduled,cropFilter,traceFilter,classFilter]);
-  const classOptions=useMemo(()=>[...new Set(scheduled.filter(r=>matches(r,"class")).map(r=>r.class_code||"Unassigned"))].sort(),[scheduled,cropFilter,traceFilter,jobFilter]);
+  const classOptions=useMemo(()=>[...new Set(scheduled.filter(r=>matches(r,"class")).map(r=>displayClass(r)))].sort(),[scheduled,cropFilter,traceFilter,jobFilter]);
   const filtered=useMemo(()=>scheduled.filter(r=>matches(r))
       .sort((a,b)=>{
         if(sortBy==="trace")return a.fieldName.localeCompare(b.fieldName)||a.scheduledDate.localeCompare(b.scheduledDate);
         if(sortBy==="job")return a.vehicle_job_name.localeCompare(b.vehicle_job_name)||a.scheduledDate.localeCompare(b.scheduledDate);
-        if(sortBy==="class")return (a.class_code||"").localeCompare(b.class_code||"")||a.scheduledDate.localeCompare(b.scheduledDate);
+        if(sortBy==="class")return (displayClass(a)).localeCompare(displayClass(b))||a.scheduledDate.localeCompare(b.scheduledDate);
         return Number(b.overdue)-Number(a.overdue)||a.scheduledDate.localeCompare(b.scheduledDate);
       }),[scheduled,cropFilter,traceFilter,jobFilter,classFilter,sortBy]);
   const selectedKeys=new Set(chosen.map(clearedKey));
@@ -186,7 +189,7 @@ export default function FuelWeeklyPlanScreen() {
   const hoursByClass=useMemo(()=>{
     const result=new Map<string,{jobs:number;hours:number;unknown:number;litres:number}>();
     for(const r of chosenRows){
-      const k=r.class_code||"Unassigned",old=result.get(k)||{jobs:0,hours:0,unknown:0,litres:0};
+      const k=displayClass(r),old=result.get(k)||{jobs:0,hours:0,unknown:0,litres:0};
       const hours=hoursFor(r);
       old.jobs++;old.hours+=hours??0;old.unknown+=hours==null?1:0;
       old.litres+=n(r.total_budget_litres)*remainingFraction(r);
@@ -205,7 +208,7 @@ export default function FuelWeeklyPlanScreen() {
   },[fields,schedules]);
   const byClass=useMemo(()=>{
     const grouped=new Map<string,{litres:number;jobs:number}>();
-    for(const r of filtered){const key=r.class_code||"Unassigned";const current=grouped.get(key)||{litres:0,jobs:0};current.litres+=litresRemaining(r);current.jobs++;grouped.set(key,current);}
+    for(const r of filtered){const key=displayClass(r);const current=grouped.get(key)||{litres:0,jobs:0};current.litres+=litresRemaining(r);current.jobs++;grouped.set(key,current);}
     return [...grouped.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
   },[filtered]);
   return <ScrollView contentContainerStyle={s.page}>
@@ -287,7 +290,7 @@ export default function FuelWeeklyPlanScreen() {
             {chosenRows.map(r=><View key={r.key} style={s.tableRow}>
               <ThemedText style={[s.tableCell,{width:110}]}>{r.fieldName}</ThemedText>
               <ThemedText style={[s.tableCell,{width:140}]}>{r.vehicle_job_name}{r.description?" · "+r.description:""}</ThemedText>
-              <ThemedText style={[s.tableCell,{width:95}]}>{r.class_code||"Unassigned"}</ThemedText>
+              <ThemedText style={[s.tableCell,{width:95}]}>{displayClass(r)}</ThemedText>
               <ThemedText style={[s.tableCell,{width:70}]}>{fmt((n(r.effective_hectares)>0?n(r.effective_hectares):r.fieldHa)*remainingFraction(r))}</ThemedText>
               <ThemedText style={[s.tableCell,{width:85}]}>{n(r.standard_ha_per_day)>0?fmt(n(r.standard_ha_per_day)):"—"}</ThemedText>
               <ThemedText style={[s.tableCell,{width:75}]}>{hoursFor(r)==null?"Set rate":fmt(hoursFor(r)!,1)}</ThemedText>
@@ -324,7 +327,7 @@ function JobLine({r,estimate,admin=false,saving=false,confirming=false,onComplet
     <View style={s.line}><ThemedText style={s.bold}>{r.fieldName} · {r.vehicle_job_name}</ThemedText><ThemedText>{r.scheduledDate}{r.overdue?" · Overdue":""}</ThemedText></View>
     {onSelect?<Pressable disabled={selectedDisabled} style={[s.button,chosen&&s.selected]} onPress={onSelect}><ThemedText style={chosen?s.bold:undefined}>{chosen?"✓ Selected for this week — tap to remove":"＋ Add to this week's actual plan"}</ThemedText></Pressable>:null}
     {r.description?.trim()?<ThemedText>{r.description.trim()}</ThemedText>:null}
-    <ThemedText style={s.small}>Field {fmt(r.fieldHa)} ha · DAP {r.target_dap} · {r.class_code||"Unassigned"} · {fmt(n(r.calculated_quantity))} {unit(r)}</ThemedText>
+    <ThemedText style={s.small}>Field {fmt(r.fieldHa)} ha · DAP {r.target_dap} · {displayClass(r)} · {fmt(n(r.calculated_quantity))} {unit(r)}</ThemedText>
     <View style={s.fuelBreakdown}>
       <ThemedText>Fieldwork: <ThemedText style={s.bold}>{fmt(n(r.budget_work_litres)* (n(r.planned_operations)>0?r.remainingOperations/n(r.planned_operations):1))} L</ThemedText></ThemedText>
       <ThemedText>Travel fuel</ThemedText>
