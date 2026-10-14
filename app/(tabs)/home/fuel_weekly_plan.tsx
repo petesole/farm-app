@@ -6,7 +6,7 @@ import { ThemedView } from "@/components/themed-view";
 import { supabase } from "../../../supabase";
 
 type Field = {tracecode_id:number;tracecode_name:string;tracecode_size:number|null;fuel_budget_name:string|null};
-type Programme = {description:string|null;sequence_no:number;tracecode_id:number;vehicle_job_id:number;vehicle_job_name:string;target_dap:number|null;calculated_quantity:number|null;planned_operations:number|null;total_budget_litres:number|null;budget_work_litres:number|null;budget_trip_litres:number|null;trip_litres_per_trip:number|null;budget_trip_count:number|null;class_code:string|null;fuel_plan_method:string|null;fuel_plan_unit:string|null};
+type Programme = {fuel_budget_activity_id:number;description:string|null;sequence_no:number;tracecode_id:number;vehicle_job_id:number;vehicle_job_name:string;target_dap:number|null;calculated_quantity:number|null;planned_operations:number|null;total_budget_litres:number|null;budget_work_litres:number|null;budget_trip_litres:number|null;trip_litres_per_trip:number|null;budget_trip_count:number|null;class_code:string|null;fuel_plan_method:string|null;fuel_plan_unit:string|null};
 type Schedule = {tracecode_id:number;crop_id:number|null;planned_planting_date:string|null;actual_planting_date:string|null};
 type Crop = {crop_id:number;crop_name:string};
 type Actual = {tracecode_id:number;vehicle_job_id:number;actual_litres:number|null;completed_operations:number|null};
@@ -53,23 +53,21 @@ export default function FuelWeeklyPlanScreen() {
     let active=true;
     (async()=>{
       setLoading(true);setError(null);
-      const [f,p,s,a,h,m,cr,sel]=await Promise.all([
+      const [f,p,s,a,h,m,cr,sel,descs]=await Promise.all([
         supabase.from("fuel_tracecode_budget_summary_v").select("tracecode_id,tracecode_name,tracecode_size,fuel_budget_name"),
-        supabase.from("fuel_budget_activity_v").select("description,sequence_no,tracecode_id,vehicle_job_id,vehicle_job_name,target_dap,calculated_quantity,planned_operations,total_budget_litres,budget_work_litres,budget_trip_litres,trip_litres_per_trip,budget_trip_count,class_code,fuel_plan_method,fuel_plan_unit").limit(10000),
+        supabase.from("fuel_budget_activity_v").select("fuel_budget_activity_id,sequence_no,tracecode_id,vehicle_job_id,vehicle_job_name,target_dap,calculated_quantity,planned_operations,total_budget_litres,budget_work_litres,budget_trip_litres,trip_litres_per_trip,budget_trip_count,class_code,fuel_plan_method,fuel_plan_unit").limit(10000),
         supabase.from("tracecode").select("tracecode_id,crop_id,planned_planting_date,actual_planting_date").limit(10000),
         supabase.from("fuel_tracecode_activity_summary_v").select("tracecode_id,vehicle_job_id,actual_litres,completed_operations").limit(10000),
         supabase.from("fuel_historical_completion").select("tracecode_id,vehicle_job_id,target_dap,sequence_no").limit(10000),
         supabase.from("fuel_plan_admin").select("user_id").limit(1),
         supabase.from("crop").select("crop_id,crop_name").order("crop_name"),
         supabase.from("fuel_weekly_selected_job").select("week_start,tracecode_id,vehicle_job_id,target_dap,sequence_no").eq("week_start",week).limit(10000),
+        supabase.from("fuel_budget_activity").select("fuel_budget_activity_id,description").limit(10000),
       ]);
-      // Older Supabase deployments may not have description exposed on this view yet.
-      // Retry without that optional column so weekly scheduling does not fail.
-      let planResult=p;
-      if(p.error && /description/i.test(p.error.message)){
-        planResult=await supabase.from("fuel_budget_activity_v")
-          .select("sequence_no,tracecode_id,vehicle_job_id,vehicle_job_name,target_dap,calculated_quantity,planned_operations,total_budget_litres,budget_work_litres,budget_trip_litres,trip_litres_per_trip,budget_trip_count,class_code,fuel_plan_method,fuel_plan_unit").limit(10000);
-      }
+      // Description lives on the budget activity, not the calculation view.
+      // Match by unique activity ID so multiple applications remain distinct.
+      const descriptions=new Map<number,string|null>((descs.data??[]).map(d=>[d.fuel_budget_activity_id,d.description]));
+      const planResult=p;
       if(!active)return;
       setPlanReady(!sel.error);
       setPlanMessage(sel.error?("Weekly selection unavailable: "+sel.error.message+". Run the weekly selected jobs Supabase migration."):null);
@@ -77,9 +75,9 @@ export default function FuelWeeklyPlanScreen() {
       setCanClear(!m.error && (m.data?.length??0)>0);
       setClearError(h.error?.message??m.error?.message??null);
       setCleared(h.error?[]:(h.data??[]) as Cleared[]);
-      const err=f.error||planResult.error||s.error||a.error||cr.error;
+      const err=f.error||planResult.error||s.error||a.error||cr.error||descs.error;
       if(err){setError(err.message);setFields([]);setProgrammes([]);setSchedules([]);setActuals([]);}
-      else{setFields((f.data??[]) as Field[]);setProgrammes(((planResult.data??[]) as Partial<Programme>[]).map(r=>({...r,description:r.description??null})) as Programme[]);setSchedules((s.data??[]) as Schedule[]);setCrops((cr.data??[]) as Crop[]);setActuals((a.data??[]) as Actual[]);}
+      else{setFields((f.data??[]) as Field[]);setProgrammes(((planResult.data??[]) as Partial<Programme>[]).map(r=>({...r,description:descriptions.get(r.fuel_budget_activity_id!)??null})) as Programme[]);setSchedules((s.data??[]) as Schedule[]);setCrops((cr.data??[]) as Crop[]);setActuals((a.data??[]) as Actual[]);}
       setLoading(false);
     })();
     return()=>{active=false;};
