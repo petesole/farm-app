@@ -1,4 +1,5 @@
 import { supabase } from "@/supabase";
+import {fuelDateISO} from "../fuel_admin_dates";
 import { useFocusEffect } from "@react-navigation/native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -57,19 +58,10 @@ function isoToDmy(iso: string) {
 }
 
 function normalizeDmy(input: string) {
-  const s = input.trim();
-  if (!s) return "";
-  const parts = s.split(/[\/\-\.\s]+/).filter(Boolean);
-  if (parts.length !== 3) return s;
-
-  const d = Number(parts[0]);
-  const m = Number(parts[1]);
-  const y = Number(parts[2]);
-
-  if (!Number.isFinite(d) || !Number.isFinite(m) || !Number.isFinite(y)) return s;
-  if (y < 2000 || m < 1 || m > 12 || d < 1 || d > 31) return s;
-
-  return `${pad2(d)}/${pad2(m)}/${y}`;
+ const iso=fuelDateISO(input);
+ if(!iso)return input.trim();
+ const [y,m,d]=iso.split("-");
+ return d+"/"+m+"/"+y;
 }
 
 function normalizeHm(input: string) {
