@@ -176,6 +176,7 @@ export default function FuelWeeklyPlanScreen() {
       }),[scheduled,cropFilter,traceFilter,jobFilter,classFilter,sortBy]);
   const selectedKeys=new Set(chosen.map(clearedKey));
   const chosenRows=filtered.filter(r=>selectedKeys.has(clearedKey({...r,target_dap:r.target_dap!})));
+  const remainingFraction=(r:Row)=>n(r.planned_operations)>0?r.remainingOperations/n(r.planned_operations):1;
   const daysFor=(r:Row)=>{
     const ha=n(r.effective_hectares)>0?n(r.effective_hectares):r.fieldHa;
     const rate=n(r.standard_ha_per_day);
@@ -194,7 +195,6 @@ export default function FuelWeeklyPlanScreen() {
     return [...result.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
   },[chosenRows]);
   const chosenLitres=chosenRows.reduce((sum,r)=>sum+n(r.total_budget_litres)*(n(r.planned_operations)>0?r.remainingOperations/n(r.planned_operations):1),0);
-  const remainingFraction=(r:Row)=>n(r.planned_operations)>0?r.remainingOperations/n(r.planned_operations):1;
   const litresRemaining=(r:Row)=>n(r.total_budget_litres)*remainingFraction(r);
   const total=filtered.reduce((sum,r)=>sum+litresRemaining(r),0);
   const overdueRows=filtered.filter(r=>r.overdue);
