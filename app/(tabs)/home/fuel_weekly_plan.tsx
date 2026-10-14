@@ -177,18 +177,18 @@ export default function FuelWeeklyPlanScreen() {
   const selectedKeys=new Set(chosen.map(clearedKey));
   const chosenRows=filtered.filter(r=>selectedKeys.has(clearedKey({...r,target_dap:r.target_dap!})));
   const remainingFraction=(r:Row)=>n(r.planned_operations)>0?r.remainingOperations/n(r.planned_operations):1;
-  const daysFor=(r:Row)=>{
+  const hoursFor=(r:Row)=>{
     const ha=n(r.effective_hectares)>0?n(r.effective_hectares):r.fieldHa;
     const rate=n(r.standard_ha_per_day);
     if(rate<=0)return null;
-    return ha*remainingFraction(r)/rate;
+    return ha*remainingFraction(r)/rate*8;
   };
-  const daysByClass=useMemo(()=>{
-    const result=new Map<string,{jobs:number;days:number;unknown:number;litres:number}>();
+  const hoursByClass=useMemo(()=>{
+    const result=new Map<string,{jobs:number;hours:number;unknown:number;litres:number}>();
     for(const r of chosenRows){
-      const k=r.class_code||"Unassigned",old=result.get(k)||{jobs:0,days:0,unknown:0,litres:0};
-      const days=daysFor(r);
-      old.jobs++;old.days+=days??0;old.unknown+=days==null?1:0;
+      const k=r.class_code||"Unassigned",old=result.get(k)||{jobs:0,hours:0,unknown:0,litres:0};
+      const hours=hoursFor(r);
+      old.jobs++;old.hours+=hours??0;old.unknown+=hours==null?1:0;
       old.litres+=n(r.total_budget_litres)*remainingFraction(r);
       result.set(k,old);
     }
@@ -224,12 +224,12 @@ export default function FuelWeeklyPlanScreen() {
     </ThemedView>
     <ThemedView style={s.card}>
       <ThemedText type="subtitle">Filter and sort</ThemedText>
-      <ThemedText style={s.small}>Crop</ThemedText>
+      <ThemedText style={s.small}>Machinery class</ThemedText>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}><View style={s.nav}>
-        <Choice label="All crops" selected={cropFilter===null} onPress={()=>setCropFilter(null)}/>
-        {cropOptions.map(cr=><Choice key={cr.crop_id} label={cr.crop_name} selected={cropFilter===cr.crop_id} onPress={()=>setCropFilter(cr.crop_id)}/>)}
+        <Choice label="All classes" selected={classFilter==="ALL"} onPress={()=>setClassFilter("ALL")}/>
+        {classOptions.map(name=><Choice key={name} label={name} selected={classFilter===name} onPress={()=>setClassFilter(name)}/>)}
       </View></ScrollView>
-      <ThemedText style={s.small}>TraceCode</ThemedText>
+      <ThemedText style={s.small}>Field</ThemedText>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}><View style={s.nav}>
         <Choice label="All fields" selected={traceFilter===null} onPress={()=>setTraceFilter(null)}/>
         {traceOptions.map(f=><Choice key={f.tracecode_id} label={f.tracecode_name} selected={traceFilter===f.tracecode_id} onPress={()=>setTraceFilter(f.tracecode_id)}/>)}
@@ -239,10 +239,10 @@ export default function FuelWeeklyPlanScreen() {
         <Choice label="All jobs" selected={jobFilter===null} onPress={()=>setJobFilter(null)}/>
         {jobOptions.map(([id,name])=><Choice key={id} label={name} selected={jobFilter===id} onPress={()=>setJobFilter(id)}/>)}
       </View></ScrollView>
-      <ThemedText style={s.small}>Tractor class</ThemedText>
+      <ThemedText style={s.small}>Crop</ThemedText>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}><View style={s.nav}>
-        <Choice label="All classes" selected={classFilter==="ALL"} onPress={()=>setClassFilter("ALL")}/>
-        {classOptions.map(name=><Choice key={name} label={name} selected={classFilter===name} onPress={()=>setClassFilter(name)}/>)}
+        <Choice label="All crops" selected={cropFilter===null} onPress={()=>setCropFilter(null)}/>
+        {cropOptions.map(cr=><Choice key={cr.crop_id} label={cr.crop_name} selected={cropFilter===cr.crop_id} onPress={()=>setCropFilter(cr.crop_id)}/>)}
       </View></ScrollView>
       <Pressable style={s.button} onPress={()=>{setCropFilter(null);setTraceFilter(null);setJobFilter(null);setClassFilter("ALL");}}><ThemedText>Clear all filters</ThemedText></Pressable>
       <ThemedText style={s.small}>Sort order</ThemedText>
@@ -271,8 +271,8 @@ export default function FuelWeeklyPlanScreen() {
       {clearError?<ThemedView style={s.card}><ThemedText style={s.error}>Historical completion unavailable: {clearError}. The database migration and admin membership must be configured.</ThemedText></ThemedView>:null}
       {planView==="chosen"?<>
       <ThemedView style={s.card}>
-        <ThemedText type="subtitle">Weekly operations and machinery days</ThemedText>
-        <ThemedText style={s.small}>Estimates use effective hectares remaining ÷ standard hectares per day. Days are machine-days, not calendar days; concurrent machines can reduce elapsed time.</ThemedText>
+        <ThemedText type="subtitle">Weekly operations and machinery hours</ThemedText>
+        <ThemedText style={s.small}>Estimated machine-hours = hectares remaining ÷ standard hectares per day × 8 hours. These are machine-hours, not elapsed clock time.</ThemedText>
         <ScrollView horizontal showsHorizontalScrollIndicator>
           <View>
             <View style={[s.tableRow,s.tableHeader]}>
@@ -281,7 +281,7 @@ export default function FuelWeeklyPlanScreen() {
               <ThemedText style={[s.tableCell,{width:95},s.bold]}>Class</ThemedText>
               <ThemedText style={[s.tableCell,{width:70},s.bold]}>Ha left</ThemedText>
               <ThemedText style={[s.tableCell,{width:85},s.bold]}>Ha/day</ThemedText>
-              <ThemedText style={[s.tableCell,{width:75},s.bold]}>Days</ThemedText>
+              <ThemedText style={[s.tableCell,{width:75},s.bold]}>Hours</ThemedText>
               <ThemedText style={[s.tableCell,{width:85},s.bold]}>Fuel L</ThemedText>
             </View>
             {chosenRows.map(r=><View key={r.key} style={s.tableRow}>
@@ -290,13 +290,13 @@ export default function FuelWeeklyPlanScreen() {
               <ThemedText style={[s.tableCell,{width:95}]}>{r.class_code||"Unassigned"}</ThemedText>
               <ThemedText style={[s.tableCell,{width:70}]}>{fmt((n(r.effective_hectares)>0?n(r.effective_hectares):r.fieldHa)*remainingFraction(r))}</ThemedText>
               <ThemedText style={[s.tableCell,{width:85}]}>{n(r.standard_ha_per_day)>0?fmt(n(r.standard_ha_per_day)):"—"}</ThemedText>
-              <ThemedText style={[s.tableCell,{width:75}]}>{daysFor(r)==null?"Set rate":fmt(daysFor(r)!,2)}</ThemedText>
+              <ThemedText style={[s.tableCell,{width:75}]}>{hoursFor(r)==null?"Set rate":fmt(hoursFor(r)!,1)}</ThemedText>
               <ThemedText style={[s.tableCell,{width:85}]}>{fmt(litresRemaining(r))}</ThemedText>
             </View>)}
           </View>
         </ScrollView>
         <ThemedText type="subtitle">Totals by machinery class</ThemedText>
-        {daysByClass.map(([name,v])=><View key={name} style={s.summary}><ThemedText>{name} · {v.jobs} jobs</ThemedText><ThemedText style={s.bold}>{fmt(v.days,2)} days{v.unknown?" + "+v.unknown+" unset":""} · {fmt(v.litres)} L</ThemedText></View>)}
+        {hoursByClass.map(([name,v])=><View key={name} style={s.summary}><ThemedText>{name} · {v.jobs} jobs</ThemedText><ThemedText style={s.bold}>{fmt(v.hours,1)} hours{v.unknown?" + "+v.unknown+" unset":""} · {fmt(v.litres)} L</ThemedText></View>)}
       </ThemedView>
       <ThemedView style={s.card}>
         <ThemedText type="subtitle">Selected jobs for {week} ({chosenRows.length})</ThemedText>
