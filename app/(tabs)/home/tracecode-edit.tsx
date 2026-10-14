@@ -40,6 +40,7 @@ type TracecodeRow = {
   germination_date: string | null;
 
   plant_population: number | null;
+  fuel_budget_id: number | null;
 };
 
 type RoleName = "admin" | "manager" | "viewer" | "irrigation" | "unknown";
@@ -50,6 +51,7 @@ type SeasonRow = { season_id: number; season_name: string | null };
 type IrrRow = { irrigation_type_id: number; irrigation_type: string | null };
 type CropRow = { crop_id: number; crop_name: string | null };
 type VarietyRow = { variety_id: number; crop_id: number | null; variety_name: string | null };
+type FuelBudgetRow = { fuel_budget_id:number; fuel_budget_name:string; crop_id:number|null; active:boolean };
 
 /** ---------- Helpers ---------- */
 function norm(s: string | null | undefined) {
@@ -271,6 +273,7 @@ export default function TracecodeEditScreen() {
   const [irrs, setIrrs] = useState<IrrRow[]>([]);
   const [crops, setCrops] = useState<CropRow[]>([]);
   const [varieties, setVarieties] = useState<VarietyRow[]>([]);
+  const [fuelBudgets,setFuelBudgets] = useState<FuelBudgetRow[]>([]);
 
   // Modals (admin only)
   const [farmModal, setFarmModal] = useState(false);
@@ -279,6 +282,7 @@ export default function TracecodeEditScreen() {
   const [irrModal, setIrrModal] = useState(false);
   const [cropModal, setCropModal] = useState(false);
   const [varietyModal, setVarietyModal] = useState(false);
+  const [fuelBudgetModal,setFuelBudgetModal] = useState(false);
 
   // Form fields
   const [tracecodeName, setTracecodeName] = useState("");
@@ -290,6 +294,7 @@ export default function TracecodeEditScreen() {
   const [irrId, setIrrId] = useState<number | null>(null);
   const [cropId, setCropId] = useState<number | null>(null);
   const [varietyId, setVarietyId] = useState<number | null>(null);
+  const [fuelBudgetId,setFuelBudgetId] = useState<number | null>(null);
 
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -331,6 +336,9 @@ export default function TracecodeEditScreen() {
     [varieties, varietyId]
   );
 
+  const budgetsForCrop = useMemo(()=>fuelBudgets.filter(b=>b.crop_id===cropId || b.fuel_budget_id===fuelBudgetId),[fuelBudgets,cropId,fuelBudgetId]);
+  const selectedFuelBudget = fuelBudgets.find(b=>b.fuel_budget_id===fuelBudgetId);
+
   const fieldsForFarm = useMemo(() => {
     if (!farmId) return fields;
     return fields.filter((f) => f.farm_id === farmId);
@@ -354,13 +362,14 @@ export default function TracecodeEditScreen() {
   }
 
   async function loadLookupsAdmin() {
-    const [farmRes, fieldRes, seasonRes, irrRes, cropRes, varRes] = await Promise.all([
+    const [farmRes, fieldRes, seasonRes, irrRes, cropRes, varRes, fuelRes] = await Promise.all([
       supabase.from("farm").select("farm_id,farm_name").order("farm_name"),
       supabase.from("field").select("field_id,field_name,farm_id").order("field_name"),
       supabase.from("season").select("season_id,season_name").order("season_name"),
       supabase.from("irrigation_type").select("irrigation_type_id,irrigation_type").order("irrigation_type"),
       supabase.from("crop").select("crop_id,crop_name").order("crop_name"),
       supabase.from("variety").select("variety_id,variety_name,crop_id").order("variety_name"),
+      supabase.from("fuel_budget").select("fuel_budget_id,fuel_budget_name,crop_id,active").order("fuel_budget_name"),
     ]);
 
     if (farmRes.error) throw new Error(`farm: ${farmRes.error.message}`);
@@ -369,6 +378,7 @@ export default function TracecodeEditScreen() {
     if (irrRes.error) throw new Error(`irrigation_type: ${irrRes.error.message}`);
     if (cropRes.error) throw new Error(`crop: ${cropRes.error.message}`);
     if (varRes.error) throw new Error(`variety: ${varRes.error.message}`);
+    if (fuelRes.error) throw new Error(`fuel_budget: ${fuelRes.error.message}`);
 
     setFarms((farmRes.data ?? []) as FarmRow[]);
     setFields((fieldRes.data ?? []) as FieldRow[]);
@@ -376,6 +386,7 @@ export default function TracecodeEditScreen() {
     setIrrs((irrRes.data ?? []) as IrrRow[]);
     setCrops((cropRes.data ?? []) as CropRow[]);
     setVarieties((varRes.data ?? []) as VarietyRow[]);
+    setFuelBudgets((fuelRes.data ?? []) as FuelBudgetRow[]);
   }
 
   async function loadTracecodeAdmin(tid: number) {
@@ -423,6 +434,7 @@ export default function TracecodeEditScreen() {
           setIrrId(null);
           setCropId(null);
           setVarietyId(null);
+          setFuelBudgetId(null);
 
           setStartDate("");
           setEndDate("");
@@ -454,6 +466,7 @@ export default function TracecodeEditScreen() {
           setIrrId(tc.irrigation_type_id ?? null);
           setCropId(tc.crop_id ?? null);
           setVarietyId(tc.variety_id ?? null);
+          setFuelBudgetId(tc.fuel_budget_id ?? null);
 
           setStartDate(isoToDDMMYYYY(tc.start_date));
           setEndDate(isoToDDMMYYYY(tc.end_date));
@@ -509,6 +522,8 @@ export default function TracecodeEditScreen() {
     setCropId(c.crop_id);
     const currentVar = varieties.find((v) => v.variety_id === varietyId);
     if (currentVar && currentVar.crop_id !== c.crop_id) setVarietyId(null);
+    const currentBudget=fuelBudgets.find(b=>b.fuel_budget_id===fuelBudgetId);
+    if(currentBudget && currentBudget.crop_id!==c.crop_id)setFuelBudgetId(null);
     setCropModal(false);
   }
 
@@ -617,6 +632,7 @@ export default function TracecodeEditScreen() {
         germination_date: (germDb as any) ?? null,
 
         plant_population: toNumOrNull(plantPopulation),
+        fuel_budget_id: fuelBudgetId,
       };
 
       if (isNew) {
@@ -742,6 +758,15 @@ export default function TracecodeEditScreen() {
             onClose={() => setCropModal(false)}
           />
 
+          <SelectModal<FuelBudgetRow>
+            visible={fuelBudgetModal}
+            title="Select Fuel Budget"
+            items={budgetsForCrop}
+            getKey={(b)=>String(b.fuel_budget_id)}
+            getLabel={(b)=>b.fuel_budget_name+(b.active?"":" (inactive)")}
+            onPick={(b)=>{setFuelBudgetId(b.fuel_budget_id);setFuelBudgetModal(false);}}
+            onClose={()=>setFuelBudgetModal(false)}
+          />
           <SelectModal<VarietyRow>
             visible={varietyModal}
             title="Select Variety"
@@ -816,6 +841,17 @@ export default function TracecodeEditScreen() {
               />
             </Card>
 
+            <Card title="Fuel planning">
+              <SelectorRow
+                label="Fuel budget"
+                valueText={selectedFuelBudget?.fuel_budget_name??"Select fuel budget…"}
+                onPress={()=>setFuelBudgetModal(true)}
+                disabled={!cropId}
+              />
+              <Pressable onPress={()=>setFuelBudgetId(null)} style={{marginTop:8}}>
+                <ThemedText style={{opacity:0.7}}>Clear fuel budget selection</ThemedText>
+              </Pressable>
+            </Card>
             <Card title="Dates (DD/MM/YYYY)">
               <LabeledInput label="Start date" value={startDate} onChangeText={setStartDate} placeholder="e.g. 09/02/2026" />
               <LabeledInput label="End date" value={endDate} onChangeText={setEndDate} placeholder="e.g. 30/06/2026" />
