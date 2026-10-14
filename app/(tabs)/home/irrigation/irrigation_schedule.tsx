@@ -156,7 +156,7 @@ export default function IrrigationSchedule() {
     const iso = dmyToIso(newDate);
     const mm = toNum(newMm);
 
-    if (!iso) return Alert.alert("Invalid date", "Use DD/MM/YYYY");
+    if (!iso) return Alert.alert("Invalid date", "Use DD/MM/YYYY or D/M (e.g. 5/12)");
     if (!Number.isFinite(mm) || mm <= 0) return Alert.alert("Invalid mm", "Must be > 0");
 
     setSaving(true);
@@ -208,7 +208,7 @@ export default function IrrigationSchedule() {
     const iso = dmyToIso(editDate);
     const mm = toNum(editMm);
 
-    if (!iso) return Alert.alert("Invalid date", "Use DD/MM/YYYY");
+    if (!iso) return Alert.alert("Invalid date", "Use DD/MM/YYYY or D/M (e.g. 5/12)");
     if (!Number.isFinite(mm) || mm <= 0) return Alert.alert("Invalid mm", "Must be > 0");
 
     setSaving(true);
