@@ -536,7 +536,7 @@ export default function TracecodeEditScreen() {
       const t = f.val.trim();
       if (!t) continue;
       const iso = toDbDateOrNull(t);
-      if (iso === "__BAD__") return `${f.label} must be DD/MM/YYYY (example: 09/02/2026)`;
+      if (iso === "__BAD__") return `${f.label} must be DD/MM/YYYY or D/M (example: 5/12)`;
     }
     return null;
   }
@@ -562,7 +562,7 @@ export default function TracecodeEditScreen() {
     const actualDb = toDbDateOrNull(actualPlantingDate);
     const germDb = toDbDateOrNull(germinationDate);
     if (actualDb === "__BAD__" || germDb === "__BAD__") {
-      Alert.alert("Check dates", "One or more dates are not DD/MM/YYYY.");
+      Alert.alert("Check dates", "Enter dates as DD/MM/YYYY or D/M (current year).");
       return;
     }
 
@@ -608,7 +608,7 @@ export default function TracecodeEditScreen() {
       const endDb = toDbDateOrNull(endDate);
       const planDb = toDbDateOrNull(plannedPlantingDate);
       if (startDb === "__BAD__" || endDb === "__BAD__" || planDb === "__BAD__") {
-        Alert.alert("Check dates", "One or more dates are not DD/MM/YYYY.");
+        Alert.alert("Check dates", "Enter dates as DD/MM/YYYY or D/M (current year).");
         return;
       }
 
