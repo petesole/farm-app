@@ -317,6 +317,7 @@ export default function FieldDashboard() {
         <ScrollView horizontal>
           <View>
             <View style={[styles.row, styles.headerRow]}>
+              <Text style={[styles.cell, styles.headerText, styles.cEdit]}></Text>
               <Text style={[styles.cell, styles.headerText, styles.cSeason]}>Season</Text>
               <Text style={[styles.cell, styles.headerText, styles.cCrop]}>Crop</Text>
               <Text style={[styles.cell, styles.headerText, styles.cFuelBudget]}>Fuel Budget</Text>
@@ -329,11 +330,21 @@ export default function FieldDashboard() {
               <Text style={[styles.cell, styles.headerText, styles.cFarm]}>Farm</Text>
               <Text style={[styles.cell, styles.headerText, styles.cDap]}>DAP</Text>
               <Text style={[styles.cell, styles.headerText, styles.cGrow]}>Grow</Text>
-              <Text style={[styles.cell, styles.headerText, styles.cEdit]}></Text>
+
             </View>
 
             {filtered.map((r, idx) => (
               <View key={r.tracecode_id ?? idx} style={[styles.row, idx % 2 === 1 && styles.rowAlt]}>
+                <View style={[styles.cell, styles.cEdit]}>
+                  {canEdit && (
+                    <Pressable
+                      style={styles.editBtn}
+                      onPress={() => goToTracecodeEdit(r.tracecode_id)}
+                    >
+                      <Text style={styles.editBtnText}>Edit</Text>
+                    </Pressable>
+                  )}
+                </View>
                 <Text style={[styles.cell, styles.cSeason]}>{r.season_name ?? ""}</Text>
                 <Text style={[styles.cell, styles.cCrop]}>{r.crop_name ?? ""}</Text>
                 <Text style={[styles.cell, styles.cFuelBudget]}>{r.fuel_budget_name ?? "—"}</Text>
@@ -353,16 +364,7 @@ export default function FieldDashboard() {
                     : ""}
                 </Text>
 
-                <View style={[styles.cell, styles.cEdit]}>
-                  {canEdit && (
-                    <Pressable
-                      style={styles.editBtn}
-                      onPress={() => goToTracecodeEdit(r.tracecode_id)}
-                    >
-                      <Text style={styles.editBtnText}>Edit</Text>
-                    </Pressable>
-                  )}
-                </View>
+
               </View>
             ))}
 
@@ -462,8 +464,8 @@ const styles = StyleSheet.create({
   },
 
   cell: {
-    paddingHorizontal: 8,
-    paddingVertical: 10,
+    paddingHorizontal: 5,
+    paddingVertical: 8,
     color: "#111",
   },
   headerText: {
@@ -471,19 +473,19 @@ const styles = StyleSheet.create({
     color: "#111",
   },
 
-  cSeason: { width: 90 },
-  cCrop: { width: 110 },
-  cFuelBudget: { width: 180 },
-  cTraceId: { width: 90 },
-  cTrace: { width: 120 },
-  cSize: { width: 70 },
-  cPlantPop: { width: 100 },
-  cIrr: { width: 90 },
-  cField: { width: 110 },
-  cFarm: { width: 110 },
-  cDap: { width: 70 },
-  cGrow: { width: 110 },
-  cEdit: { width: 80 },
+  cSeason: { width: 78 },
+  cCrop: { width: 94 },
+  cFuelBudget: { width: 170 },
+  cTraceId: { width: 65 },
+  cTrace: { width: 95 },
+  cSize: { width: 55 },
+  cPlantPop: { width: 80 },
+  cIrr: { width: 80 },
+  cField: { width: 82 },
+  cFarm: { width: 88 },
+  cDap: { width: 52 },
+  cGrow: { width: 88 },
+  cEdit: { width: 65 },
 
   editBtn: {
     backgroundColor: "#111",
