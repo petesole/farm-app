@@ -1,3 +1,4 @@
+import {fuelDateISO} from "../fuel_admin_dates";
 import { supabase } from "@/supabase";
 import { useFocusEffect } from "@react-navigation/native";
 import { router, useLocalSearchParams } from "expo-router";
@@ -38,19 +39,7 @@ function isoToDmy(iso: string) {
   return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
-function dmyToIso(dmy: string) {
-  const parts = dmy.split("/");
-  if (parts.length !== 3) return null;
-
-  const d = Number(parts[0]);
-  const mo = Number(parts[1]);
-  const y = Number(parts[2]);
-
-  if (!Number.isFinite(d) || !Number.isFinite(mo) || !Number.isFinite(y)) return null;
-  if (y < 2000 || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
-
-  return `${y}-${pad2(mo)}-${pad2(d)}`;
-}
+function dmyToIso(dmy: string) { return fuelDateISO(dmy); }
 
 function withTimeout<T>(fn: () => PromiseLike<T>, ms: number) {
   return Promise.race([
