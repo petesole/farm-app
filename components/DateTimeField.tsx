@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import {fuelDateISO} from "../app/(tabs)/home/fuel_admin_dates";
 import { Alert, StyleSheet, Text, TextInput, View } from "react-native";
 
 type Props = {
@@ -19,27 +20,14 @@ function toDisplay(d: Date) {
 }
 
 function parseDisplay(s: string): Date | null {
-  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})$/.exec(
-    s.trim()
-  );
+  const m = /^(\\d{1,2}\\/\\d{1,2}(?:\\/\\d{4})?)\\s+(\\d{1,2}):(\\d{2})$/.exec(s.trim());
   if (!m) return null;
 
-  const dd = Number(m[1]);
-  const mm = Number(m[2]);
-  const yy = Number(m[3]);
-  const hh = Number(m[4]);
-  const mi = Number(m[5]);
-
-  if (
-    !Number.isFinite(dd) ||
-    !Number.isFinite(mm) ||
-    !Number.isFinite(yy) ||
-    !Number.isFinite(hh) ||
-    !Number.isFinite(mi)
-  )
-    return null;
-
-  const d = new Date(yy, mm - 1, dd, hh, mi, 0, 0);
+  const iso=fuelDateISO(m[1]); if(!iso)return null;
+  const [yy,mm,dd]=iso.split("-").map(Number);
+  const hh=Number(m[2]),mi=Number(m[3]);
+  if(hh<0||hh>23||mi<0||mi>59)return null;
+  const d = new Date(yy,mm-1,dd,hh,mi,0,0);
 
   // validate date rollover
   if (
@@ -82,7 +70,7 @@ export function DateTimeField({ label, value, onChange, editable = true }: Props
           if (!editable) return;
           const parsed = parseDisplay(text);
           if (!parsed) {
-            Alert.alert("Invalid date/time", "Use DD/MM/YYYY HH:MM");
+            Alert.alert("Invalid date/time", "Use DD/MM/YYYY HH:MM or D/M HH:MM");
             setText(display);
             return;
           }
@@ -90,7 +78,7 @@ export function DateTimeField({ label, value, onChange, editable = true }: Props
         }}
       />
       <Text style={styles.hint}>
-        Format: DD/MM/YYYY HH:MM (e.g. 02/03/2026 14:30)
+        Format: DD/MM/YYYY HH:MM (or 5/12 14:30)
       </Text>
     </View>
   );
