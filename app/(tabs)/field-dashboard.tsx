@@ -61,6 +61,7 @@ export default function FieldDashboard() {
   const [refreshing, setRefreshing] = useState(false);
 
   const [search, setSearch] = useState("");
+  const [cropFilter,setCropFilter] = useState<string|null>(null);
   const [showCont, setShowCont] = useState(false);
 
   const [role, setRole] = useState<AppRole>("UNKNOWN");
@@ -150,17 +151,16 @@ export default function FieldDashboard() {
     setRefreshing(false);
   }, [reloadAll]);
 
+  const seasonRows = useMemo(()=>rows.filter(r=>showCont ? norm(r.season_name)==="cont" : norm(r.season_name)!=="cont"),[rows,showCont]);
+  const activeCrops = useMemo(()=>[...new Set(seasonRows.map(r=>r.crop_name?.trim()).filter((x):x is string=>Boolean(x)))].sort((a,b)=>a.localeCompare(b)),[seasonRows]);
+
   const filtered = useMemo(() => {
     const q = norm(search);
 
-    const bySeason = rows.filter((r) => {
-      const isCont = norm(r.season_name) === "cont";
-      return showCont ? isCont : !isCont;
-    });
+    const byCrop=seasonRows.filter(r=>!cropFilter||norm(r.crop_name)===norm(cropFilter));
+    if (!q) return byCrop;
 
-    if (!q) return bySeason;
-
-    return bySeason.filter((r) => {
+    return byCrop.filter((r) => {
       const hay = [
         r.tracecode_name,
         r.crop_name,
@@ -176,7 +176,7 @@ export default function FieldDashboard() {
 
       return hay.includes(q);
     });
-  }, [rows, search, showCont]);
+  }, [seasonRows,search,cropFilter]);
 
   const totalHa = useMemo(() => {
     return filtered.reduce((sum, r) => sum + (Number(r.tracecode_size) || 0), 0);
@@ -283,6 +283,15 @@ export default function FieldDashboard() {
         />
         <Text style={styles.countText}>Total Ha: {totalHa.toFixed(1)}</Text>
       </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.cropStrip} contentContainerStyle={styles.cropStripContent}>
+        <Pressable onPress={()=>setCropFilter(null)} style={[styles.cropChip,cropFilter===null&&styles.cropChipSelected]}>
+          <Text style={[styles.cropChipText,cropFilter===null&&styles.cropChipTextSelected]}>All crops</Text>
+        </Pressable>
+        {activeCrops.map(crop=><Pressable key={crop} onPress={()=>setCropFilter(current=>norm(current)===norm(crop)?null:crop)} style={[styles.cropChip,norm(cropFilter)===norm(crop)&&styles.cropChipSelected]}>
+          <Text style={[styles.cropChipText,norm(cropFilter)===norm(crop)&&styles.cropChipTextSelected]}>{crop}</Text>
+        </Pressable>)}
+      </ScrollView>
 
       <ScrollView
         style={{ flex: 1 }}
@@ -411,6 +420,12 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   countText: { color: "#444", fontWeight: "700" },
+  cropStrip: {flexGrow:0,marginBottom:10},
+  cropStripContent: {alignItems:"center",gap:8,paddingRight:12},
+  cropChip: {backgroundColor:"#fff",borderColor:"#d1d5db",borderWidth:1,borderRadius:20,paddingVertical:8,paddingHorizontal:14},
+  cropChipSelected: {backgroundColor:"#111",borderColor:"#111"},
+  cropChipText: {fontWeight:"700",color:"#333"},
+  cropChipTextSelected: {color:"#fff"},
 
   row: {
     flexDirection: "row",
