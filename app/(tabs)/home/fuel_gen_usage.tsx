@@ -157,7 +157,7 @@ export default function FuelGenUsageScreen() {
 
     const iso = dmyToISO(generatorDateDMY);
     if (!iso) {
-      Alert.alert('Invalid date', 'Use format DD/MM/YYYY (e.g. 09/02/2026).');
+      Alert.alert('Invalid date', 'Use DD/MM/YYYY or D/M (e.g. 5/12).');
       return;
     }
 
