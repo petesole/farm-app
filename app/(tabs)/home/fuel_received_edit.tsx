@@ -1,3 +1,4 @@
+import {fuelDateDisplay,fuelDateISO} from "./fuel_admin_dates";
 import {useEffect,useState} from "react";
 import {ActivityIndicator,Pressable,ScrollView,StyleSheet,TextInput,View} from "react-native";
 import {Picker} from "@react-native-picker/picker";
@@ -8,13 +9,14 @@ type Received={fuel_received_id:number;fuel_received_date:string;supplier_id:num
 type Supplier={supplier_id:number;supplier_name:string};
 const today=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");};
 export default function FuelReceivedEdit(){
+ const [dateInput,setDateInput]=useState(()=>fuelDateDisplay(today()));
  const [date,setDate]=useState(today()),[rows,setRows]=useState<Received[]>([]),[suppliers,setSuppliers]=useState<Supplier[]>([]);
  const [editing,setEditing]=useState<Received|null|undefined>(undefined),[supplierId,setSupplierId]=useState<number|null>(null);
  const [litres,setLitres]=useState(""),[invoice,setInvoice]=useState("");
  const [loading,setLoading]=useState(false),[saving,setSaving]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
  async function load(d:string){
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(d)||Number.isNaN(Date.parse(d))){setError("Enter a valid date (YYYY-MM-DD).");return;}
-  setLoading(true);setError("");setEditing(undefined);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d)){setError("Invalid date.");return;}
+  setLoading(true);setError("");setEditing(undefined);setDate(d);setDateInput(fuelDateDisplay(d));
   const [a,b]=await Promise.all([
    supabase.from("fuel_received").select("fuel_received_id,fuel_received_date,supplier_id,invoice_no,fuel_received").eq("fuel_received_date",d).order("fuel_received_id"),
    supabase.from("supplier").select("supplier_id,supplier_name").order("supplier_name")
@@ -24,6 +26,7 @@ export default function FuelReceivedEdit(){
   setLoading(false);
  }
  useEffect(()=>{load(today());},[]);
+ function findDate(){const iso=fuelDateISO(dateInput);if(!iso){setError("Enter a valid date, e.g. 5/12 or 05/12/2026.");return;}load(iso);}
  function choose(r:Received|null){setEditing(r);setSupplierId(r?.supplier_id??null);setLitres(r?String(r.fuel_received):"");setInvoice(r?.invoice_no??"");setError("");setNotice("");}
  async function save(){
   if(editing===undefined)return;
@@ -44,13 +47,13 @@ export default function FuelReceivedEdit(){
   <ThemedText type="title">Fuel Received Edit / Add</ThemedText>
   <Pressable style={s.btn} onPress={()=>router.back()}><ThemedText>← Fuel Admin</ThemedText></Pressable>
   <View style={s.card}><ThemedText type="subtitle">Select date</ThemedText><View style={s.row}>
-   <TextInput style={[s.input,{flex:1}]} value={date} onChangeText={setDate} placeholder="YYYY-MM-DD"/>
-   <Pressable style={s.btn} onPress={()=>load(date)}><ThemedText>Find</ThemedText></Pressable>
+   <TextInput style={[s.input,{flex:1}]} value={dateInput} onChangeText={setDateInput} placeholder="dd/mm/yyyy or 5/12"/>
+   <Pressable style={s.btn} onPress={findDate}><ThemedText>Find</ThemedText></Pressable>
   </View></View>
   {!!error&&<ThemedText style={s.error}>{error}</ThemedText>}
   {!!notice&&<ThemedText>{notice}</ThemedText>}
   {loading?<ActivityIndicator/>:<View style={s.card}>
-   <ThemedText type="subtitle">Deliveries on {date}</ThemedText>
+   <ThemedText type="subtitle">Deliveries on {fuelDateDisplay(date)}</ThemedText>
    {rows.map(r=><Pressable key={r.fuel_received_id} style={s.btn} onPress={()=>choose(r)}>
     <ThemedText>#{r.fuel_received_id} · {suppliers.find(s=>s.supplier_id===r.supplier_id)?.supplier_name??"Supplier"} · {r.fuel_received} L{r.invoice_no?" · "+r.invoice_no:""} — Edit</ThemedText>
    </Pressable>)}
