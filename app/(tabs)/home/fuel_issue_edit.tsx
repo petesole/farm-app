@@ -43,7 +43,7 @@ export default function FuelIssueEdit(){
     .order("fuel_issue_id",{ascending:true}).limit(10000);
    if(q.error){setError("Meter history could not be checked: "+q.error.message);return;}
    const history=(q.data??[]).filter(r=>r.fuel_issue_id!==editing?.fuel_issue_id);
-   const index=history.findIndex(r=>r.fuel_issue_date>date||(r.fuel_issue_date===date&&(editing===null||r.fuel_issue_id>(editing?.fuel_issue_id??0))));
+   const index=history.findIndex(r=>r.fuel_issue_date>date||(r.fuel_issue_date===date&&editing!==null&&r.fuel_issue_id>editing.fuel_issue_id));
    const prev=index===0?null:index<0?history[history.length-1]:history[index-1];
    const next=index<0?null:history[index];
    if(prev&&meterValue<Number(prev.meter_reading)){setError("Reading must be at least "+prev.meter_reading+" (previous reading on "+prev.fuel_issue_date+").");return;}
