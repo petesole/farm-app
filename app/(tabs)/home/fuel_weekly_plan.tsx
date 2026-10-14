@@ -6,7 +6,7 @@ import { ThemedView } from "@/components/themed-view";
 import { supabase } from "../../../supabase";
 
 type Field = {tracecode_id:number;tracecode_name:string;tracecode_size:number|null;fuel_budget_name:string|null};
-type Programme = {description:string|null;sequence_no:number;tracecode_id:number;vehicle_job_id:number;vehicle_job_name:string;target_dap:number|null;calculated_quantity:number|null;planned_operations:number|null;total_budget_litres:number|null;budget_trip_count:number|null;class_code:string|null;fuel_plan_method:string|null;fuel_plan_unit:string|null};
+type Programme = {description:string|null;sequence_no:number;tracecode_id:number;vehicle_job_id:number;vehicle_job_name:string;target_dap:number|null;calculated_quantity:number|null;planned_operations:number|null;total_budget_litres:number|null;budget_work_litres:number|null;budget_trip_litres:number|null;trip_litres_per_trip:number|null;budget_trip_count:number|null;class_code:string|null;fuel_plan_method:string|null;fuel_plan_unit:string|null};
 type Schedule = {tracecode_id:number;crop_id:number|null;planned_planting_date:string|null;actual_planting_date:string|null};
 type Crop = {crop_id:number;crop_name:string};
 type Actual = {tracecode_id:number;vehicle_job_id:number;actual_litres:number|null;completed_operations:number|null};
@@ -55,7 +55,7 @@ export default function FuelWeeklyPlanScreen() {
       setLoading(true);setError(null);
       const [f,p,s,a,h,m,cr,sel]=await Promise.all([
         supabase.from("fuel_tracecode_budget_summary_v").select("tracecode_id,tracecode_name,tracecode_size,fuel_budget_name"),
-        supabase.from("fuel_budget_activity_v").select("description,sequence_no,tracecode_id,vehicle_job_id,vehicle_job_name,target_dap,calculated_quantity,planned_operations,total_budget_litres,budget_trip_count,class_code,fuel_plan_method,fuel_plan_unit").limit(10000),
+        supabase.from("fuel_budget_activity_v").select("description,sequence_no,tracecode_id,vehicle_job_id,vehicle_job_name,target_dap,calculated_quantity,planned_operations,total_budget_litres,budget_work_litres,budget_trip_litres,trip_litres_per_trip,budget_trip_count,class_code,fuel_plan_method,fuel_plan_unit").limit(10000),
         supabase.from("tracecode").select("tracecode_id,crop_id,planned_planting_date,actual_planting_date").limit(10000),
         supabase.from("fuel_tracecode_activity_summary_v").select("tracecode_id,vehicle_job_id,actual_litres,completed_operations").limit(10000),
         supabase.from("fuel_historical_completion").select("tracecode_id,vehicle_job_id,target_dap,sequence_no").limit(10000),
@@ -68,7 +68,7 @@ export default function FuelWeeklyPlanScreen() {
       let planResult=p;
       if(p.error && /description/i.test(p.error.message)){
         planResult=await supabase.from("fuel_budget_activity_v")
-          .select("sequence_no,tracecode_id,vehicle_job_id,vehicle_job_name,target_dap,calculated_quantity,planned_operations,total_budget_litres,budget_trip_count,class_code,fuel_plan_method,fuel_plan_unit").limit(10000);
+          .select("sequence_no,tracecode_id,vehicle_job_id,vehicle_job_name,target_dap,calculated_quantity,planned_operations,total_budget_litres,budget_work_litres,budget_trip_litres,trip_litres_per_trip,budget_trip_count,class_code,fuel_plan_method,fuel_plan_unit").limit(10000);
       }
       if(!active)return;
       setPlanReady(!sel.error);
@@ -179,7 +179,8 @@ export default function FuelWeeklyPlanScreen() {
   const selectedKeys=new Set(chosen.map(clearedKey));
   const chosenRows=filtered.filter(r=>selectedKeys.has(clearedKey({...r,target_dap:r.target_dap!})));
   const chosenLitres=chosenRows.reduce((sum,r)=>sum+n(r.total_budget_litres)*(n(r.planned_operations)>0?r.remainingOperations/n(r.planned_operations):1),0);
-  const litresRemaining=(r:Row)=>n(r.total_budget_litres)*(n(r.planned_operations)>0?r.remainingOperations/n(r.planned_operations):1);
+  const remainingFraction=(r:Row)=>n(r.planned_operations)>0?r.remainingOperations/n(r.planned_operations):1;
+  const litresRemaining=(r:Row)=>n(r.total_budget_litres)*remainingFraction(r);
   const total=filtered.reduce((sum,r)=>sum+litresRemaining(r),0);
   const overdueRows=filtered.filter(r=>r.overdue);
   const thisWeekRows=filtered.filter(r=>!r.overdue);
@@ -280,7 +281,12 @@ function JobLine({r,estimate,admin=false,saving=false,confirming=false,onComplet
     {onSelect?<Pressable disabled={selectedDisabled} style={[s.button,chosen&&s.selected]} onPress={onSelect}><ThemedText style={chosen?s.bold:undefined}>{chosen?"✓ Selected for this week — tap to remove":"＋ Add to this week's actual plan"}</ThemedText></Pressable>:null}
     {r.description?.trim()?<ThemedText>{r.description.trim()}</ThemedText>:null}
     <ThemedText style={s.small}>Field {fmt(r.fieldHa)} ha · DAP {r.target_dap} · {r.class_code||"Unassigned"} · {fmt(n(r.calculated_quantity))} {unit(r)}</ThemedText>
-    <ThemedText>Estimated fuel remaining: <ThemedText style={s.bold}>{fmt(estimate)} L</ThemedText></ThemedText>
+    <View style={s.fuelBreakdown}>
+      <ThemedText>Fieldwork: <ThemedText style={s.bold}>{fmt(n(r.budget_work_litres)* (n(r.planned_operations)>0?r.remainingOperations/n(r.planned_operations):1))} L</ThemedText></ThemedText>
+      <ThemedText>Travel: <ThemedText style={s.bold}>{fmt(n(r.budget_trip_litres)* (n(r.planned_operations)>0?r.remainingOperations/n(r.planned_operations):1))} L</ThemedText></ThemedText>
+      <ThemedText style={s.bold}>Total remaining: {fmt(estimate)} L</ThemedText>
+      <ThemedText style={s.small}>Original budget: {fmt(n(r.budget_work_litres))} L work + {fmt(n(r.budget_trip_litres))} L travel = {fmt(n(r.total_budget_litres))} L · {fmt(n(r.budget_trip_count),1)} trips</ThemedText>
+    </View>
     <ThemedText style={s.small}>Planned operations: {fmt(n(r.planned_operations),0)} · Unfinished: {fmt(r.remainingOperations,0)} · Job/field fuel actual to date: {fmt(r.actualLitres)} L</ThemedText>
     {admin&&r.overdue&&onComplete?(confirming?<View style={s.confirm}><ThemedText style={s.bold}>Confirm historical completion for this field and job?</ThemedText><ThemedText style={s.small}>Removes this programme entry from the backlog. Fuel actuals are unchanged.</ThemedText><View style={s.nav}><Pressable disabled={saving} style={s.button} onPress={onCancel}><ThemedText>Cancel</ThemedText></Pressable><Pressable disabled={saving} style={s.button} onPress={onConfirm}><ThemedText style={s.bold}>{saving?"Saving…":"Confirm completed"}</ThemedText></Pressable></View></View>:<Pressable disabled={saving} style={s.button} onPress={onComplete}><ThemedText style={s.bold}>Mark historical job completed</ThemedText></Pressable>):null}
   </View>;
@@ -294,6 +300,7 @@ const s=StyleSheet.create({
   summary:{flexDirection:"row",justifyContent:"space-between",borderTopWidth:1,borderColor:"rgba(120,120,120,.2)",paddingTop:8},
   job:{borderTopWidth:1,borderColor:"rgba(120,120,120,.25)",paddingTop:12,gap:5},
   line:{flexDirection:"row",justifyContent:"space-between",flexWrap:"wrap",gap:10},
+  fuelBreakdown:{padding:10,borderRadius:8,backgroundColor:"rgba(120,120,120,.08)",gap:4},
   confirm:{borderWidth:1,borderColor:"rgba(120,120,120,.4)",borderRadius:8,padding:10,gap:8},
   error:{color:"red"},selected:{borderWidth:2,backgroundColor:"rgba(120,120,120,.12)"},
 });
