@@ -6,7 +6,7 @@ import { ThemedView } from "@/components/themed-view";
 import { supabase } from "../../../supabase";
 
 type Field = {tracecode_id:number;tracecode_name:string;tracecode_size:number|null;fuel_budget_name:string|null};
-type Programme = {fuel_budget_activity_id:number;description:string|null;sequence_no:number;tracecode_id:number;vehicle_job_id:number;vehicle_job_name:string;target_dap:number|null;calculated_quantity:number|null;planned_operations:number|null;total_budget_litres:number|null;budget_work_litres:number|null;budget_trip_litres:number|null;trip_litres_per_trip:number|null;budget_trip_count:number|null;class_code:string|null;fuel_plan_method:string|null;fuel_plan_unit:string|null};
+type Programme = {fuel_budget_activity_id:number;description:string|null;sequence_no:number;tracecode_id:number;vehicle_job_id:number;vehicle_job_name:string;target_dap:number|null;calculated_quantity:number|null;planned_operations:number|null;total_budget_litres:number|null;budget_work_litres:number|null;budget_trip_litres:number|null;trip_litres_per_trip:number|null;budget_trip_count:number|null;class_code:string|null;fuel_plan_method:string|null;fuel_plan_unit:string|null;standard_ha_per_day:number|null;effective_hectares:number|null};
 type Schedule = {tracecode_id:number;crop_id:number|null;planned_planting_date:string|null;actual_planting_date:string|null};
 type Crop = {crop_id:number;crop_name:string};
 type Actual = {tracecode_id:number;vehicle_job_id:number;actual_litres:number|null;completed_operations:number|null};
@@ -55,7 +55,7 @@ export default function FuelWeeklyPlanScreen() {
       setLoading(true);setError(null);
       const [f,p,s,a,h,m,cr,sel,descs]=await Promise.all([
         supabase.from("fuel_tracecode_budget_summary_v").select("tracecode_id,tracecode_name,tracecode_size,fuel_budget_name"),
-        supabase.from("fuel_budget_activity_v").select("fuel_budget_activity_id,sequence_no,tracecode_id,vehicle_job_id,vehicle_job_name,target_dap,calculated_quantity,planned_operations,total_budget_litres,budget_work_litres,budget_trip_litres,trip_litres_per_trip,budget_trip_count,class_code,fuel_plan_method,fuel_plan_unit").limit(10000),
+        supabase.from("fuel_budget_activity_v").select("fuel_budget_activity_id,sequence_no,tracecode_id,vehicle_job_id,vehicle_job_name,target_dap,calculated_quantity,planned_operations,total_budget_litres,budget_work_litres,budget_trip_litres,trip_litres_per_trip,budget_trip_count,class_code,fuel_plan_method,fuel_plan_unit,standard_ha_per_day,effective_hectares").limit(10000),
         supabase.from("tracecode").select("tracecode_id,crop_id,planned_planting_date,actual_planting_date").limit(10000),
         supabase.from("fuel_tracecode_activity_summary_v").select("tracecode_id,vehicle_job_id,actual_litres,completed_operations").limit(10000),
         supabase.from("fuel_historical_completion").select("tracecode_id,vehicle_job_id,target_dap,sequence_no").limit(10000),
@@ -176,6 +176,23 @@ export default function FuelWeeklyPlanScreen() {
       }),[scheduled,cropFilter,traceFilter,jobFilter,classFilter,sortBy]);
   const selectedKeys=new Set(chosen.map(clearedKey));
   const chosenRows=filtered.filter(r=>selectedKeys.has(clearedKey({...r,target_dap:r.target_dap!})));
+  const daysFor=(r:Row)=>{
+    const ha=n(r.effective_hectares)>0?n(r.effective_hectares):r.fieldHa;
+    const rate=n(r.standard_ha_per_day);
+    if(rate<=0)return null;
+    return ha*remainingFraction(r)/rate;
+  };
+  const daysByClass=useMemo(()=>{
+    const result=new Map<string,{jobs:number;days:number;unknown:number;litres:number}>();
+    for(const r of chosenRows){
+      const k=r.class_code||"Unassigned",old=result.get(k)||{jobs:0,days:0,unknown:0,litres:0};
+      const days=daysFor(r);
+      old.jobs++;old.days+=days??0;old.unknown+=days==null?1:0;
+      old.litres+=n(r.total_budget_litres)*remainingFraction(r);
+      result.set(k,old);
+    }
+    return [...result.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
+  },[chosenRows]);
   const chosenLitres=chosenRows.reduce((sum,r)=>sum+n(r.total_budget_litres)*(n(r.planned_operations)>0?r.remainingOperations/n(r.planned_operations):1),0);
   const remainingFraction=(r:Row)=>n(r.planned_operations)>0?r.remainingOperations/n(r.planned_operations):1;
   const litresRemaining=(r:Row)=>n(r.total_budget_litres)*remainingFraction(r);
@@ -252,10 +269,39 @@ export default function FuelWeeklyPlanScreen() {
       {missingDates.length>0?<ThemedView style={s.card}><ThemedText style={s.error}>{missingDates.length} field(s) have neither a planned nor an actual planting date and cannot be scheduled.</ThemedText><ThemedText style={s.small}>{missingDates.map(f=>f.tracecode_name).join(", ")}</ThemedText></ThemedView>:null}
       {saveMessage?<ThemedView style={s.card}><ThemedText>{saveMessage}</ThemedText></ThemedView>:null}
       {clearError?<ThemedView style={s.card}><ThemedText style={s.error}>Historical completion unavailable: {clearError}. The database migration and admin membership must be configured.</ThemedText></ThemedView>:null}
-      {planView==="chosen"?<ThemedView style={s.card}>
+      {planView==="chosen"?<>
+      <ThemedView style={s.card}>
+        <ThemedText type="subtitle">Weekly operations and machinery days</ThemedText>
+        <ThemedText style={s.small}>Estimates use effective hectares remaining ÷ standard hectares per day. Days are machine-days, not calendar days; concurrent machines can reduce elapsed time.</ThemedText>
+        <ScrollView horizontal showsHorizontalScrollIndicator>
+          <View>
+            <View style={[s.tableRow,s.tableHeader]}>
+              <ThemedText style={[s.tableCell,{width:110},s.bold]}>Field</ThemedText>
+              <ThemedText style={[s.tableCell,{width:140},s.bold]}>Job</ThemedText>
+              <ThemedText style={[s.tableCell,{width:95},s.bold]}>Class</ThemedText>
+              <ThemedText style={[s.tableCell,{width:70},s.bold]}>Ha left</ThemedText>
+              <ThemedText style={[s.tableCell,{width:85},s.bold]}>Ha/day</ThemedText>
+              <ThemedText style={[s.tableCell,{width:75},s.bold]}>Days</ThemedText>
+              <ThemedText style={[s.tableCell,{width:85},s.bold]}>Fuel L</ThemedText>
+            </View>
+            {chosenRows.map(r=><View key={r.key} style={s.tableRow}>
+              <ThemedText style={[s.tableCell,{width:110}]}>{r.fieldName}</ThemedText>
+              <ThemedText style={[s.tableCell,{width:140}]}>{r.vehicle_job_name}{r.description?" · "+r.description:""}</ThemedText>
+              <ThemedText style={[s.tableCell,{width:95}]}>{r.class_code||"Unassigned"}</ThemedText>
+              <ThemedText style={[s.tableCell,{width:70}]}>{fmt((n(r.effective_hectares)>0?n(r.effective_hectares):r.fieldHa)*remainingFraction(r))}</ThemedText>
+              <ThemedText style={[s.tableCell,{width:85}]}>{n(r.standard_ha_per_day)>0?fmt(n(r.standard_ha_per_day)):"—"}</ThemedText>
+              <ThemedText style={[s.tableCell,{width:75}]}>{daysFor(r)==null?"Set rate":fmt(daysFor(r)!,2)}</ThemedText>
+              <ThemedText style={[s.tableCell,{width:85}]}>{fmt(litresRemaining(r))}</ThemedText>
+            </View>)}
+          </View>
+        </ScrollView>
+        <ThemedText type="subtitle">Totals by machinery class</ThemedText>
+        {daysByClass.map(([name,v])=><View key={name} style={s.summary}><ThemedText>{name} · {v.jobs} jobs</ThemedText><ThemedText style={s.bold}>{fmt(v.days,2)} days{v.unknown?" + "+v.unknown+" unset":""} · {fmt(v.litres)} L</ThemedText></View>)}
+      </ThemedView>
+      <ThemedView style={s.card}>
         <ThemedText type="subtitle">Selected jobs for {week} ({chosenRows.length})</ThemedText>
         {chosenRows.length===0?<ThemedText>No jobs selected for this week with the current filters. Switch to Budget jobs to select them.</ThemedText>:chosenRows.map(r=><JobLine key={r.key} r={r} estimate={litresRemaining(r)} chosen selectedDisabled={!planReady||!!planSaving} onSelect={()=>toggleChosen(r)}/>)}
-      </ThemedView>:<>
+      </ThemedView></>:<>
       <ThemedView style={s.card}>
         <ThemedText type="subtitle">Overdue jobs carried forward ({overdueRows.length})</ThemedText>
         <ThemedText style={s.small}>Unfinished jobs scheduled before this week. Fuel issued does not count as completion.</ThemedText>
@@ -297,6 +343,9 @@ const s=StyleSheet.create({
   dates:{alignItems:"center",gap:4},bold:{fontWeight:"700"},small:{fontSize:12,opacity:.72},
   summary:{flexDirection:"row",justifyContent:"space-between",borderTopWidth:1,borderColor:"rgba(120,120,120,.2)",paddingTop:8},
   job:{borderTopWidth:1,borderColor:"rgba(120,120,120,.25)",paddingTop:12,gap:5},
+  tableRow:{flexDirection:"row",borderBottomWidth:1,borderColor:"rgba(120,120,120,.2)",alignItems:"center"},
+  tableHeader:{backgroundColor:"rgba(120,120,120,.1)"},
+  tableCell:{paddingHorizontal:6,paddingVertical:9,fontSize:12},
   line:{flexDirection:"row",justifyContent:"space-between",flexWrap:"wrap",gap:10},
   fuelBreakdown:{padding:10,borderRadius:8,backgroundColor:"rgba(120,120,120,.08)",gap:4},
   confirm:{borderWidth:1,borderColor:"rgba(120,120,120,.4)",borderRadius:8,padding:10,gap:8},
