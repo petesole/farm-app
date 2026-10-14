@@ -327,7 +327,9 @@ function JobLine({r,estimate,admin=false,saving=false,confirming=false,onComplet
     <ThemedText style={s.small}>Field {fmt(r.fieldHa)} ha · DAP {r.target_dap} · {r.class_code||"Unassigned"} · {fmt(n(r.calculated_quantity))} {unit(r)}</ThemedText>
     <View style={s.fuelBreakdown}>
       <ThemedText>Fieldwork: <ThemedText style={s.bold}>{fmt(n(r.budget_work_litres)* (n(r.planned_operations)>0?r.remainingOperations/n(r.planned_operations):1))} L</ThemedText></ThemedText>
-      <ThemedText>Travel: <ThemedText style={s.bold}>{fmt(n(r.budget_trip_litres)* (n(r.planned_operations)>0?r.remainingOperations/n(r.planned_operations):1))} L</ThemedText></ThemedText>
+      <ThemedText>Travel fuel</ThemedText>
+      <ThemedText style={s.small}>Trips: {fmt(n(r.budget_trip_count)*(n(r.planned_operations)>0?r.remainingOperations/n(r.planned_operations):1),1)} · Litres/trip: {fmt(n(r.trip_litres_per_trip),1)} L</ThemedText>
+      <ThemedText>Travel total: <ThemedText style={s.bold}>{fmt(n(r.budget_trip_litres)*(n(r.planned_operations)>0?r.remainingOperations/n(r.planned_operations):1))} L</ThemedText></ThemedText>
       <ThemedText style={s.bold}>Total remaining: {fmt(estimate)} L</ThemedText>
       <ThemedText style={s.small}>Original budget: {fmt(n(r.budget_work_litres))} L work + {fmt(n(r.budget_trip_litres))} L travel = {fmt(n(r.total_budget_litres))} L · {fmt(n(r.budget_trip_count),1)} trips</ThemedText>
     </View>
