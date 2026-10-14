@@ -52,13 +52,20 @@ export default function FuelWeeklyPlanScreen() {
         supabase.from("fuel_historical_completion").select("tracecode_id,vehicle_job_id,target_dap,sequence_no").limit(10000),
         supabase.from("fuel_plan_admin").select("user_id").limit(1),
       ]);
+      // Older Supabase deployments may not have description exposed on this view yet.
+      // Retry without that optional column so weekly scheduling does not fail.
+      let planResult=p;
+      if(p.error && /description/i.test(p.error.message)){
+        planResult=await supabase.from("fuel_budget_activity_v")
+          .select("sequence_no,tracecode_id,vehicle_job_id,vehicle_job_name,target_dap,calculated_quantity,planned_operations,total_budget_litres,budget_trip_count,class_code,fuel_plan_method,fuel_plan_unit").limit(10000);
+      }
       if(!active)return;
       setCanClear(!m.error && (m.data?.length??0)>0);
       setClearError(h.error?.message??m.error?.message??null);
       setCleared(h.error?[]:(h.data??[]) as Cleared[]);
-      const err=f.error||p.error||s.error||a.error;
+      const err=f.error||planResult.error||s.error||a.error;
       if(err){setError(err.message);setFields([]);setProgrammes([]);setSchedules([]);setActuals([]);}
-      else{setFields((f.data??[]) as Field[]);setProgrammes((p.data??[]) as Programme[]);setSchedules((s.data??[]) as Schedule[]);setActuals((a.data??[]) as Actual[]);}
+      else{setFields((f.data??[]) as Field[]);setProgrammes(((planResult.data??[]) as Partial<Programme>[]).map(r=>({...r,description:r.description??null})) as Programme[]);setSchedules((s.data??[]) as Schedule[]);setActuals((a.data??[]) as Actual[]);}
       setLoading(false);
     })();
     return()=>{active=false;};
