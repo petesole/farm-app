@@ -1,3 +1,4 @@
+import {fuelDateISO} from "./fuel_admin_dates";
 // app/(tabs)/home/tracecode-edit.tsx
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -76,12 +77,9 @@ function isDDMMYYYY(s: string) {
 }
 /** Accept DD/MM/YYYY or ISO; return ISO or null or "__BAD__" */
 function toDbDateOrNull(s: string) {
-  const t = s.trim();
-  if (!t) return null;
-  if (isISODate(t)) return t;
-  if (!isDDMMYYYY(t)) return "__BAD__";
-  const [dd, mm, yyyy] = t.split("/");
-  return `${yyyy}-${mm}-${dd}`;
+ const t=s.trim(); if(!t)return null;
+ if(isISODate(t))return t;
+ return fuelDateISO(t)??"__BAD__";
 }
 /** ISO -> DD/MM/YYYY */
 function isoToDDMMYYYY(s: string | null) {
