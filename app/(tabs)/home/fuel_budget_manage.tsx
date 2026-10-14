@@ -36,6 +36,7 @@ export default function FuelBudgetManage(){
  const [active,setActive]=useState(false);
  const [copyName,setCopyName]=useState("");
  const [copyOpen,setCopyOpen]=useState(false);
+ const [creating,setCreating]=useState(false);
  const [editing,setEditing]=useState<number|null>(null);
  const [draft,setDraft]=useState<Partial<Activity>>({});
  const [newJob,setNewJob]=useState<number|null>(null);
@@ -84,6 +85,24 @@ export default function FuelBudgetManage(){
   const fresh=await supabase.from("fuel_budget").select("fuel_budget_id,fuel_budget_name,crop_id,active,notes").eq("fuel_budget_id",id).single();
   if(fresh.data){choose(fresh.data as Budget);setMessage("Budget copied with its jobs. New copy is inactive until you enable it.");}
  };
+ const startCreate=()=>{
+  setSelected(null);setCreating(true);setName("");setNotes("");setCropId(filterCrop);setActive(false);
+  setError(null);setMessage(null);setEditing(null);setRows([]);
+ };
+ const createBudget=async()=>{
+  if(!name.trim()){setError("Enter a budget name.");return;}
+  if(cropId==null){setError("Select a crop for the budget.");return;}
+  setBusy(true);setError(null);setMessage(null);
+  const result=await supabase.from("fuel_budget")
+   .insert({fuel_budget_name:name.trim(),crop_id:cropId,active,notes:notes.trim()||null})
+   .select("fuel_budget_id,fuel_budget_name,crop_id,active,notes").single();
+  setBusy(false);
+  if(result.error){setError(result.error.message);return;}
+  setCreating(false);
+  await reload();
+  choose(result.data as Budget);
+  setMessage("Fuel budget created. Add jobs below to build the programme.");
+ };
  const startEdit=(a:Activity)=>{setEditing(a.fuel_budget_activity_id);setDraft({...a});setError(null);};
  const updateField=(k:string,v:any)=>setDraft(d=>({...d,[k]:v}));
  const saveJob=async()=>{
@@ -119,7 +138,20 @@ export default function FuelBudgetManage(){
   <View style={s.line}><ThemedText type="title">Fuel Budgets</ThemedText><Pressable style={s.button} onPress={reload}><ThemedText>Refresh</ThemedText></Pressable></View>
   {error?<ThemedView style={s.card}><ThemedText style={s.error}>{error}</ThemedText></ThemedView>:null}
   {message?<ThemedView style={s.card}><ThemedText>{message}</ThemedText></ThemedView>:null}
-  {loading?<ActivityIndicator/>:selectedBudget?<>
+  {loading?<ActivityIndicator/>:creating?<>
+   <Pressable style={s.button} onPress={()=>{setCreating(false);setError(null);}}><ThemedText>← All Fuel Budgets</ThemedText></Pressable>
+   <ThemedView style={s.card}>
+    <ThemedText type="subtitle">New Fuel Budget</ThemedText>
+    <ThemedText>Budget name</ThemedText>
+    <TextInput style={s.input} value={name} onChangeText={setName} placeholder="e.g. 26 Seed Maize Standard"/>
+    <ThemedText>Crop</ThemedText>
+    <View style={s.picker}><Picker selectedValue={cropId} onValueChange={setCropId}><Picker.Item label="Select crop" value={null}/>{crops.map(cr=><Picker.Item key={cr.crop_id} label={cr.crop_name} value={cr.crop_id}/>)}</Picker></View>
+    <ThemedText>Notes</ThemedText><TextInput style={s.input} value={notes} onChangeText={setNotes} placeholder="Optional"/>
+    <Pressable style={[s.button,active&&s.selected]} onPress={()=>setActive(v=>!v)}><ThemedText>Active: {active?"Yes":"No"} (click to change)</ThemedText></Pressable>
+    <ThemedText style={s.small}>After creating the budget, you can add and edit its jobs.</ThemedText>
+    <Pressable style={s.button} disabled={busy||!name.trim()||cropId==null} onPress={createBudget}><ThemedText style={s.bold}>{busy?"Creating…":"Create Fuel Budget"}</ThemedText></Pressable>
+   </ThemedView>
+  </>:selectedBudget?<>
    <Pressable style={s.button} onPress={()=>{setSelected(null);setEditing(null);setError(null);}}><ThemedText>← All Fuel Budgets</ThemedText></Pressable>
    <ThemedView style={s.card}>
     <ThemedText type="subtitle">Edit Budget #{selectedBudget.fuel_budget_id}</ThemedText>
@@ -154,7 +186,7 @@ export default function FuelBudgetManage(){
    </ThemedView>
   </>:<>
    <ThemedView style={s.card}>
-    <ThemedText type="subtitle">Existing Fuel Budgets</ThemedText>
+    <View style={s.line}><ThemedText type="subtitle">Existing Fuel Budgets</ThemedText><Pressable style={s.button} onPress={startCreate}><ThemedText style={s.bold}>+ New Fuel Budget</ThemedText></Pressable></View>
     <ThemedText>Filter by crop</ThemedText>
     <View style={s.picker}><Picker selectedValue={filterCrop} onValueChange={setFilterCrop}><Picker.Item label="All crops" value={null}/>{crops.map(c=><Picker.Item key={c.crop_id} value={c.crop_id} label={c.crop_name}/>)}</Picker></View>
     {filtered.map(b=><Pressable key={b.fuel_budget_id} style={s.block} onPress={()=>choose(b)}>
