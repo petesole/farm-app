@@ -181,7 +181,7 @@ export default function FuelWeeklyPlanScreen() {
     const ha=n(r.effective_hectares)>0?n(r.effective_hectares):r.fieldHa;
     const rate=n(r.standard_ha_per_day);
     if(rate<=0)return null;
-    return ha*remainingFraction(r)/rate*8;
+    return ha*remainingFraction(r)/rate*12;
   };
   const hoursByClass=useMemo(()=>{
     const result=new Map<string,{jobs:number;hours:number;unknown:number;litres:number}>();
@@ -272,7 +272,7 @@ export default function FuelWeeklyPlanScreen() {
       {planView==="chosen"?<>
       <ThemedView style={s.card}>
         <ThemedText type="subtitle">Weekly operations and machinery hours</ThemedText>
-        <ThemedText style={s.small}>Estimated machine-hours = hectares remaining ÷ standard hectares per day × 8 hours. These are machine-hours, not elapsed clock time.</ThemedText>
+        <ThemedText style={s.small}>Estimated machine-hours = hectares remaining ÷ standard hectares per day × 12 hours. These are machine-hours, not elapsed clock time.</ThemedText>
         <ScrollView horizontal showsHorizontalScrollIndicator>
           <View>
             <View style={[s.tableRow,s.tableHeader]}>
