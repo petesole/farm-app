@@ -7,11 +7,12 @@ import { supabase } from "../../../supabase";
 
 type Field = {tracecode_id:number;tracecode_name:string;tracecode_size:number|null;fuel_budget_name:string|null};
 type Programme = {description:string|null;sequence_no:number;tracecode_id:number;vehicle_job_id:number;vehicle_job_name:string;target_dap:number|null;calculated_quantity:number|null;planned_operations:number|null;total_budget_litres:number|null;budget_trip_count:number|null;class_code:string|null;fuel_plan_method:string|null;fuel_plan_unit:string|null};
-type Schedule = {tracecode_id:number;planned_planting_date:string|null;actual_planting_date:string|null};
+type Schedule = {tracecode_id:number;crop_id:number|null;planned_planting_date:string|null;actual_planting_date:string|null};
+type Crop = {crop_id:number;crop_name:string};
 type Actual = {tracecode_id:number;vehicle_job_id:number;actual_litres:number|null;completed_operations:number|null};
 type Cleared = {tracecode_id:number;vehicle_job_id:number;target_dap:number;sequence_no:number};
 const clearedKey=(r:Cleared)=>`${r.tracecode_id}:${r.vehicle_job_id}:${r.target_dap}:${r.sequence_no}`;
-type Row = Programme & {key:string;fieldName:string;fieldHa:number;scheduledDate:string;actualLitres:number;remainingOperations:number;overdue:boolean};
+type Row = Programme & {key:string;cropId:number|null;fieldName:string;fieldHa:number;scheduledDate:string;actualLitres:number;remainingOperations:number;overdue:boolean};
 const toDate = (value:string) => {const parts=value.slice(0,10).split("-").map(Number);return new Date(Date.UTC(parts[0],parts[1]-1,parts[2]));};
 const iso = (date:Date) => date.toISOString().slice(0,10);
 const shift = (value:string, days:number) => {const d=toDate(value);d.setUTCDate(d.getUTCDate()+days);return iso(d);};
@@ -25,6 +26,7 @@ export default function FuelWeeklyPlanScreen() {
   const [fields,setFields]=useState<Field[]>([]);
   const [programmes,setProgrammes]=useState<Programme[]>([]);
   const [schedules,setSchedules]=useState<Schedule[]>([]);
+  const [crops,setCrops]=useState<Crop[]>([]);
   const [actuals,setActuals]=useState<Actual[]>([]);
   const [cleared,setCleared]=useState<Cleared[]>([]);
   const [canClear,setCanClear]=useState(false);
@@ -35,6 +37,7 @@ export default function FuelWeeklyPlanScreen() {
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState<string|null>(null);
   const [version,setVersion]=useState(0);
+  const [cropFilter,setCropFilter]=useState<number|null>(null);
   const [traceFilter,setTraceFilter]=useState<number|null>(null);
   const [jobFilter,setJobFilter]=useState<number|null>(null);
   const [classFilter,setClassFilter]=useState<string>("ALL");
@@ -44,13 +47,14 @@ export default function FuelWeeklyPlanScreen() {
     let active=true;
     (async()=>{
       setLoading(true);setError(null);
-      const [f,p,s,a,h,m]=await Promise.all([
+      const [f,p,s,a,h,m,cr]=await Promise.all([
         supabase.from("fuel_tracecode_budget_summary_v").select("tracecode_id,tracecode_name,tracecode_size,fuel_budget_name"),
         supabase.from("fuel_budget_activity_v").select("description,sequence_no,tracecode_id,vehicle_job_id,vehicle_job_name,target_dap,calculated_quantity,planned_operations,total_budget_litres,budget_trip_count,class_code,fuel_plan_method,fuel_plan_unit").limit(10000),
-        supabase.from("tracecode").select("tracecode_id,planned_planting_date,actual_planting_date").limit(10000),
+        supabase.from("tracecode").select("tracecode_id,crop_id,planned_planting_date,actual_planting_date").limit(10000),
         supabase.from("fuel_tracecode_activity_summary_v").select("tracecode_id,vehicle_job_id,actual_litres,completed_operations").limit(10000),
         supabase.from("fuel_historical_completion").select("tracecode_id,vehicle_job_id,target_dap,sequence_no").limit(10000),
         supabase.from("fuel_plan_admin").select("user_id").limit(1),
+        supabase.from("crop").select("crop_id,crop_name").order("crop_name"),
       ]);
       // Older Supabase deployments may not have description exposed on this view yet.
       // Retry without that optional column so weekly scheduling does not fail.
@@ -63,9 +67,9 @@ export default function FuelWeeklyPlanScreen() {
       setCanClear(!m.error && (m.data?.length??0)>0);
       setClearError(h.error?.message??m.error?.message??null);
       setCleared(h.error?[]:(h.data??[]) as Cleared[]);
-      const err=f.error||planResult.error||s.error||a.error;
+      const err=f.error||planResult.error||s.error||a.error||cr.error;
       if(err){setError(err.message);setFields([]);setProgrammes([]);setSchedules([]);setActuals([]);}
-      else{setFields((f.data??[]) as Field[]);setProgrammes(((planResult.data??[]) as Partial<Programme>[]).map(r=>({...r,description:r.description??null})) as Programme[]);setSchedules((s.data??[]) as Schedule[]);setActuals((a.data??[]) as Actual[]);}
+      else{setFields((f.data??[]) as Field[]);setProgrammes(((planResult.data??[]) as Partial<Programme>[]).map(r=>({...r,description:r.description??null})) as Programme[]);setSchedules((s.data??[]) as Schedule[]);setCrops((cr.data??[]) as Crop[]);setActuals((a.data??[]) as Actual[]);}
       setLoading(false);
     })();
     return()=>{active=false;};
@@ -88,6 +92,7 @@ export default function FuelWeeklyPlanScreen() {
   const scheduled=useMemo(()=>{
     const fieldMap=new Map(fields.map(f=>[f.tracecode_id,f]));
     const dateMap=new Map(schedules.map(d=>[d.tracecode_id,d.actual_planting_date||d.planned_planting_date]));
+    const cropMap=new Map(schedules.map(d=>[d.tracecode_id,d.crop_id]));
     const actualMap=new Map<string,number>();
     const doneMap=new Map<string,number>();
     for(const a of actuals){
@@ -117,24 +122,36 @@ export default function FuelWeeklyPlanScreen() {
         const remaining=count-completed;
         if(count>0&&remaining<=0)continue;
         rows.push({...p,key:`${k}:${p.target_dap}:${index}`,
-          fieldName:field.tracecode_name,fieldHa:n(field.tracecode_size),
+          cropId:cropMap.get(p.tracecode_id)??null,fieldName:field.tracecode_name,fieldHa:n(field.tracecode_size),
           scheduledDate:date,actualLitres:actualMap.get(k)||0,
           remainingOperations:remaining,overdue:date<week});
       }
     }
     return rows;
   },[fields,programmes,schedules,actuals,cleared,weekEnd]);
-  const jobOptions=useMemo(()=>[...new Map(programmes.map(p=>[p.vehicle_job_id,p.vehicle_job_name])).entries()].sort((a,b)=>a[1].localeCompare(b[1])),[programmes]);
-  const classOptions=useMemo(()=>[...new Set(programmes.map(p=>p.class_code||"Unassigned"))].sort(),[programmes]);
-  const filtered=useMemo(()=>{
-    return scheduled.filter(r=>(traceFilter==null||r.tracecode_id===traceFilter)&&(jobFilter==null||r.vehicle_job_id===jobFilter)&&(classFilter==="ALL"||(r.class_code||"Unassigned")===classFilter))
+  // Every option list reflects the other selected dimensions.
+  const matches=(r:Row,skip:"crop"|"trace"|"job"|"class"|null=null)=>
+    (skip==="crop"||cropFilter===null||r.cropId===cropFilter)&&
+    (skip==="trace"||traceFilter===null||r.tracecode_id===traceFilter)&&
+    (skip==="job"||jobFilter===null||r.vehicle_job_id===jobFilter)&&
+    (skip==="class"||classFilter==="ALL"||(r.class_code||"Unassigned")===classFilter);
+  const cropOptions=useMemo(()=>{
+    const ids=new Set(scheduled.filter(r=>matches(r,"crop")).map(r=>r.cropId));
+    return crops.filter(cr=>ids.has(cr.crop_id));
+  },[scheduled,crops,traceFilter,jobFilter,classFilter]);
+  const traceOptions=useMemo(()=>{
+    const ids=new Set(scheduled.filter(r=>matches(r,"trace")).map(r=>r.tracecode_id));
+    return fields.filter(f=>ids.has(f.tracecode_id)).sort((a,b)=>a.tracecode_name.localeCompare(b.tracecode_name));
+  },[scheduled,fields,cropFilter,jobFilter,classFilter]);
+  const jobOptions=useMemo(()=>[...new Map(scheduled.filter(r=>matches(r,"job")).map(r=>[r.vehicle_job_id,r.vehicle_job_name])).entries()].sort((a,b)=>a[1].localeCompare(b[1])),[scheduled,cropFilter,traceFilter,classFilter]);
+  const classOptions=useMemo(()=>[...new Set(scheduled.filter(r=>matches(r,"class")).map(r=>r.class_code||"Unassigned"))].sort(),[scheduled,cropFilter,traceFilter,jobFilter]);
+  const filtered=useMemo(()=>scheduled.filter(r=>matches(r))
       .sort((a,b)=>{
         if(sortBy==="trace")return a.fieldName.localeCompare(b.fieldName)||a.scheduledDate.localeCompare(b.scheduledDate);
         if(sortBy==="job")return a.vehicle_job_name.localeCompare(b.vehicle_job_name)||a.scheduledDate.localeCompare(b.scheduledDate);
         if(sortBy==="class")return (a.class_code||"").localeCompare(b.class_code||"")||a.scheduledDate.localeCompare(b.scheduledDate);
         return Number(b.overdue)-Number(a.overdue)||a.scheduledDate.localeCompare(b.scheduledDate);
-      });
-  },[scheduled,traceFilter,jobFilter,classFilter,sortBy]);
+      }),[scheduled,cropFilter,traceFilter,jobFilter,classFilter,sortBy]);
   const litresRemaining=(r:Row)=>n(r.total_budget_litres)*(n(r.planned_operations)>0?r.remainingOperations/n(r.planned_operations):1);
   const total=filtered.reduce((sum,r)=>sum+litresRemaining(r),0);
   const overdueRows=filtered.filter(r=>r.overdue);
@@ -164,10 +181,15 @@ export default function FuelWeeklyPlanScreen() {
     </ThemedView>
     <ThemedView style={s.card}>
       <ThemedText type="subtitle">Filter and sort</ThemedText>
+      <ThemedText style={s.small}>Crop</ThemedText>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}><View style={s.nav}>
+        <Choice label="All crops" selected={cropFilter===null} onPress={()=>setCropFilter(null)}/>
+        {cropOptions.map(cr=><Choice key={cr.crop_id} label={cr.crop_name} selected={cropFilter===cr.crop_id} onPress={()=>setCropFilter(cr.crop_id)}/>)}
+      </View></ScrollView>
       <ThemedText style={s.small}>TraceCode</ThemedText>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}><View style={s.nav}>
         <Choice label="All fields" selected={traceFilter===null} onPress={()=>setTraceFilter(null)}/>
-        {fields.map(f=><Choice key={f.tracecode_id} label={f.tracecode_name} selected={traceFilter===f.tracecode_id} onPress={()=>setTraceFilter(f.tracecode_id)}/>)}
+        {traceOptions.map(f=><Choice key={f.tracecode_id} label={f.tracecode_name} selected={traceFilter===f.tracecode_id} onPress={()=>setTraceFilter(f.tracecode_id)}/>)}
       </View></ScrollView>
       <ThemedText style={s.small}>Job</ThemedText>
       <ScrollView horizontal showsHorizontalScrollIndicator={false}><View style={s.nav}>
@@ -179,6 +201,7 @@ export default function FuelWeeklyPlanScreen() {
         <Choice label="All classes" selected={classFilter==="ALL"} onPress={()=>setClassFilter("ALL")}/>
         {classOptions.map(name=><Choice key={name} label={name} selected={classFilter===name} onPress={()=>setClassFilter(name)}/>)}
       </View></ScrollView>
+      <Pressable style={s.button} onPress={()=>{setCropFilter(null);setTraceFilter(null);setJobFilter(null);setClassFilter("ALL");}}><ThemedText>Clear all filters</ThemedText></Pressable>
       <ThemedText style={s.small}>Sort order</ThemedText>
       <View style={[s.nav,{flexWrap:"wrap"}]}>
         {(["date","trace","job","class"] as const).map(k=><Choice key={k} label={k==="date"?"Due date":k==="trace"?"TraceCode":k==="job"?"Job":"Tractor class"} selected={sortBy===k} onPress={()=>setSortBy(k)}/>)}
