@@ -24,6 +24,12 @@ export default function ControlPanelScreen() {
 
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
         <View style={styles.grid}>
+          <Tile
+            title="Weighbridge — Harvest"
+            subtitle="Preview eligible crops and trace codes (read only)"
+            onPress={() => router.push("/(tabs)/home/weighbridge-harvest")}
+          />
+
           {/* ✅ Users (Invite + Roles) */}
           <Tile
             title="Users"
