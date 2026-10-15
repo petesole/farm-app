@@ -39,6 +39,7 @@ export default function HomeStackLayout() {
       <Stack.Screen name="tracecode-new" />
       <Stack.Screen name="tracecode-edit" />
       <Stack.Screen name="control-panel" />
+      <Stack.Screen name="weighbridge-harvest" />
       <Stack.Screen name="crop-dashboard" />
       <Stack.Screen name="crop-edit" />
       <Stack.Screen name="variety-dashboard" />
