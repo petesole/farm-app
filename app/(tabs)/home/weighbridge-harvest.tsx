@@ -51,7 +51,7 @@ export default function WeighbridgeHarvestPreview() {
   const [controls, setControls] = useState<ControlRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [allocationKg,setAllocationKg] = useState<Record<string,string>>({});
   const [slipNumber,setSlipNumber] = useState("");
   const [netKg,setNetKg] = useState("");
   const [destination,setDestination] = useState<"field_to_stock"|"field_to_customer">("field_to_stock");
@@ -108,26 +108,33 @@ export default function WeighbridgeHarvestPreview() {
     return Array.from(groups.entries());
   }, [options]);
 
-  const selectedTrace = options.find(t=>String(t.tracecode_id)===selectedKey);
+  const selectedTraces = options.filter(t=>Number(allocationKg[t.tracecode_id])>0);
+  const allocatedTotal=selectedTraces.reduce((sum,t)=>sum+Number(allocationKg[t.tracecode_id]||0),0);
+  const firstTrace=selectedTraces[0];
+  const sameCrop=selectedTraces.every(t=>t.crop_id===firstTrace?.crop_id && t.season_id===firstTrace?.season_id);
   async function saveDraft(){
     const kg=Number(netKg.replace(/,/g,""));
-    if(!selectedDate || !selectedTrace || !slipNumber.trim() || !Number.isFinite(kg) || kg<=0){
+    if(!selectedDate || !firstTrace || !slipNumber.trim() || !Number.isFinite(kg) || kg<=0){
       Alert.alert("Incomplete", "Choose an eligible trace code and enter the slip number and positive net weight in kg.");return;
+    }
+    if(!sameCrop || allocatedTotal!==kg){
+      Alert.alert("Check allocations","All selected fields must be the same crop and season, and allocated kilograms must equal net kilograms.");return;
     }
     if(destination==="field_to_customer"&&!customer.trim()){
       Alert.alert("Missing customer", "Enter the customer for a direct delivery.");return;
     }
     setSaving(true);
     try{
-      const {error}=await supabase.from("wb_farm_slip").insert({
-        slip_number:slipNumber.trim(),weigh_date:selectedDate,
-        crop_id:selectedTrace.crop_id,season_id:selectedTrace.season_id,
-        movement_type:destination,status:"draft",net_kg:kg,
-        ...(destination==="field_to_customer"?{customer_name:customer.trim()}:{})
+      const {data,error}=await supabase.rpc("wb_create_harvest_draft",{
+        p_slip_number:slipNumber.trim(),p_weigh_date:selectedDate,
+        p_crop_id:firstTrace.crop_id,p_season_id:firstTrace.season_id,
+        p_movement_type:destination,p_net_kg:kg,p_customer_name:destination==="field_to_customer"?customer.trim():null,
+        p_allocations:selectedTraces.map(t=>({tracecode_id:t.tracecode_id,allocated_kg:Number(allocationKg[t.tracecode_id])}))
       });
       if(error)throw error;
-      Alert.alert("Draft saved","Slip saved as draft. It has NOT been confirmed or added to stock/harvest totals. Field allocations and scanning follow in the next stage.");
-      setSlipNumber("");setNetKg("");setCustomer("");
+      if(!data)throw new Error("No slip ID returned");
+      Alert.alert("Draft saved",`Slip #${data} saved with field allocations. It has NOT been confirmed or added to stock/harvest totals.`);
+      setSlipNumber("");setNetKg("");setCustomer("");setAllocationKg({});
     }catch(e:any){Alert.alert("Could not save",e?.message??"Unknown error");}
     finally{setSaving(false);}
   }
@@ -147,20 +154,27 @@ export default function WeighbridgeHarvestPreview() {
           <View key={heading} style={styles.group}>
             <ThemedText type="subtitle">{heading}</ThemedText>
             {values.map(t => (
-              <Pressable
-                key={t.tracecode_id}
-                onPress={() => setSelectedKey(String(t.tracecode_id))}
-                style={[styles.row,selectedKey===String(t.tracecode_id)&&styles.selected]}
-              >
-                <ThemedText>{t.tracecode_name ?? `Trace #${t.tracecode_id}`}</ThemedText>
-                <ThemedText style={styles.caption}>{t.tracecode_size ?? "—"} ha</ThemedText>
-              </Pressable>
+              <View key={t.tracecode_id} style={styles.row}>
+                <View style={{flex:1,gap:3}}>
+                  <ThemedText>{t.tracecode_name??`Trace #${t.tracecode_id}`}</ThemedText>
+                  <ThemedText style={styles.caption}>{t.tracecode_size??"—"} ha</ThemedText>
+                </View>
+                <TextInput
+                  style={[styles.input,{width:120}]}
+                  keyboardType="decimal-pad"
+                  placeholder="Allocated kg"
+                  value={allocationKg[t.tracecode_id]??""}
+                  onChangeText={v=>setAllocationKg(prev=>({...prev,[t.tracecode_id]:v}))}
+                />
+              </View>
             ))}
           </View>
         ))}
         <View style={styles.group}>
           <ThemedText type="subtitle">New Farm WB draft</ThemedText>
-          <ThemedText style={styles.caption}>Selected trace code: {selectedTrace?.tracecode_name??"Select a field above"}</ThemedText>
+          <ThemedText style={styles.caption}>Enter allocated kg alongside one or more fields above.</ThemedText>
+          <ThemedText style={styles.caption}>Total allocated: {allocatedTotal.toLocaleString()} kg</ThemedText>
+          {!sameCrop?<ThemedText style={styles.warning}>Fields must be from the same crop and season.</ThemedText>:null}
           <TextInput style={styles.input} placeholder="Farm WB slip number" value={slipNumber} onChangeText={setSlipNumber}/>
           <TextInput style={styles.input} placeholder="Net weight (kg)" keyboardType="decimal-pad" value={netKg} onChangeText={setNetKg}/>
           <View style={{flexDirection:"row",gap:8}}>
@@ -168,10 +182,10 @@ export default function WeighbridgeHarvestPreview() {
             <Pressable style={[styles.row,{flex:1},destination==="field_to_customer"&&styles.selected]} onPress={()=>setDestination("field_to_customer")}><ThemedText>Customer</ThemedText></Pressable>
           </View>
           {destination==="field_to_customer"?<TextInput style={styles.input} placeholder="Customer name" value={customer} onChangeText={setCustomer}/>:null}
-          <Pressable disabled={saving||!selectedTrace} onPress={saveDraft} style={[styles.selected,{padding:14,borderRadius:10,opacity:saving||!selectedTrace?0.5:1}]}>
+          <Pressable disabled={saving||!firstTrace} onPress={saveDraft} style={[styles.selected,{padding:14,borderRadius:10,opacity:saving||!firstTrace?0.5:1}]}>
             <ThemedText>{saving?"Saving…":"Save draft slip"}</ThemedText>
           </Pressable>
-          <ThemedText style={styles.note}>Draft only. Allocations, scanned documents and confirmation are not yet available; do not treat drafts as dispatched or harvested weights.</ThemedText>
+          <ThemedText style={styles.note}>Draft includes field allocations. Scanned documents and confirmation are not yet available; drafts do not count as harvested or dispatched weights.</ThemedText>
         </View>
       </ScrollView>
     </ThemedView>
