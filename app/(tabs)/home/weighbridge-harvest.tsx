@@ -3,7 +3,7 @@
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { supabase } from "../../../supabase";
 
 type HarvestRow = {
@@ -52,6 +52,11 @@ export default function WeighbridgeHarvestPreview() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [slipNumber,setSlipNumber] = useState("");
+  const [netKg,setNetKg] = useState("");
+  const [destination,setDestination] = useState<"field_to_stock"|"field_to_customer">("field_to_stock");
+  const [customer,setCustomer] = useState("");
+  const [saving,setSaving] = useState(false);
   const selectedDate = parseEnteredDate(dateText);
 
   useEffect(() => {
@@ -103,11 +108,34 @@ export default function WeighbridgeHarvestPreview() {
     return Array.from(groups.entries());
   }, [options]);
 
+  const selectedTrace = options.find(t=>String(t.tracecode_id)===selectedKey);
+  async function saveDraft(){
+    const kg=Number(netKg.replace(/,/g,""));
+    if(!selectedDate || !selectedTrace || !slipNumber.trim() || !Number.isFinite(kg) || kg<=0){
+      Alert.alert("Incomplete", "Choose an eligible trace code and enter the slip number and positive net weight in kg.");return;
+    }
+    if(destination==="field_to_customer"&&!customer.trim()){
+      Alert.alert("Missing customer", "Enter the customer for a direct delivery.");return;
+    }
+    setSaving(true);
+    try{
+      const {error}=await supabase.from("wb_farm_slip").insert({
+        slip_number:slipNumber.trim(),weigh_date:selectedDate,
+        crop_id:selectedTrace.crop_id,season_id:selectedTrace.season_id,
+        movement_type:destination,status:"draft",net_kg:kg,
+        ...(destination==="field_to_customer"?{customer_name:customer.trim()}:{})
+      });
+      if(error)throw error;
+      Alert.alert("Draft saved","Slip saved as draft. It has NOT been confirmed or added to stock/harvest totals. Field allocations and scanning follow in the next stage.");
+      setSlipNumber("");setNetKg("");setCustomer("");
+    }catch(e:any){Alert.alert("Could not save",e?.message??"Unknown error");}
+    finally{setSaving(false);}
+  }
   return (
     <ThemedView style={styles.page}>
       <ScrollView contentContainerStyle={styles.content}>
         <ThemedText type="title">Weighbridge — Harvest</ThemedText>
-        <ThemedText style={styles.note}>Preview only: this screen does not create weighbridge slips.</ThemedText>
+        <ThemedText style={styles.note}>Draft entry only: saving does not post harvested tonnes or stock.</ThemedText>
         <ThemedText style={styles.caption}>Weighbridge date (dd/mm/yyyy; e.g. 5/12 assumes current year)</ThemedText>
         <TextInput value={dateText} onChangeText={setDateText} placeholder="dd/mm/yyyy" style={styles.input} />
         {!selectedDate ? <ThemedText style={styles.warning}>Enter a valid date.</ThemedText> : null}
@@ -130,9 +158,21 @@ export default function WeighbridgeHarvestPreview() {
             ))}
           </View>
         ))}
-        <ThemedText style={styles.note}>
-          Confirm/save, tare/gross entry, field-split allocations and scanning will be enabled only after transactional posting and authenticated permissions are ready.
-        </ThemedText>
+        <View style={styles.group}>
+          <ThemedText type="subtitle">New Farm WB draft</ThemedText>
+          <ThemedText style={styles.caption}>Selected trace code: {selectedTrace?.tracecode_name??"Select a field above"}</ThemedText>
+          <TextInput style={styles.input} placeholder="Farm WB slip number" value={slipNumber} onChangeText={setSlipNumber}/>
+          <TextInput style={styles.input} placeholder="Net weight (kg)" keyboardType="decimal-pad" value={netKg} onChangeText={setNetKg}/>
+          <View style={{flexDirection:"row",gap:8}}>
+            <Pressable style={[styles.row,{flex:1},destination==="field_to_stock"&&styles.selected]} onPress={()=>setDestination("field_to_stock")}><ThemedText>Farm stock</ThemedText></Pressable>
+            <Pressable style={[styles.row,{flex:1},destination==="field_to_customer"&&styles.selected]} onPress={()=>setDestination("field_to_customer")}><ThemedText>Customer</ThemedText></Pressable>
+          </View>
+          {destination==="field_to_customer"?<TextInput style={styles.input} placeholder="Customer name" value={customer} onChangeText={setCustomer}/>:null}
+          <Pressable disabled={saving||!selectedTrace} onPress={saveDraft} style={[styles.selected,{padding:14,borderRadius:10,opacity:saving||!selectedTrace?0.5:1}]}>
+            <ThemedText>{saving?"Saving…":"Save draft slip"}</ThemedText>
+          </Pressable>
+          <ThemedText style={styles.note}>Draft only. Allocations, scanned documents and confirmation are not yet available; do not treat drafts as dispatched or harvested weights.</ThemedText>
+        </View>
       </ScrollView>
     </ThemedView>
   );
