@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Redirect, Tabs } from "expo-router";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, View } from "react-native";
+import { ActivityIndicator, Platform, View } from "react-native";
 
 export default function TabsLayout() {
   const [ready, setReady] = useState(false);
@@ -48,6 +48,7 @@ export default function TabsLayout() {
     <Tabs initialRouteName="field-dashboard" screenOptions={{ headerShown: false }}>
       <Tabs.Screen name="home" options={{ href: null }} />
       <Tabs.Screen name="field-dashboard" options={{ title: "Fields" }} />
+      <Tabs.Screen name="wb-admin" options={{ title: "Weighbridge", href: Platform.OS === "web" ? "/wb-admin" : null }} />
       <Tabs.Screen name="fuel" options={{ title: "Fuel" }} />
       <Tabs.Screen
         name="irrigation_main_dashboard"
