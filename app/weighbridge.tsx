@@ -1,4 +1,5 @@
 import { supabase } from "../supabase";
+import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { Platform, ScrollView, Text, TextInput, Pressable, View } from "react-native";
 
@@ -65,6 +66,7 @@ export default function WeighbridgeAdmin(){
  return <ScrollView style={{flex:1,backgroundColor:bg}} contentContainerStyle={{padding:24,minWidth:960}}>
   <Text style={{fontSize:25,fontWeight:"bold",color:ink}}>John Sole P/L — Weighbridge Admin</Text>
   <Text style={{color:muted,marginBottom:18}}>Customer WB · GRV · Returns · Reconciliation | Desktop | Admin only</Text>
+  <Button title="Manual WB Entry" press={()=>router.push("/weighbridge-manual")} />
   <View style={{flexDirection:"row",marginBottom:16}}>
    {[["Out Del",outDel],["Out GRVs",outGrv],["Dispatched loads",slips.length]].map(([label,value])=><View key={label} style={{backgroundColor:"#fff",borderRadius:8,padding:16,minWidth:170,marginRight:12}}><Text style={{color:muted}}>{label}</Text><Text style={{fontSize:28,fontWeight:"bold",color:ink}}>{value}</Text></View>)}
   </View>
