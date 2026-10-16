@@ -2,6 +2,7 @@ import {useEffect,useMemo,useState} from "react";
 import {Platform,Pressable,ScrollView,Text,TextInput,View} from "react-native";
 import {supabase} from "../supabase";
 type D={source_type:string;source_id:string|null;farm_slip_id:number|null;slip_number:string;dnote_number:string|null;weigh_date:string;crop_id:number;net_kg:number;season_id:number|null;receiving_wb_number:string|null;receiving_date:string|null;receiving_net_kg:number|null;rejected_kg:number|null;grv_number:string|null;grv_accepted_kg:number|null;wheat_grade:string|null;customer_id:number|null};
+type Report={season_id:number|null;crop_id:number;crop_name:string|null;customer_name:string;wb_qty_kg:number;in_transit_kg:number;received_kg:number;matched_diff_kg:number;premium_kg:number;b1_kg:number;b2_kg:number;b3_kg:number;ug_kg:number;out_del:number;out_grvs:number};
 type S={season_id:number;season_name:string};type C={crop_id:number;crop_name:string};
 const input={borderWidth:1,borderColor:"#bec8d5",borderRadius:4,backgroundColor:"white",padding:9,minWidth:145} as const;
 const money=(v:number|null)=>v==null?"—":Number(v).toLocaleString("en-US");
@@ -10,15 +11,16 @@ const showDate=(s:string|null)=>s?s.slice(8,10)+"/"+s.slice(5,7)+"/"+s.slice(0,4
 function B({label,click}:{label:string;click:()=>void}){return <Pressable onPress={click} style={{backgroundColor:"#165a9c",borderRadius:5,padding:10,marginRight:10,marginBottom:9}}><Text style={{color:"#fff",fontWeight:"bold"}}>{label}</Text></Pressable>}
 function F({label,value,onChange}:{label:string;value:string;onChange:(x:string)=>void}){return <View style={{marginRight:12,marginBottom:10}}><Text style={{color:"#59677a",fontSize:12,marginBottom:4}}>{label}</Text><TextInput style={input} value={value} onChangeText={onChange}/></View>}
 export default function Deliveries(){
+ const [summary,setSummary]=useState<Report[]>([]),[seasonFilter,setSeasonFilter]=useState("all");
  const [ok,setOk]=useState<boolean|null>(null),[rows,setRows]=useState<D[]>([]),[seasons,setSeasons]=useState<S[]>([]),[crops,setCrops]=useState<C[]>([]),[sel,setSel]=useState<string|null>(null),[query,setQuery]=useState(""),[error,setError]=useState(""),[busy,setBusy]=useState(false);
  const [form,setForm]=useState({season_id:"",receiving_wb_number:"",receiving_date:"",receiving_net_kg:"",rejected_kg:"0",grv_number:"",grv_accepted_kg:"",wheat_grade:""});
  const set=(k:keyof typeof form,v:string)=>setForm(f=>({...f,[k]:v}));
- async function load(){const [a,b,c]=await Promise.all([supabase.from("wb_unified_dispatch_v").select("*").order("weigh_date",{ascending:false}).limit(3000),supabase.from("season").select("season_id,season_name").order("season_id",{ascending:false}),supabase.from("crop").select("crop_id,crop_name")]);if(a.error||b.error||c.error){setError(a.error?.message||b.error?.message||c.error?.message||"Failed to load");return;}setRows((a.data||[]) as D[]);setSeasons((b.data||[]) as S[]);setCrops((c.data||[]) as C[]);setError("");}
+ async function load(){const [a,b,c,d]=await Promise.all([supabase.from("wb_unified_dispatch_v").select("*").order("weigh_date",{ascending:false}).limit(3000),supabase.from("season").select("season_id,season_name").order("season_id",{ascending:false}),supabase.from("crop").select("crop_id,crop_name"),supabase.from("wb_delivery_report_v").select("*")]);if(a.error||b.error||c.error||d.error){setError(a.error?.message||b.error?.message||c.error?.message||d.error?.message||"Failed to load");return;}setRows((a.data||[]) as D[]);setSeasons((b.data||[]) as S[]);setCrops((c.data||[]) as C[]);setSummary((d.data||[]) as Report[]);setError("");}
  useEffect(()=>{if(Platform.OS!=="web"){setOk(false);return;}let alive=true;(async()=>{const {data:{user}}=await supabase.auth.getUser();if(!alive)return;if(!user){setOk(false);return;}const {data}=await supabase.rpc("wb_admin_allowed");if(!alive)return;setOk(data===true)})();return()=>{alive=false}},[]);
  useEffect(()=>{if(ok)load()},[ok]);
  const selected=rows.find(x=>x.source_type+":"+(x.source_id||x.farm_slip_id)===sel);
  useEffect(()=>{if(!selected)return;setForm({season_id:selected.season_id?String(selected.season_id):"",receiving_wb_number:selected.receiving_wb_number||"",receiving_date:showDate(selected.receiving_date),receiving_net_kg:selected.receiving_net_kg==null?"":String(selected.receiving_net_kg),rejected_kg:String(selected.rejected_kg??0),grv_number:selected.grv_number||"",grv_accepted_kg:selected.grv_accepted_kg==null?"":String(selected.grv_accepted_kg),wheat_grade:selected.wheat_grade||""})},[sel,rows]);
- const displayed=useMemo(()=>rows.filter(r=>[r.slip_number,r.dnote_number,crops.find(c=>c.crop_id===r.crop_id)?.crop_name,r.source_type].join(" ").toLowerCase().includes(query.toLowerCase())),[rows,query,crops]);
+ const displayed=useMemo(()=>rows.filter(r=>(seasonFilter==="all"||seasonFilter==="unassigned"&&r.season_id==null||String(r.season_id)===seasonFilter)&&[r.slip_number,r.dnote_number,crops.find(c=>c.crop_id===r.crop_id)?.crop_name,r.source_type].join(" ").toLowerCase().includes(query.toLowerCase())),[rows,query,crops,seasonFilter]);
  const outDel=rows.filter(r=>!r.receiving_wb_number).length,outGrv=rows.filter(r=>!r.grv_number).length;
  async function save(){if(!selected||selected.source_type==="farm_slip"||!selected.source_id||busy)return;const rec=form.receiving_net_kg.trim()?Number(form.receiving_net_kg):null,rej=form.rejected_kg.trim()?Number(form.rejected_kg):null,acc=form.grv_accepted_kg.trim()?Number(form.grv_accepted_kg):null;
  if(!form.season_id){setError("Select the correct season first.");return;}
@@ -32,6 +34,17 @@ export default function Deliveries(){
  <Text style={{color:"#697386",marginBottom:14}}>WB computer + Manual Weighbridge + legacy farm slips. Each source appears once. Customer WB and GRV entered against its original slip.</Text>
  <Text style={{fontSize:16,marginBottom:10}}>Dispatches: {rows.length}   |   Outstanding customer WB: {outDel}   |   Outstanding GRVs: {outGrv}   |   Season unassigned: {rows.filter(r=>r.season_id==null).length}</Text>
  {error?<Text style={{color:"#b42318",marginBottom:8}}>{error}</Text>:null}
+ <View style={{flexDirection:"row",alignItems:"center",marginBottom:12,flexWrap:"wrap"}}>
+ <Text style={{fontWeight:"bold",marginRight:8}}>Season:</Text>
+ {[{id:"all",name:"All"},{id:"unassigned",name:"Unassigned"},...seasons.map(s=>({id:String(s.season_id),name:s.season_name}))].map(s=><Pressable key={s.id} onPress={()=>setSeasonFilter(s.id)} style={{padding:8,marginRight:6,marginBottom:5,backgroundColor:seasonFilter===s.id?"#c9e7ff":"#fff",borderWidth:1,borderColor:"#d6dce4"}}><Text>{s.name}</Text></Pressable>)}
+ </View>
+ <ScrollView horizontal style={{flexGrow:0,marginBottom:15,backgroundColor:"white",borderWidth:1,borderColor:"#d7dee6"}}>
+ <View>
+ <View style={{flexDirection:"row",backgroundColor:"#efe66b",padding:8}}>{["Crop","Customer","WB Qty t","In Transit t","Received t","Diff t","Premium t","B1 t","B2 t","B3 t","UG t","Out Del","Out GRVs"].map((h,i)=><Text key={i} style={{width:i<2?170:95,fontWeight:"bold"}}>{h}</Text>)}</View>
+ {summary.filter(s=>seasonFilter==="all"||seasonFilter==="unassigned"&&s.season_id==null||String(s.season_id)===seasonFilter).map((s,i)=><View key={i} style={{flexDirection:"row",padding:8,borderBottomWidth:1,borderBottomColor:"#edf0f3"}}>
+ {[s.crop_name||"—",s.customer_name,...[s.wb_qty_kg,s.in_transit_kg,s.received_kg,s.matched_diff_kg,s.premium_kg,s.b1_kg,s.b2_kg,s.b3_kg,s.ug_kg].map(k=>(Number(k)/1000).toFixed(3)),String(s.out_del),String(s.out_grvs)].map((v,j)=><Text key={j} style={{width:j<2?170:95}}>{v}</Text>)}
+ </View>)}
+ </View></ScrollView>
  <View style={{flexDirection:"row",alignItems:"flex-start"}}>
  <View style={{width:410,backgroundColor:"white",padding:12,marginRight:16,borderRadius:6}}>
  <F label="Search slip, DNote or crop" value={query} onChange={setQuery}/><B label="Refresh" click={load}/>
