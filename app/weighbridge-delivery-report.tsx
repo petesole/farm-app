@@ -3,6 +3,7 @@ import {Platform,Pressable,ScrollView,Text,TextInput,View} from "react-native";
 import {supabase} from "../supabase";
 type D={source_type:string;source_id:string|null;farm_slip_id:number|null;slip_number:string;dnote_number:string|null;weigh_date:string;crop_id:number;net_kg:number;season_id:number|null;receiving_wb_number:string|null;receiving_date:string|null;receiving_net_kg:number|null;rejected_kg:number|null;grv_number:string|null;grv_accepted_kg:number|null;wheat_grade:string|null;customer_id:number|null;receiving_moisture_pct?:number|null;grv_date?:string|null;notes?:string|null};
 type Report={season_id:number|null;crop_id:number;crop_name:string|null;customer_name:string;wb_qty_kg:number;in_transit_kg:number;received_kg:number;matched_diff_kg:number;premium_kg:number;b1_kg:number;b2_kg:number;b3_kg:number;ug_kg:number;out_del:number;out_grvs:number};
+type Doc={document_id:string;source_type:string;source_id:string;document_type:string;storage_path:string;original_filename:string;extraction_status:string};
 type S={season_id:number;season_name:string};type C={crop_id:number;crop_name:string};
 const input={borderWidth:1,borderColor:"#bec8d5",borderRadius:4,backgroundColor:"white",padding:9,minWidth:145} as const;
 const money=(v:number|null)=>v==null?"—":Number(v).toLocaleString("en-US");
@@ -11,11 +12,12 @@ const showDate=(s:string|null)=>s?s.slice(8,10)+"/"+s.slice(5,7)+"/"+s.slice(0,4
 function B({label,click}:{label:string;click:()=>void}){return <Pressable onPress={click} style={{backgroundColor:"#165a9c",borderRadius:5,padding:10,marginRight:10,marginBottom:9}}><Text style={{color:"#fff",fontWeight:"bold"}}>{label}</Text></Pressable>}
 function F({label,value,onChange}:{label:string;value:string;onChange:(x:string)=>void}){return <View style={{marginRight:12,marginBottom:10}}><Text style={{color:"#59677a",fontSize:12,marginBottom:4}}>{label}</Text><TextInput style={input} value={value} onChangeText={onChange}/></View>}
 export default function Deliveries(){
+ const [docs,setDocs]=useState<Doc[]>([]),[uploading,setUploading]=useState(false);
  const [summary,setSummary]=useState<Report[]>([]),[seasonFilter,setSeasonFilter]=useState("all");
  const [ok,setOk]=useState<boolean|null>(null),[rows,setRows]=useState<D[]>([]),[seasons,setSeasons]=useState<S[]>([]),[crops,setCrops]=useState<C[]>([]),[sel,setSel]=useState<string|null>(null),[query,setQuery]=useState(""),[error,setError]=useState(""),[busy,setBusy]=useState(false);
  const [form,setForm]=useState({season_id:"",receiving_wb_number:"",receiving_date:"",receiving_net_kg:"",rejected_kg:"0",grv_number:"",grv_accepted_kg:"",wheat_grade:"",receiving_moisture_pct:"",grv_date:"",notes:""});
  const set=(k:keyof typeof form,v:string)=>setForm(f=>({...f,[k]:v}));
- async function load(){const [a,b,c,d,e]=await Promise.all([supabase.from("wb_unified_dispatch_v").select("*").order("weigh_date",{ascending:false}).limit(3000),supabase.from("season").select("season_id,season_name").order("season_id",{ascending:false}),supabase.from("crop").select("crop_id,crop_name"),supabase.from("wb_delivery_report_v").select("*"),supabase.from("wb_source_delivery").select("*").limit(3000)]);if(a.error||b.error||c.error||d.error||e.error){setError(a.error?.message||b.error?.message||c.error?.message||d.error?.message||e.error?.message||"Failed to load");return;}const extra=new Map((e.data||[]).map((x:any)=>[x.source_type+":"+x.source_id,x]));setRows(((a.data||[]) as D[]).map(x=>({...x,...(extra.get(x.source_type+":"+x.source_id)||{})})));setSeasons((b.data||[]) as S[]);setCrops((c.data||[]) as C[]);setSummary((d.data||[]) as Report[]);setError("");}
+ async function load(){const [a,b,c,d,e,f]=await Promise.all([supabase.from("wb_unified_dispatch_v").select("*").order("weigh_date",{ascending:false}).limit(3000),supabase.from("season").select("season_id,season_name").order("season_id",{ascending:false}),supabase.from("crop").select("crop_id,crop_name"),supabase.from("wb_delivery_report_v").select("*"),supabase.from("wb_source_delivery").select("*").limit(3000),supabase.from("wb_customer_document").select("*").order("uploaded_at",{ascending:false}).limit(3000)]);if(a.error||b.error||c.error||d.error||e.error||f.error){setError(a.error?.message||b.error?.message||c.error?.message||d.error?.message||e.error?.message||f.error?.message||"Failed to load");return;}const extra=new Map((e.data||[]).map((x:any)=>[x.source_type+":"+x.source_id,x]));setRows(((a.data||[]) as D[]).map(x=>({...x,...(extra.get(x.source_type+":"+x.source_id)||{})})));setSeasons((b.data||[]) as S[]);setCrops((c.data||[]) as C[]);setSummary((d.data||[]) as Report[]);setDocs((f.data||[]) as Doc[]);setError("");}
  useEffect(()=>{if(Platform.OS!=="web"){setOk(false);return;}let alive=true;(async()=>{const {data:{user}}=await supabase.auth.getUser();if(!alive)return;if(!user){setOk(false);return;}const {data}=await supabase.rpc("wb_admin_allowed");if(!alive)return;setOk(data===true)})();return()=>{alive=false}},[]);
  useEffect(()=>{if(ok)load()},[ok]);
  const selected=rows.find(x=>x.source_type+":"+(x.source_id||x.farm_slip_id)===sel);
@@ -28,6 +30,22 @@ export default function Deliveries(){
  const rd=form.receiving_date?date(form.receiving_date):null;if(kind==="wb"&&form.receiving_date&&!rd||kind==="grv"&&form.grv_date&&!date(form.grv_date)){setError("Invalid date. Use DD/MM/YYYY.");return;}
  if(form.wheat_grade&&!["Premium","B1","B2","B3","UG"].includes(form.wheat_grade)){setError("Invalid wheat grade.");return;}
  setBusy(true);const fields=kind==="wb"?{receiving_wb_number:form.receiving_wb_number||null,receiving_date:rd,receiving_net_kg:rec,rejected_kg:rej,wheat_grade:form.wheat_grade||null,receiving_moisture_pct:Number(form.receiving_moisture_pct),notes:form.notes||null}:{grv_number:form.grv_number||null,grv_date:form.grv_date?date(form.grv_date):null,grv_accepted_kg:acc};const {error:e}=await supabase.from("wb_source_delivery").upsert({source_type:selected.source_type,source_id:selected.source_id,season_id:+form.season_id,...fields},{onConflict:"source_type,source_id"});setBusy(false);if(e){setError(e.message);return;}await load();}
+ async function uploadDocument(kind:"customer_wb"|"grv"){
+ if(!selected||selected.source_type==="farm_slip"||!selected.source_id){setError("Select a WB computer or manual dispatch.");return;}
+ if(typeof document==="undefined")return;
+ const pick=document.createElement("input");pick.type="file";pick.accept=".pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/*";
+ pick.onchange=async()=>{const file=pick.files?.[0];if(!file)return;
+ if(file.size>15*1024*1024){setError("Maximum file size is 15 MB.");return;}
+ if(!["application/pdf","image/jpeg","image/png","image/webp"].includes(file.type)){setError("Use PDF, JPG, PNG or WebP.");return;}
+ setUploading(true);setError("");
+ const path=selected.source_type+"/"+selected.source_id+"/"+kind+"/"+Date.now()+"_"+file.name.replace(/[^a-zA-Z0-9._-]/g,"_");
+ try{const buffer=await file.arrayBuffer();const up=await supabase.storage.from("wb-customer-documents").upload(path,buffer,{contentType:file.type,upsert:false});if(up.error)throw up.error;
+ const entry=await supabase.from("wb_customer_document").insert({source_type:selected.source_type,source_id:selected.source_id,document_type:kind,storage_path:path,original_filename:file.name,mime_type:file.type});if(entry.error)throw entry.error;
+ await load();
+ }catch(e:any){setError("Document upload: "+(e?.message||String(e)))}finally{setUploading(false)}
+ };pick.click();
+ }
+ async function openDocument(doc:Doc){const r=await supabase.storage.from("wb-customer-documents").createSignedUrl(doc.storage_path,60);if(r.error){setError(r.error.message);return;}if(typeof window!=="undefined"&&r.data?.signedUrl)window.open(r.data.signedUrl,"_blank");}
  if(Platform.OS!=="web")return <Text>Desktop only</Text>;if(ok===null)return <Text>Checking Admin access…</Text>;if(!ok)return <Text style={{padding:20}}>Weighbridge Delivery Report — Admin only.</Text>;
  return <ScrollView style={{backgroundColor:"#f5f7fa",flex:1}} contentContainerStyle={{padding:20,minWidth:1080}}>
  <Text style={{fontWeight:"bold",fontSize:25,marginBottom:8}}>Weighbridge — Delivery Report</Text>
@@ -61,6 +79,11 @@ export default function Deliveries(){
  {selected.source_type==="farm_slip"?<Text style={{color:"#a04a00"}}>Legacy farm slip: continue using the existing Delivery Entry page for this slip.</Text>:<>
  <Text style={{fontWeight:"bold",marginBottom:5}}>Season (required)</Text>
  <ScrollView horizontal style={{flexGrow:0,maxWidth:580,marginBottom:16}}>{seasons.map(s=><Pressable key={s.season_id} onPress={()=>set("season_id",String(s.season_id))} style={{padding:10,backgroundColor:form.season_id===String(s.season_id)?"#c8e7ff":"#f5f6f8",borderWidth:1,borderColor:"#d8dce4",marginRight:5}}><Text>{s.season_name}</Text></Pressable>)}</ScrollView>
+ <Text style={{fontWeight:"bold",marginBottom:8}}>Document scans</Text>
+ <Text style={{color:"#667085",marginBottom:9}}>Attach the original scan first. Files are kept even if automatic extraction is unavailable; enter the details manually and check against the document.</Text>
+ <View style={{flexDirection:"row",flexWrap:"wrap"}}><B label={uploading?"Uploading…":"Upload Customer WB scan"} click={()=>uploadDocument("customer_wb")}/><B label={uploading?"Uploading…":"Upload GRV scan"} click={()=>uploadDocument("grv")}/></View>
+ {docs.filter(d=>d.source_type===selected.source_type&&d.source_id===selected.source_id).map(d=><Pressable key={d.document_id} onPress={()=>openDocument(d)} style={{paddingVertical:6}}><Text style={{color:"#165a9c"}}>{d.document_type==="customer_wb"?"Customer WB":"GRV"} · {d.original_filename} · Open saved scan</Text></Pressable>)}
+ <Text style={{color:"#a06b18",marginBottom:12}}>Automatic document reading: not yet configured. No fields will be filled without verification.</Text>
  <Text style={{fontWeight:"bold",marginBottom:9}}>Customer receiving weighbridge</Text>
  <View style={{flexDirection:"row",flexWrap:"wrap"}}><F label="Customer WB number" value={form.receiving_wb_number} onChange={v=>set("receiving_wb_number",v)}/><F label="Date DD/MM/YYYY" value={form.receiving_date} onChange={v=>set("receiving_date",v)}/><F label="Customer net kg" value={form.receiving_net_kg} onChange={v=>set("receiving_net_kg",v)}/><F label="Rejected kg" value={form.rejected_kg} onChange={v=>set("rejected_kg",v)}/><F label="Wheat grade" value={form.wheat_grade} onChange={v=>set("wheat_grade",v)}/><F label="Customer moisture %" value={form.receiving_moisture_pct} onChange={v=>set("receiving_moisture_pct",v)}/><F label="Notes" value={form.notes} onChange={v=>set("notes",v)}/></View>
  <B label={busy?"Saving…":"Save Customer WB"} click={()=>save("wb")}/><Text style={{fontWeight:"bold",marginBottom:9}}>GRV</Text>
