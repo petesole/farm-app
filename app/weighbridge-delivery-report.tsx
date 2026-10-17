@@ -98,7 +98,7 @@ export default function Deliveries(){
   <View style={{flexDirection:"row",alignItems:"flex-start"}}>
  <View style={{width:410,backgroundColor:"white",padding:12,marginRight:16,borderRadius:6}}>
  <F label="Search slip, DNote or crop" value={query} onChange={setQuery}/><B label="Refresh" click={load}/>
- <ScrollView style={{maxHeight:690}}>{displayed.map((r,i)=><Pressable key={r.source_type+":"+(r.source_id||r.farm_slip_id)} onPress={()=>setSel(r.source_type+":"+(r.source_id||r.farm_slip_id))} style={{padding:10,borderBottomWidth:1,borderColor:"#e4e8ed",backgroundColor:sel===r.source_type+":"+(r.source_id||r.farm_slip_id)?"#dcecff":"white"}}>
+ <ScrollView style={{maxHeight:690}}>{displayed.map((r,i)=><Pressable key={r.source_type+":"+(r.source_id||r.farm_slip_id)} onPress={()=>{setMatchPrefill(null);setSel(r.source_type+":"+(r.source_id||r.farm_slip_id))}} style={{padding:10,borderBottomWidth:1,borderColor:"#e4e8ed",backgroundColor:sel===r.source_type+":"+(r.source_id||r.farm_slip_id)?"#dcecff":"white"}}>
  <Text style={{fontWeight:"bold"}}>{r.slip_number} {r.dnote_number?" / "+r.dnote_number:""} · {money(r.net_kg)} kg</Text>
  <Text style={{fontSize:12,color:"#667085"}}>{r.source_type==="scale"?"WB computer":r.source_type==="manual"?"Manual":"Farm slip"} · {showDate(r.weigh_date)} · {crops.find(c=>c.crop_id===r.crop_id)?.crop_name}</Text>
  <Text style={{fontSize:12,color:r.season_id==null?"#b42318":"#667085"}}>{r.season_id==null?"Assign season · ":""}{r.receiving_wb_number?"Customer WB ✓":"Out Del"} · {r.grv_number?"GRV ✓":"Out GRV"}</Text>
