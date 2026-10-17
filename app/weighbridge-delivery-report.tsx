@@ -12,6 +12,7 @@ const showDate=(s:string|null)=>s?s.slice(8,10)+"/"+s.slice(5,7)+"/"+s.slice(0,4
 function B({label,click}:{label:string;click:()=>void}){return <Pressable onPress={click} style={{backgroundColor:"#165a9c",borderRadius:5,padding:10,marginRight:10,marginBottom:9}}><Text style={{color:"#fff",fontWeight:"bold"}}>{label}</Text></Pressable>}
 function F({label,value,onChange}:{label:string;value:string;onChange:(x:string)=>void}){return <View style={{marginRight:12,marginBottom:10}}><Text style={{color:"#59677a",fontSize:12,marginBottom:4}}>{label}</Text><TextInput style={input} value={value} onChangeText={onChange}/></View>}
 export default function Deliveries(){
+ const [departureDate,setDepartureDate]=useState(""),[matchWeight,setMatchWeight]=useState(""),[matching,setMatching]=useState(false),[matchPrefill,setMatchPrefill]=useState<string|null>(null);
  const [docs,setDocs]=useState<Doc[]>([]),[uploading,setUploading]=useState(false);
  const [summary,setSummary]=useState<Report[]>([]),[seasonFilter,setSeasonFilter]=useState("all");
  const [ok,setOk]=useState<boolean|null>(null),[rows,setRows]=useState<D[]>([]),[seasons,setSeasons]=useState<S[]>([]),[crops,setCrops]=useState<C[]>([]),[sel,setSel]=useState<string|null>(null),[query,setQuery]=useState(""),[error,setError]=useState(""),[busy,setBusy]=useState(false);
@@ -21,8 +22,21 @@ export default function Deliveries(){
  useEffect(()=>{if(Platform.OS!=="web"){setOk(false);return;}let alive=true;(async()=>{const {data:{user}}=await supabase.auth.getUser();if(!alive)return;if(!user){setOk(false);return;}const {data}=await supabase.rpc("wb_admin_allowed");if(!alive)return;setOk(data===true)})();return()=>{alive=false}},[]);
  useEffect(()=>{if(ok)load()},[ok]);
  const selected=rows.find(x=>x.source_type+":"+(x.source_id||x.farm_slip_id)===sel);
- useEffect(()=>{if(!selected)return;setForm({season_id:selected.season_id?String(selected.season_id):"",receiving_wb_number:selected.receiving_wb_number||"",receiving_date:showDate(selected.receiving_date),receiving_net_kg:selected.receiving_net_kg==null?"":String(selected.receiving_net_kg),rejected_kg:String(selected.rejected_kg??0),grv_number:selected.grv_number||"",grv_accepted_kg:selected.grv_accepted_kg==null?"":String(selected.grv_accepted_kg),wheat_grade:selected.wheat_grade||"",receiving_moisture_pct:selected.receiving_moisture_pct==null?"":String(selected.receiving_moisture_pct),grv_date:showDate(selected.grv_date||null),notes:selected.notes||"",receiving_defects_pct:selected.receiving_defects_pct==null?"":String(selected.receiving_defects_pct),receiving_extraneous_matter_pct:selected.receiving_extraneous_matter_pct==null?"":String(selected.receiving_extraneous_matter_pct),receiving_test_density:selected.receiving_test_density==null?"":String(selected.receiving_test_density),grv_moisture_pct:selected.grv_moisture_pct==null?"":String(selected.grv_moisture_pct),grv_defects_pct:selected.grv_defects_pct==null?"":String(selected.grv_defects_pct),grv_extraneous_matter_pct:selected.grv_extraneous_matter_pct==null?"":String(selected.grv_extraneous_matter_pct),grv_test_density:selected.grv_test_density==null?"":String(selected.grv_test_density)})},[sel,rows]);
+ useEffect(()=>{if(!selected)return;setForm({season_id:selected.season_id?String(selected.season_id):"",receiving_wb_number:selected.receiving_wb_number||"",receiving_date:showDate(selected.receiving_date),receiving_net_kg:selected.receiving_net_kg==null?(matchPrefill||""):String(selected.receiving_net_kg),rejected_kg:String(selected.rejected_kg??0),grv_number:selected.grv_number||"",grv_accepted_kg:selected.grv_accepted_kg==null?"":String(selected.grv_accepted_kg),wheat_grade:selected.wheat_grade||"",receiving_moisture_pct:selected.receiving_moisture_pct==null?"":String(selected.receiving_moisture_pct),grv_date:showDate(selected.grv_date||null),notes:selected.notes||"",receiving_defects_pct:selected.receiving_defects_pct==null?"":String(selected.receiving_defects_pct),receiving_extraneous_matter_pct:selected.receiving_extraneous_matter_pct==null?"":String(selected.receiving_extraneous_matter_pct),receiving_test_density:selected.receiving_test_density==null?"":String(selected.receiving_test_density),grv_moisture_pct:selected.grv_moisture_pct==null?"":String(selected.grv_moisture_pct),grv_defects_pct:selected.grv_defects_pct==null?"":String(selected.grv_defects_pct),grv_extraneous_matter_pct:selected.grv_extraneous_matter_pct==null?"":String(selected.grv_extraneous_matter_pct),grv_test_density:selected.grv_test_density==null?"":String(selected.grv_test_density)})},[sel,rows]);
  const displayed=useMemo(()=>rows.filter(r=>(seasonFilter==="all"||seasonFilter==="unassigned"&&r.season_id==null||String(r.season_id)===seasonFilter)&&[r.slip_number,r.dnote_number,crops.find(c=>c.crop_id===r.crop_id)?.crop_name,r.source_type].join(" ").toLowerCase().includes(query.toLowerCase())),[rows,query,crops,seasonFilter]);
+ const candidates=useMemo(()=>{
+ const dep=date(departureDate),weight=Number(matchWeight);
+ if(!dep||matchWeight.trim()===""||!Number.isFinite(weight)||weight<=0)return [];
+ const d0=Date.parse(dep+"T00:00:00Z");
+ return rows.filter(r=>!r.receiving_wb_number&&r.source_type!=="farm_slip"&&Number(r.net_kg)>0)
+ .map(r=>({...r,days:Math.round((Date.parse(r.weigh_date+"T00:00:00Z")-d0)/86400000),difference:Number(r.net_kg)-weight}))
+ .filter(r=>Math.abs(r.days)<=3)
+ .sort((a,b)=>Math.abs(a.days)-Math.abs(b.days)||Math.abs(a.difference)-Math.abs(b.difference))
+ .slice(0,25);
+ },[rows,departureDate,matchWeight]);
+ function pickMatch(r:D){
+ setMatchPrefill(matchWeight);setSel(r.source_type+":"+(r.source_id||r.farm_slip_id));setMatching(false);setError("");
+ }
  const outDel=rows.filter(r=>!r.receiving_wb_number).length,outGrv=rows.filter(r=>!r.grv_number).length;
  async function save(kind:"wb"|"grv"){if(!selected||selected.source_type==="farm_slip"||!selected.source_id||busy)return;const rec=form.receiving_net_kg.trim()?Number(form.receiving_net_kg):null,rej=form.rejected_kg.trim()?Number(form.rejected_kg):null,acc=form.grv_accepted_kg.trim()?Number(form.grv_accepted_kg):null;
  if(!form.season_id){setError("Select the correct season first.");return;}if(kind==="wb"&&(!form.receiving_wb_number.trim()||!form.receiving_date.trim()||rec===null||form.receiving_moisture_pct.trim()===""||!Number.isFinite(Number(form.receiving_moisture_pct))||Number(form.receiving_moisture_pct)<0||Number(form.receiving_moisture_pct)>100)){setError("Customer WB requires number, date, nett kilograms and moisture percentage.");return;}if(kind==="grv"&&(!form.grv_number.trim()||!form.grv_date.trim()||acc===null)){setError("GRV requires number, date and accepted kilograms.");return;}
@@ -64,7 +78,24 @@ export default function Deliveries(){
  {[s.crop_name||"—",s.customer_name,...[s.wb_qty_kg,s.in_transit_kg,s.received_kg,s.matched_diff_kg,s.premium_kg,s.b1_kg,s.b2_kg,s.b3_kg,s.ug_kg].map(k=>(Number(k)/1000).toFixed(3)),String(s.out_del),String(s.out_grvs)].map((v,j)=><Text key={j} style={{width:j<2?170:95}}>{v}</Text>)}
  </View>)}
  </View></ScrollView>
- <View style={{flexDirection:"row",alignItems:"flex-start"}}>
+ <View style={{backgroundColor:"white",borderRadius:6,padding:14,marginBottom:14}}>
+ <Text style={{fontWeight:"bold",fontSize:17,marginBottom:6}}>Match customer WB to John Sole dispatch</Text>
+ <Text style={{color:"#667085",marginBottom:10}}>Enter the farm departure date and customer's nett kilograms. Matches within 3 days are suggested; you must confirm the original DNote before saving.</Text>
+ <View style={{flexDirection:"row",alignItems:"flex-end",flexWrap:"wrap"}}>
+ <F label="Farm departure date (DD/MM/YYYY)" value={departureDate} onChange={setDepartureDate}/>
+ <F label="Customer receiving nett (kg)" value={matchWeight} onChange={setMatchWeight}/>
+ <B label={matching?"Hide suggestions":"Find matching WB slips"} click={()=>setMatching(x=>!x)}/>
+ </View>
+ {matching?<View>
+ {candidates.length===0?<Text style={{color:"#9e5115",marginBottom:8}}>No candidate dispatches within 3 days, or enter a valid date and positive weight. Search the dispatch list manually if necessary.</Text>:null}
+ {candidates.map(r=><Pressable key={r.source_type+":"+r.source_id} onPress={()=>pickMatch(r)} style={{padding:9,borderTopWidth:1,borderColor:"#e5e9f0",backgroundColor:Math.abs(r.difference)<=200?"#eef8ee":"white"}}>
+ <Text style={{fontWeight:"bold"}}>DNote {r.dnote_number||"—"} · Slip {r.slip_number} · {r.source_type==="scale"?"WB computer":"Manual"}</Text>
+ <Text>Departed {showDate(r.weigh_date)} ({r.days===0?"same day":Math.abs(r.days)+" day(s) "+(r.days<0?"before":"after")}) · Farm WB {money(r.net_kg)} kg · Difference {money(r.difference)} kg</Text>
+ <Text style={{color:"#165a9c"}}>Select this dispatch for Customer WB entry</Text>
+ </Pressable>)}
+ </View>:null}
+ </View>
+  <View style={{flexDirection:"row",alignItems:"flex-start"}}>
  <View style={{width:410,backgroundColor:"white",padding:12,marginRight:16,borderRadius:6}}>
  <F label="Search slip, DNote or crop" value={query} onChange={setQuery}/><B label="Refresh" click={load}/>
  <ScrollView style={{maxHeight:690}}>{displayed.map((r,i)=><Pressable key={r.source_type+":"+(r.source_id||r.farm_slip_id)} onPress={()=>setSel(r.source_type+":"+(r.source_id||r.farm_slip_id))} style={{padding:10,borderBottomWidth:1,borderColor:"#e4e8ed",backgroundColor:sel===r.source_type+":"+(r.source_id||r.farm_slip_id)?"#dcecff":"white"}}>
