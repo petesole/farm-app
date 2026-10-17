@@ -4,10 +4,11 @@ import {Platform,Pressable,ScrollView,Text,TextInput,View} from "react-native";
 import {supabase} from "../supabase";
 type Batch={batch_id:string;created_at:string;label:string|null;status:string};
 type FileRow={file_id:string;batch_id:string;original_filename:string;storage_path:string;extraction_status:string;page_count:number|null};
-type SplitDoc={scan_document_id:string;batch_id:string;file_id:string;page_start:number;page_end:number;document_type:string;storage_path:string;extraction_status:string};
+type SplitDoc={scan_document_id:string;batch_id:string;file_id:string;page_start:number;page_end:number;document_type:string;storage_path:string;extraction_status:string;extracted_data:Record<string,unknown>|null};
 const blue="#175a9e";
 function Btn({name,go,disabled=false}:{name:string;go:()=>void;disabled?:boolean}){return <Pressable onPress={go} disabled={disabled} style={{backgroundColor:disabled?"#99a8b8":blue,padding:11,borderRadius:5,marginRight:9,marginBottom:8}}><Text style={{fontWeight:"bold",color:"white"}}>{name}</Text></Pressable>}
 export default function BatchScanner(){
+ const [reviewId,setReviewId]=useState<string|null>(null),[reviewData,setReviewData]=useState<Record<string,string>>({});
  const [splitDocs,setSplitDocs]=useState<SplitDoc[]>([]),[activeFile,setActiveFile]=useState<string|null>(null),[startPage,setStartPage]=useState("1"),[endPage,setEndPage]=useState("1"),[kind,setKind]=useState("customer_wb");
  const [allowed,setAllowed]=useState<boolean|null>(null),[name,setName]=useState(""),[batches,setBatches]=useState<Batch[]>([]),[files,setFiles]=useState<FileRow[]>([]),[error,setError]=useState(""),[message,setMessage]=useState(""),[busy,setBusy]=useState(false);
  async function refresh(){const [a,b,d]=await Promise.all([supabase.from("wb_scan_batch").select("*").order("created_at",{ascending:false}).limit(100),supabase.from("wb_scan_batch_file").select("*").order("uploaded_at",{ascending:false}).limit(1000),supabase.from("wb_scan_document").select("*").order("created_at",{ascending:false}).limit(1000)]);if(a.error||b.error||d.error){setError(a.error?.message||b.error?.message||d.error?.message||"Unable to load batches");return;}setBatches((a.data||[]) as Batch[]);setFiles((b.data||[]) as FileRow[]);setSplitDocs((d.data||[]) as SplitDoc[]);}
@@ -54,13 +55,32 @@ export default function BatchScanner(){
  setMessage("Document type changed to "+(newType==="customer_wb"?"Customer WB":newType==="grv"?"GRV":"Unclassified")+". The existing PDF has not changed.");
  }catch(e:any){setError(e?.message||"Unable to update document type");}finally{setBusy(false)}
  }
+ async function readDocument(d:SplitDoc){
+ setBusy(true);setError("");setMessage("");
+ try {
+ const out=await supabase.functions.invoke("wb-document-read",{body:{document_id:d.scan_document_id}});
+ if(out.error||out.data?.error)throw new Error(out.data?.error||out.error?.message||"Unable to read PDF");
+ const data=out.data.extracted_data||{};
+ setReviewData(Object.fromEntries(Object.entries(data).filter(([k])=>k!=="uncertain_fields").map(([k,v])=>[k,v==null?"":String(v)])));
+ setReviewId(d.scan_document_id);await refresh();
+ setMessage("Extraction complete. Check all details against the PDF before saving.");
+ }catch(e:any){setError(e?.message||"Unable to read PDF");}finally{setBusy(false)}
+ }
+ async function saveReview(d:SplitDoc){
+ setBusy(true);setError("");
+ try{
+ const out=await supabase.from("wb_scan_document").update({extracted_data:reviewData,extraction_status:"reviewed"}).eq("scan_document_id",d.scan_document_id);
+ if(out.error)throw out.error;
+ setReviewId(null);await refresh();setMessage("Reviewed extraction saved to the PDF only; not posted to WB or GRV records.");
+ }catch(e:any){setError(e?.message||"Save failed");}finally{setBusy(false)}
+ }
  async function openSplit(path:string){const result=await supabase.storage.from("wb-customer-documents").createSignedUrl(path,120);if(result.error){setError(result.error.message);return;}if(typeof window!=="undefined"&&result.data?.signedUrl)window.open(result.data.signedUrl,"_blank");}
  if(Platform.OS!=="web")return <Text>Desktop web only.</Text>;
  if(allowed===null)return <Text style={{padding:20}}>Checking Admin access…</Text>;
  if(!allowed)return <Text style={{padding:20}}>Batch Scanner — Admin only.</Text>;
  return <ScrollView style={{flex:1,backgroundColor:"#f4f6f9"}} contentContainerStyle={{padding:22,minWidth:860}}>
  <Text style={{fontSize:25,fontWeight:"bold",marginBottom:8}}>Customer WB & GRV — Batch Scanner</Text>
- <Text style={{color:"#64748b",marginBottom:16}}>Upload original batches, then choose page ranges to save as individual Customer WB or GRV PDFs. Automatic separation is not active. AI reading requires its secure service key before the review workflow can be enabled.</Text>
+ <Text style={{color:"#64748b",marginBottom:16}}>Upload original batches, then choose page ranges to save as individual Customer WB or GRV PDFs. Automatic separation is not active. Read each saved PDF with AI, then review and correct the values before saving. Nothing is posted automatically to WB or GRV records.</Text>
  <View style={{backgroundColor:"white",padding:16,borderRadius:7,marginBottom:16}}>
  <Text style={{fontWeight:"bold",marginBottom:7}}>Batch label (optional)</Text>
  <TextInput value={name} onChangeText={setName} placeholder="e.g. GMB Concession — 17 October" style={{borderWidth:1,borderColor:"#cbd5e1",padding:9,maxWidth:430,marginBottom:12}}/>
@@ -90,7 +110,21 @@ export default function BatchScanner(){
  <Btn name="Open individual PDF" go={()=>openSplit(d.storage_path)}/>
  <Text style={{marginRight:8,marginBottom:8}}>Change type:</Text>
  {["customer_wb","grv","unknown"].map(t=><Pressable key={t} disabled={busy||d.document_type===t} onPress={()=>changeType(d,t)} style={{padding:9,marginRight:6,marginBottom:8,borderRadius:4,borderWidth:1,borderColor:d.document_type===t?"#15803d":"#9aabb8",backgroundColor:d.document_type===t?"#d4f4de":"white",opacity:busy?0.6:1}}><Text style={{fontWeight:d.document_type===t?"bold":"normal"}}>{t==="customer_wb"?"Customer WB":t==="grv"?"GRV":"Unclassified"}{d.document_type===t?" ✓":""}</Text></Pressable>)}
- </View></View>)}
+ </View>
+ <View style={{flexDirection:"row",marginTop:5}}>
+ <Btn name={busy?"Working…":"Read PDF with AI"} go={()=>readDocument(d)} disabled={busy}/>
+ {d.extracted_data?<Btn name="Review reading" go={()=>{setReviewId(d.scan_document_id);setReviewData(Object.fromEntries(Object.entries(d.extracted_data||{}).filter(([k])=>k!=="uncertain_fields").map(([k,v])=>[k,v==null?"":String(v)])))}}/>:null}
+ </View>
+ {d.extracted_data?.document_type&&d.extracted_data.document_type!==d.document_type?<Text style={{color:"#995a09"}}>Reader classification differs from saved type. Check the PDF and use Change type above if necessary.</Text>:null}
+ {reviewId===d.scan_document_id?<View style={{padding:10,backgroundColor:"white"}}>
+ <Text style={{fontWeight:"bold",marginBottom:7}}>Check extracted information</Text>
+ {Object.entries(reviewData).map(([k,v])=><View key={k} style={{flexDirection:"row",alignItems:"center",marginBottom:6}}>
+ <Text style={{width:180}}>{k.replace(/_/g," ")}</Text>
+ <TextInput value={v} onChangeText={x=>setReviewData(old=>({...old,[k]:x}))} style={{borderWidth:1,borderColor:"#ccc",padding:7,width:300}}/>
+ </View>)}
+ <Btn name="Save reviewed reading" go={()=>saveReview(d)} disabled={busy}/>
+ </View>:null}
+ </View>)}
  </View>)}
  </View>)}
  {!batches.length?<Text>No batches uploaded yet.</Text>:null}
