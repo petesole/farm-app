@@ -84,7 +84,7 @@ export default function BatchScanner(){
  <View style={{backgroundColor:"white",padding:16,borderRadius:7,marginBottom:16}}>
  <Text style={{fontWeight:"bold",marginBottom:7}}>Batch label (optional)</Text>
  <TextInput value={name} onChangeText={setName} placeholder="e.g. GMB Concession — 17 October" style={{borderWidth:1,borderColor:"#cbd5e1",padding:9,maxWidth:430,marginBottom:12}}/>
- <View style={{flexDirection:"row"}}><Btn name={busy?"Uploading…":"Choose files and upload batch"} go={selectFiles} disabled={busy}/><Btn name="Refresh" go={refresh}/><Btn name="Return to WB Admin" go={()=>router.push("/weighbridge")}/></View>
+ <View style={{flexDirection:"row"}}><Btn name={busy?"Uploading…":"Choose files and upload batch"} go={selectFiles} disabled={busy}/><Btn name="Refresh" go={refresh}/><Btn name="Receiving Documents" go={()=>router.push("/weighbridge-receiving-inbox")}/><Btn name="Return to WB Admin" go={()=>router.push("/weighbridge")}/></View>
  {message?<Text style={{color:"#166534",marginTop:8}}>{message}</Text>:null}
  {error?<Text style={{color:"#b42318",marginTop:8}}>{error}</Text>:null}
  </View>
