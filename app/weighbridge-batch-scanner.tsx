@@ -36,11 +36,12 @@ export default function BatchScanner(){
  if(!activeFile||busy)return;
  const start=Number(startPage),end=Number(endPage);
  if(!Number.isInteger(start)||!Number.isInteger(end)||start<1||end<start){setError("Enter a valid first and last page.");return;}
+ if(splitDocs.some(d=>d.file_id===activeFile&&start<=d.page_end&&end>=d.page_start)){setError("These pages have already been saved as an individual document. Choose unused pages.");return;}
  setBusy(true);setError("");setMessage("");
  const result=await supabase.functions.invoke("wb-document-split",{body:{file_id:activeFile,page_start:start,page_end:end,document_type:kind}});
  setBusy(false);if(result.error||result.data?.error){setError(result.data?.error||result.error?.message||"PDF split failed");return;}
  setMessage("Individual PDF saved, pages "+start+"–"+end+". The original batch remains unchanged.");
- await refresh();
+ await refresh();setStartPage(String(end+1));setEndPage(String(end+1));
  }
  async function openSplit(path:string){const result=await supabase.storage.from("wb-customer-documents").createSignedUrl(path,120);if(result.error){setError(result.error.message);return;}if(typeof window!=="undefined"&&result.data?.signedUrl)window.open(result.data.signedUrl,"_blank");}
  if(Platform.OS!=="web")return <Text>Desktop web only.</Text>;
@@ -59,19 +60,20 @@ export default function BatchScanner(){
  <Text style={{fontSize:19,fontWeight:"bold",marginBottom:9}}>Saved batches</Text>
  {batches.map(b=><View key={b.batch_id} style={{backgroundColor:"white",borderRadius:6,padding:14,marginBottom:9}}>
  <Text style={{fontWeight:"bold"}}>{b.label||"Scanned batch"} · {new Date(b.created_at).toLocaleString("en-GB")}</Text>
- <Text style={{color:"#64748b",marginVertical:5}}>Original files kept · Select an original PDF to split pages · AI reading not yet connected</Text>
+ <Text style={{color:"#64748b",marginVertical:5}}>ORIGINAL BATCH (backup) is retained unchanged. Individual documents are listed below each file.</Text>
  {files.filter(f=>f.batch_id===b.batch_id).map(f=><View key={f.file_id} style={{paddingVertical:8,borderTopWidth:1,borderColor:"#edf1f5"}}>
- <Pressable onPress={()=>openOriginal(f)}><Text style={{color:blue}}>{f.original_filename} — Open original scan</Text></Pressable>
- <View style={{flexDirection:"row",marginTop:7}}><Btn name={activeFile===f.file_id?"Hide split options":"Separate PDF pages"} go={()=>{setActiveFile(activeFile===f.file_id?null:f.file_id);setStartPage("1");setEndPage("1")}}/></View>
+ <Text style={{fontWeight:"bold",marginBottom:5}}>Original batch file: {f.original_filename}</Text><View style={{flexDirection:"row"}}><Btn name="View complete original PDF" go={()=>openOriginal(f)}/></View>
+ <View style={{flexDirection:"row",marginTop:7}}><Btn name={activeFile===f.file_id?"Hide split options":"Separate PDF pages"} go={()=>{setActiveFile(activeFile===f.file_id?null:f.file_id);setStartPage(String(Math.max(0,...splitDocs.filter(d=>d.file_id===f.file_id).map(d=>d.page_end))+1));setEndPage(String(Math.max(0,...splitDocs.filter(d=>d.file_id===f.file_id).map(d=>d.page_end))+1))}}/></View>
  {activeFile===f.file_id?<View style={{padding:10,backgroundColor:"#f4f7fc"}}>
- <Text style={{marginBottom:8}}>Check the original PDF to identify page boundaries. Create one separate PDF per receipt.</Text>
+ <Text style={{marginBottom:8}}>For a five-page scan containing five one-page Customer WB slips, save pages 1, 2, 3, 4 and 5 individually. After each save, the next page is selected automatically. Already saved pages cannot be saved again.</Text>
  <View style={{flexDirection:"row",alignItems:"center",flexWrap:"wrap"}}>
  <Text style={{marginRight:6}}>From page</Text><TextInput value={startPage} onChangeText={setStartPage} style={{borderWidth:1,borderColor:"#bdc8d7",backgroundColor:"white",padding:8,width:60,marginRight:12}}/>
  <Text style={{marginRight:6}}>To page</Text><TextInput value={endPage} onChangeText={setEndPage} style={{borderWidth:1,borderColor:"#bdc8d7",backgroundColor:"white",padding:8,width:60,marginRight:12}}/>
  {["customer_wb","grv","unknown"].map(x=><Pressable key={x} onPress={()=>setKind(x)} style={{padding:8,marginRight:6,backgroundColor:kind===x?"#cee7ff":"white",borderWidth:1,borderColor:"#cbd5e1"}}><Text>{x==="customer_wb"?"Customer WB":x==="grv"?"GRV":"Unclassified"}</Text></Pressable>)}
- </View><View style={{flexDirection:"row",marginTop:10}}><Btn name={busy?"Working…":"Save individual PDF"} go={splitPdf} disabled={busy}/></View>
+ </View><View style={{flexDirection:"row",marginTop:10}}><Btn name={busy?"Working…":splitDocs.some(d=>d.file_id===f.file_id&&Number(startPage)<=d.page_end&&Number(endPage)>=d.page_start)?"Pages already saved":"Save these pages as separate document"} go={splitPdf} disabled={busy||splitDocs.some(d=>d.file_id===f.file_id&&Number(startPage)<=d.page_end&&Number(endPage)>=d.page_start)}/></View>
  </View>:null}
- {splitDocs.filter(d=>d.file_id===f.file_id).map(d=><Pressable key={d.scan_document_id} onPress={()=>openSplit(d.storage_path)} style={{padding:7,marginTop:4,backgroundColor:"#edf7ed"}}><Text style={{color:blue}}>Saved {d.document_type==="customer_wb"?"Customer WB":d.document_type==="grv"?"GRV":"document"} · pages {d.page_start}–{d.page_end} · Open separated PDF</Text></Pressable>)}
+ {splitDocs.some(d=>d.file_id===f.file_id)?<Text style={{fontWeight:"bold",marginTop:6}}>Individual documents saved from this batch:</Text>:null}
+ {splitDocs.filter(d=>d.file_id===f.file_id).sort((a,b)=>a.page_start-b.page_start).map(d=><Pressable key={d.scan_document_id} onPress={()=>openSplit(d.storage_path)} style={{padding:7,marginTop:4,backgroundColor:"#edf7ed"}}><Text style={{color:blue}}>Saved {d.document_type==="customer_wb"?"Customer WB":d.document_type==="grv"?"GRV":"document"} · pages {d.page_start}–{d.page_end} · Open separated PDF</Text></Pressable>)}
  </View>)}
  </View>)}
  {!batches.length?<Text>No batches uploaded yet.</Text>:null}
