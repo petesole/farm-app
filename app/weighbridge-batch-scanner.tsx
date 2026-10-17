@@ -59,7 +59,7 @@ export default function BatchScanner(){
  setBusy(true);setError("");setMessage("");
  try {
  const out=await supabase.functions.invoke("wb-document-read",{body:{document_id:d.scan_document_id}});
- if(out.error||out.data?.error)throw new Error(out.data?.error||out.error?.message||"Unable to read PDF");
+ if(out.error||out.data?.error)throw new Error(out.data?.error||out.error?.context?.statusText||out.error?.message||"Unable to read PDF");
  const data=out.data.extracted_data||{};
  setReviewData(Object.fromEntries(Object.entries(data).filter(([k])=>k!=="uncertain_fields").map(([k,v])=>[k,v==null?"":String(v)])));
  setReviewId(d.scan_document_id);await refresh();
