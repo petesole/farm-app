@@ -44,6 +44,16 @@ export default function BatchScanner(){
  setMessage("Individual PDF saved, pages "+start+"–"+end+". The original batch remains unchanged.");
  await refresh();const pages=Number(result.data?.total_pages)||maxPages;if(pages&&end>=pages){setActiveFile(null);setMessage("All "+pages+" pages have been separated. The complete original PDF is retained.");}else{setStartPage(String(end+1));setEndPage(String(end+1));}
  }
+ async function changeType(d:SplitDoc,newType:string){
+ if(d.document_type===newType||busy)return;
+ setBusy(true);setError("");setMessage("");
+ try{
+ const result=await supabase.from("wb_scan_document").update({document_type:newType}).eq("scan_document_id",d.scan_document_id).select("scan_document_id").single();
+ if(result.error)throw result.error;
+ setSplitDocs(old=>old.map(x=>x.scan_document_id===d.scan_document_id?{...x,document_type:newType}:x));
+ setMessage("Document type changed to "+(newType==="customer_wb"?"Customer WB":newType==="grv"?"GRV":"Unclassified")+". The existing PDF has not changed.");
+ }catch(e:any){setError(e?.message||"Unable to update document type");}finally{setBusy(false)}
+ }
  async function openSplit(path:string){const result=await supabase.storage.from("wb-customer-documents").createSignedUrl(path,120);if(result.error){setError(result.error.message);return;}if(typeof window!=="undefined"&&result.data?.signedUrl)window.open(result.data.signedUrl,"_blank");}
  if(Platform.OS!=="web")return <Text>Desktop web only.</Text>;
  if(allowed===null)return <Text style={{padding:20}}>Checking Admin access…</Text>;
@@ -74,7 +84,13 @@ export default function BatchScanner(){
  </View><View style={{flexDirection:"row",marginTop:10}}><Btn name={busy?"Working…":splitDocs.some(d=>d.file_id===f.file_id&&Number(startPage)<=d.page_end&&Number(endPage)>=d.page_start)?"Pages already saved":"Save these pages as separate document"} go={splitPdf} disabled={busy||splitDocs.some(d=>d.file_id===f.file_id&&Number(startPage)<=d.page_end&&Number(endPage)>=d.page_start)}/></View>
  </View>:null}
  {splitDocs.some(d=>d.file_id===f.file_id)?<Text style={{fontWeight:"bold",marginTop:6}}>Individual documents saved from this batch:</Text>:null}
- {splitDocs.filter(d=>d.file_id===f.file_id).sort((a,b)=>a.page_start-b.page_start).map(d=><Pressable key={d.scan_document_id} onPress={()=>openSplit(d.storage_path)} style={{padding:7,marginTop:4,backgroundColor:"#edf7ed"}}><Text style={{color:blue}}>Saved {d.document_type==="customer_wb"?"Customer WB":d.document_type==="grv"?"GRV":"document"} · pages {d.page_start}–{d.page_end} · Open separated PDF</Text></Pressable>)}
+ {splitDocs.filter(d=>d.file_id===f.file_id).sort((a,b)=>a.page_start-b.page_start).map(d=><View key={d.scan_document_id} style={{padding:10,marginTop:5,backgroundColor:"#edf7ed",borderRadius:5}}>
+ <Text style={{fontWeight:"bold"}}>Pages {d.page_start}–{d.page_end} · {d.document_type==="customer_wb"?"Customer WB":d.document_type==="grv"?"GRV":"Unclassified"}</Text>
+ <View style={{flexDirection:"row",alignItems:"center",flexWrap:"wrap",marginTop:7}}>
+ <Btn name="Open individual PDF" go={()=>openSplit(d.storage_path)}/>
+ <Text style={{marginRight:8,marginBottom:8}}>Change type:</Text>
+ {["customer_wb","grv","unknown"].map(t=><Pressable key={t} disabled={busy||d.document_type===t} onPress={()=>changeType(d,t)} style={{padding:9,marginRight:6,marginBottom:8,borderRadius:4,borderWidth:1,borderColor:d.document_type===t?"#15803d":"#9aabb8",backgroundColor:d.document_type===t?"#d4f4de":"white",opacity:busy?0.6:1}}><Text style={{fontWeight:d.document_type===t?"bold":"normal"}}>{t==="customer_wb"?"Customer WB":t==="grv"?"GRV":"Unclassified"}{d.document_type===t?" ✓":""}</Text></Pressable>)}
+ </View></View>)}
  </View>)}
  </View>)}
  {!batches.length?<Text>No batches uploaded yet.</Text>:null}
