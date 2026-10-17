@@ -60,7 +60,7 @@ export default function BatchScanner(){
  if(!allowed)return <Text style={{padding:20}}>Batch Scanner — Admin only.</Text>;
  return <ScrollView style={{flex:1,backgroundColor:"#f4f6f9"}} contentContainerStyle={{padding:22,minWidth:860}}>
  <Text style={{fontSize:25,fontWeight:"bold",marginBottom:8}}>Customer WB & GRV — Batch Scanner</Text>
- <Text style={{color:"#64748b",marginBottom:16}}>Upload original batches, then choose page ranges to save as individual Customer WB or GRV PDFs. Automatic page recognition and AI field extraction are not connected yet.</Text>
+ <Text style={{color:"#64748b",marginBottom:16}}>Upload original batches, then choose page ranges to save as individual Customer WB or GRV PDFs. Automatic separation is not active. AI reading requires its secure service key before the review workflow can be enabled.</Text>
  <View style={{backgroundColor:"white",padding:16,borderRadius:7,marginBottom:16}}>
  <Text style={{fontWeight:"bold",marginBottom:7}}>Batch label (optional)</Text>
  <TextInput value={name} onChangeText={setName} placeholder="e.g. GMB Concession — 17 October" style={{borderWidth:1,borderColor:"#cbd5e1",padding:9,maxWidth:430,marginBottom:12}}/>
