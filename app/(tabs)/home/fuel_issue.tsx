@@ -35,7 +35,8 @@ type VehicleRow = {
   vehicle_discontinued?: boolean;
   has_meter: boolean | null;
   meter_type: 'HOURS' | 'KM' | null;
-  vehicle_type_id: number | null;
+  vehicle_type_id: number | string | null;
+  tractor_class_id: number | string | null;
 };
 
 type DashboardForStock = {
@@ -118,7 +119,9 @@ export default function FuelIssueScreen() {
     [vehicles, vehicleId]
   );
 
-  const planEligible = selectedVehicle?.vehicle_type_id === 1 || selectedVehicle?.vehicle_type_id === 2;
+  const vehicleType = Number(selectedVehicle?.vehicle_type_id ?? 0);
+  const tractorClass = Number(selectedVehicle?.tractor_class_id ?? 0);
+  const planEligible = vehicleType === 1 || vehicleType === 2 || [1, 2, 3, 10].includes(tractorClass);
   const issueUnplanned = !planEligible || unplanned;
   const showMeter = !!selectedVehicle?.has_meter;
   const meterLabel =
@@ -148,7 +151,7 @@ export default function FuelIssueScreen() {
     const { data, error } = await supabase
       .from('vehicle')
       .select(
-        'vehicle_id,vehicle_name,vehicle_discontinued,has_meter,meter_type,vehicle_type_id'
+        'vehicle_id,vehicle_name,vehicle_discontinued,has_meter,meter_type,vehicle_type_id,tractor_class_id'
       )
       .eq('vehicle_discontinued', false)
       .order('vehicle_name', { ascending: true });
