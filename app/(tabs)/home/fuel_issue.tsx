@@ -50,7 +50,7 @@ type PlannedJob = {
   budget: number | null; issued: number; tractor_class_id: number | null;
   effective_hectares: number | null; standard_l_per_ha: number | null;
   budget_work_litres: number | null; budget_trip_count: number | null;
-  trip_litres_per_trip: number | null; budget_trip_litres: number | null;
+  trip_litres_per_trip: number | null; budget_trip_litres: number | null; trips_issued: number;
 };
 type SplitRow = { key: string; litres: string };
 const planKey = (j: PlannedJob) =>
@@ -76,6 +76,7 @@ export default function FuelIssueScreen() {
   const [plannedJobs,setPlannedJobs] = useState<PlannedJob[]>([]);
   const [splits,setSplits] = useState<SplitRow[]>([{key:'',litres:''}]);
   const [unplanned,setUnplanned] = useState(false);
+  const [issueMode,setIssueMode] = useState<'WORK'|'TRIP'>('WORK');
   const [planLoading,setPlanLoading] = useState(false);
   const splitTotal = splits.reduce((n,r)=>n+(Number(r.litres)||0),0);
   const loadPlannedJobs = async () => {
@@ -95,7 +96,7 @@ export default function FuelIssueScreen() {
         .select('tracecode_id,vehicle_job_id,target_dap,sequence_no,tracecode_name,vehicle_job_name,total_budget_litres,tractor_class_id,effective_hectares,standard_l_per_ha,budget_work_litres,budget_trip_count,trip_litres_per_trip,budget_trip_litres')
         .in('tracecode_id',traceIds),
       supabase.from('fuel_allocation')
-        .select('tracecode_id,vehicle_job_id,planned_target_dap,planned_sequence_no,fuel_allocated')
+        .select('tracecode_id,vehicle_job_id,planned_target_dap,planned_sequence_no,fuel_allocated,allocation_kind')
         .not('planned_week_start','is',null).in('tracecode_id',traceIds)
     ]);
     if(budget.error||allocated.error){
@@ -119,7 +120,7 @@ export default function FuelIssueScreen() {
         budget_work_litres:b?.budget_work_litres==null?null:Number(b.budget_work_litres),
         budget_trip_count:b?.budget_trip_count==null?null:Number(b.budget_trip_count),
         trip_litres_per_trip:b?.trip_litres_per_trip==null?null:Number(b.trip_litres_per_trip),
-        budget_trip_litres:b?.budget_trip_litres==null?null:Number(b.budget_trip_litres),issued};
+        budget_trip_litres:b?.budget_trip_litres==null?null:Number(b.budget_trip_litres),issued,trips_issued:(allocated.data??[]).filter(x=>x.tracecode_id===j.tracecode_id&&x.vehicle_job_id===j.vehicle_job_id&&x.planned_target_dap===j.target_dap&&x.planned_sequence_no===j.sequence_no&&x.allocation_kind==='TRIP').length};
     });
     setPlannedJobs(items);setPlanLoading(false);
   };
@@ -243,6 +244,7 @@ export default function FuelIssueScreen() {
     loadLastMeterReading(vehicleId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
     setSplits([{key:'',litres:''}]);
+    setIssueMode('WORK');
   }, [vehicleId, vehicles]);
 
   const saveFuelIssue = async () => {
@@ -299,6 +301,9 @@ export default function FuelIssueScreen() {
     }
 
     if(!issueUnplanned){
+      if(issueMode==='TRIP' && (splits.length!==1 || !visiblePlannedJobs.some(j=>planKey(j)===splits[0].key && j.budget_trip_count!==null && j.trips_issued<Math.floor(j.budget_trip_count) && j.trip_litres_per_trip!==null && Math.abs(Number(splits[0].litres)-j.trip_litres_per_trip)<0.001))){
+        Alert.alert('One trip only','Select one job with a remaining trip and issue exactly its trip allowance.');return;
+      }
       if(splits.some(x=>!visiblePlannedJobs.some(j=>planKey(j)===x.key))){
         Alert.alert('Wrong vehicle class','Select a planned job valid for this vehicle.');return;
       }
@@ -348,7 +353,7 @@ export default function FuelIssueScreen() {
             const job=plannedJobs.find(j=>planKey(j)===x.key)!;
             return {week_start:job.week_start,tracecode_id:job.tracecode_id,
               vehicle_job_id:job.vehicle_job_id,target_dap:job.target_dap,
-              sequence_no:job.sequence_no,litres:Number(x.litres)};
+              sequence_no:job.sequence_no,litres:Number(x.litres),kind:issueMode};
           }),
         });
     const {error}=result;
@@ -420,12 +425,25 @@ export default function FuelIssueScreen() {
             {planLoading ? <ActivityIndicator/> : null}
             {!planLoading&&visiblePlannedJobs.length===0?
               <ThemedText style={styles.small}>No selected weekly jobs in the current window. Select work in Weekly Planning or mark this issue Unplanned.</ThemedText>:null}
+            <View style={{flexDirection:'row',gap:8}}>
+              <Pressable style={[styles.secondaryBtn,{flex:1}]} disabled={saving} onPress={()=>{setIssueMode('WORK');setSplits([{key:'',litres:''}]);setLitres('');}}>
+                <ThemedText>{issueMode==='WORK'?'✓ Field Work':'Field Work'}</ThemedText>
+              </Pressable>
+              <Pressable style={[styles.secondaryBtn,{flex:1}]} disabled={saving} onPress={()=>{setIssueMode('TRIP');setSplits([{key:'',litres:''}]);setLitres('');}}>
+                <ThemedText>{issueMode==='TRIP'?'✓ One Trip':'One Trip'}</ThemedText>
+              </Pressable>
+            </View>
             {splits.map((split,i)=>{
               const job=visiblePlannedJobs.find(j=>planKey(j)===split.key);
               return <View key={i} style={{gap:6}}>
                 <ThemedText style={styles.small}>Job {i+1}</ThemedText>
                 <View style={styles.pickerBox}>
-                  <Picker selectedValue={split.key} enabled={!saving} onValueChange={key=>setSplits(old=>old.map((r,n)=>n===i?{...r,key}:r))}>
+                  <Picker selectedValue={split.key} enabled={!saving} onValueChange={key=>{
+                    const chosen=visiblePlannedJobs.find(j=>planKey(j)===key);
+                    const tripLitres=issueMode==='TRIP'&&chosen?.trip_litres_per_trip!=null?String(chosen.trip_litres_per_trip):'';
+                    setSplits(old=>old.map((r,n)=>n===i?{...r,key,litres:issueMode==='TRIP'?tripLitres:r.litres}:r));
+                    if(issueMode==='TRIP')setLitres(tripLitres);
+                  }}>
                     <Picker.Item label="Select planned job..." value=""/>
                     {visiblePlannedJobs.map(j=><Picker.Item key={planKey(j)}
                       label={`${j.tracecode_name} • ${j.vehicle_job_name} • DAP ${j.target_dap} • ${j.week_start}`}
@@ -436,20 +454,21 @@ export default function FuelIssueScreen() {
                   <ThemedText style={styles.small}>Area: {job.effective_hectares?.toFixed(2) ?? '—'} ha • Field rate: {job.standard_l_per_ha?.toFixed(2) ?? 'N/A'} L/ha</ThemedText>
                   <ThemedText style={styles.small}>Field work: {job.budget_work_litres?.toFixed(1) ?? '—'} L</ThemedText>
                   <ThemedText style={styles.small}>Relocation / trips: {job.budget_trip_count?.toFixed(1) ?? '—'} trips × {job.trip_litres_per_trip?.toFixed(2) ?? '—'} L/trip = {job.budget_trip_litres?.toFixed(1) ?? '—'} L</ThemedText>
+                  <ThemedText style={styles.small}>Trips issued: {job.trips_issued} • Remaining: {Math.max(0,Math.floor(job.budget_trip_count??0)-job.trips_issued)}</ThemedText>
                   <ThemedText style={styles.small}>Total budget: {job.budget?.toFixed(1) ?? '—'} L • Previously issued: {job.issued.toFixed(1)} L</ThemedText>
                   <ThemedText style={styles.small}>Balance after this issue: {job.budget===null?'—':(job.budget-job.issued-(Number(split.litres)||0)).toFixed(1)+' L'}</ThemedText>
                 </View>:null}
                 <TextInput style={styles.input} value={split.litres}
                   onChangeText={litres=>setSplits(old=>old.map((r,n)=>n===i?{...r,litres}:r))}
-                  placeholder="Litres for this job" keyboardType="numeric" editable={!saving}/>
+                  placeholder="Litres for this job" keyboardType="numeric" editable={!saving && issueMode==='WORK'}/>
                 {splits.length>1?<Pressable onPress={()=>setSplits(old=>old.filter((_,n)=>n!==i))} disabled={saving}>
                   <ThemedText style={styles.small}>Remove job</ThemedText>
                 </Pressable>:null}
               </View>;
             })}
-            <Pressable style={styles.secondaryBtn} onPress={()=>setSplits(old=>[...old,{key:'',litres:''}])} disabled={saving}>
+            {issueMode==='WORK' ? <Pressable style={styles.secondaryBtn} onPress={()=>setSplits(old=>[...old,{key:'',litres:''}])} disabled={saving}>
               <ThemedText>+ Add another planned job</ThemedText>
-            </Pressable>
+            </Pressable> : null}
             <ThemedText style={styles.small}>Allocated to planned jobs: {splitTotal.toFixed(1)} L</ThemedText>
             <Pressable onPress={loadPlannedJobs} disabled={saving}><ThemedText style={styles.small}>Refresh planned jobs</ThemedText></Pressable>
           </View>
@@ -464,7 +483,7 @@ export default function FuelIssueScreen() {
           onChangeText={setLitres}
           placeholder="Enter litres"
           keyboardType="numeric"
-          editable={!saving}
+          editable={!saving && (issueMode==='WORK' || issueUnplanned)}
         />
         <ThemedText style={styles.small}>
           This will be blocked if it exceeds current stock.
