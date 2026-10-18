@@ -50,7 +50,7 @@ type PlannedJob = {
   budget: number | null; issued: number; tractor_class_id: number | null;
   effective_hectares: number | null; standard_l_per_ha: number | null;
   budget_work_litres: number | null; budget_trip_count: number | null;
-  trip_litres_per_trip: number | null; budget_trip_litres: number | null; trips_issued: number;
+  trip_litres_per_trip: number | null; budget_trip_litres: number | null; trips_issued: number; work_issued: number; trip_issued_litres: number;
 };
 type SplitRow = { key: string; litres: string };
 const planKey = (j: PlannedJob) =>
@@ -120,7 +120,10 @@ export default function FuelIssueScreen() {
         budget_work_litres:b?.budget_work_litres==null?null:Number(b.budget_work_litres),
         budget_trip_count:b?.budget_trip_count==null?null:Number(b.budget_trip_count),
         trip_litres_per_trip:b?.trip_litres_per_trip==null?null:Number(b.trip_litres_per_trip),
-        budget_trip_litres:b?.budget_trip_litres==null?null:Number(b.budget_trip_litres),issued,trips_issued:(allocated.data??[]).filter(x=>x.tracecode_id===j.tracecode_id&&x.vehicle_job_id===j.vehicle_job_id&&x.planned_target_dap===j.target_dap&&x.planned_sequence_no===j.sequence_no&&x.allocation_kind==='TRIP').length};
+        budget_trip_litres:b?.budget_trip_litres==null?null:Number(b.budget_trip_litres),issued,
+        work_issued:(allocated.data??[]).filter(x=>x.tracecode_id===j.tracecode_id&&x.vehicle_job_id===j.vehicle_job_id&&x.planned_target_dap===j.target_dap&&x.planned_sequence_no===j.sequence_no&&x.allocation_kind!=='TRIP').reduce((n,x)=>n+Number(x.fuel_allocated||0),0),
+        trip_issued_litres:(allocated.data??[]).filter(x=>x.tracecode_id===j.tracecode_id&&x.vehicle_job_id===j.vehicle_job_id&&x.planned_target_dap===j.target_dap&&x.planned_sequence_no===j.sequence_no&&x.allocation_kind==='TRIP').reduce((n,x)=>n+Number(x.fuel_allocated||0),0),
+        trips_issued:(allocated.data??[]).filter(x=>x.tracecode_id===j.tracecode_id&&x.vehicle_job_id===j.vehicle_job_id&&x.planned_target_dap===j.target_dap&&x.planned_sequence_no===j.sequence_no&&x.allocation_kind==='TRIP').length};
     });
     setPlannedJobs(items);setPlanLoading(false);
   };
@@ -455,8 +458,9 @@ export default function FuelIssueScreen() {
                   <ThemedText style={styles.small}>Field work: {job.budget_work_litres?.toFixed(1) ?? '—'} L</ThemedText>
                   <ThemedText style={styles.small}>Relocation / trips: {job.budget_trip_count?.toFixed(1) ?? '—'} trips × {job.trip_litres_per_trip?.toFixed(2) ?? '—'} L/trip = {job.budget_trip_litres?.toFixed(1) ?? '—'} L</ThemedText>
                   <ThemedText style={styles.small}>Trips issued: {job.trips_issued} • Remaining: {Math.max(0,Math.floor(job.budget_trip_count??0)-job.trips_issued)}</ThemedText>
+                  <ThemedText style={styles.small}>Field work issued: {job.work_issued.toFixed(1)} L • Field work remaining: {job.budget_work_litres==null?'—':(job.budget_work_litres-job.work_issued-(issueMode==='WORK'?(Number(split.litres)||0):0)).toFixed(1)+' L'}</ThemedText>
+                  <ThemedText style={styles.small}>Trip fuel issued: {job.trip_issued_litres.toFixed(1)} L • Trip fuel remaining: {job.budget_trip_litres==null?'—':(job.budget_trip_litres-job.trip_issued_litres-(issueMode==='TRIP'?(Number(split.litres)||0):0)).toFixed(1)+' L'}</ThemedText>
                   <ThemedText style={styles.small}>Total budget: {job.budget?.toFixed(1) ?? '—'} L • Previously issued: {job.issued.toFixed(1)} L</ThemedText>
-                  <ThemedText style={styles.small}>Balance after this issue: {job.budget===null?'—':(job.budget-job.issued-(Number(split.litres)||0)).toFixed(1)+' L'}</ThemedText>
                 </View>:null}
                 <TextInput style={styles.input} value={split.litres}
                   onChangeText={litres=>setSplits(old=>old.map((r,n)=>n===i?{...r,litres}:r))}
