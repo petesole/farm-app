@@ -35,6 +35,7 @@ type VehicleRow = {
   vehicle_discontinued?: boolean;
   has_meter: boolean | null;
   meter_type: 'HOURS' | 'KM' | null;
+  vehicle_type_id: number | null;
 };
 
 type DashboardForStock = {
@@ -117,6 +118,8 @@ export default function FuelIssueScreen() {
     [vehicles, vehicleId]
   );
 
+  const planEligible = selectedVehicle?.vehicle_type_id === 1 || selectedVehicle?.vehicle_type_id === 2;
+  const issueUnplanned = !planEligible || unplanned;
   const showMeter = !!selectedVehicle?.has_meter;
   const meterLabel =
     selectedVehicle?.meter_type === 'KM'
@@ -145,7 +148,7 @@ export default function FuelIssueScreen() {
     const { data, error } = await supabase
       .from('vehicle')
       .select(
-        'vehicle_id,vehicle_name,vehicle_discontinued,has_meter,meter_type'
+        'vehicle_id,vehicle_name,vehicle_discontinued,has_meter,meter_type,vehicle_type_id'
       )
       .eq('vehicle_discontinued', false)
       .order('vehicle_name', { ascending: true });
@@ -271,7 +274,7 @@ export default function FuelIssueScreen() {
       return;
     }
 
-    if(!unplanned){
+    if(!issueUnplanned){
       if(!splits.length||splits.some(x=>!x.key||!Number.isFinite(Number(x.litres))||Number(x.litres)<=0)){
         Alert.alert('Planned jobs required','Select a job and litres for every row, or mark issue as unplanned.');return;
       }
@@ -305,7 +308,7 @@ export default function FuelIssueScreen() {
       return;
     }
 
-    const result = unplanned
+    const result = issueUnplanned
       ? await supabase.from('fuel_issue').insert({
           fuel_issue_date:todayISO,vehicle_id:vehicleId,fuel_issued:qty,
           meter_reading:selected.has_meter?meterValue:null,
@@ -377,12 +380,14 @@ export default function FuelIssueScreen() {
       </ThemedView>
 
       <ThemedView style={styles.card}>
-        <ThemedText type="subtitle">Planned Job Allocation</ThemedText>
-        <ThemedText style={styles.small}>Select jobs from weekly planning. Fuel may be divided across multiple jobs.</ThemedText>
-        <Pressable style={styles.secondaryBtn} disabled={saving} onPress={()=>setUnplanned(x=>!x)}>
-          <ThemedText>{unplanned?'Unplanned issue ✓ (tap for planned)':'Planned issue ✓ (tap for unplanned)'}</ThemedText>
-        </Pressable>
-        {!unplanned ? (
+        <ThemedText type="subtitle">{planEligible ? 'Planned Job Allocation' : 'Unplanned Fuel Issue'}</ThemedText>
+        {planEligible ? <ThemedText style={styles.small}>Select jobs from weekly planning. Fuel may be divided across multiple jobs.</ThemedText> : null}
+        {planEligible ? (
+          <Pressable style={styles.secondaryBtn} disabled={saving} onPress={()=>setUnplanned(x=>!x)}>
+            <ThemedText>{unplanned?'Unplanned issue ✓ (tap for planned)':'Planned issue ✓ (tap for unplanned)'}</ThemedText>
+          </Pressable>
+        ) : <ThemedText style={styles.small}>Unplanned issue — this vehicle is not a tractor, harvester or truck.</ThemedText>}
+        {planEligible && !unplanned ? (
           <View style={{gap:10}}>
             {planLoading ? <ActivityIndicator/> : null}
             {!planLoading&&plannedJobs.length===0?
