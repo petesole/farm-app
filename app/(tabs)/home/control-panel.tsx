@@ -24,6 +24,11 @@ export default function ControlPanelScreen() {
 
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
         <View style={styles.grid}>
+          <Tile
+            title="Stock V2 Spray Planning (Preview)"
+            subtitle="Development only — no saving or stock movement"
+            onPress={() => router.push("/(tabs)/home/stock-v2-spray-planning" as any)}
+          />
           {/* ✅ Users (Invite + Roles) */}
           <Tile
             title="Users"
