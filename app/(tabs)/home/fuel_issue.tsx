@@ -48,6 +48,9 @@ type PlannedJob = {
   target_dap: number; sequence_no: number;
   tracecode_name: string; vehicle_job_name: string;
   budget: number | null; issued: number; tractor_class_id: number | null;
+  effective_hectares: number | null; standard_l_per_ha: number | null;
+  budget_work_litres: number | null; budget_trip_count: number | null;
+  trip_litres_per_trip: number | null; budget_trip_litres: number | null;
 };
 type SplitRow = { key: string; litres: string };
 const planKey = (j: PlannedJob) =>
@@ -89,7 +92,7 @@ export default function FuelIssueScreen() {
     if(!traceIds.length){setPlannedJobs([]);setPlanLoading(false);return;}
     const [budget,allocated]=await Promise.all([
       supabase.from('fuel_budget_activity_v')
-        .select('tracecode_id,vehicle_job_id,target_dap,sequence_no,tracecode_name,vehicle_job_name,total_budget_litres,tractor_class_id')
+        .select('tracecode_id,vehicle_job_id,target_dap,sequence_no,tracecode_name,vehicle_job_name,total_budget_litres,tractor_class_id,effective_hectares,standard_l_per_ha,budget_work_litres,budget_trip_count,trip_litres_per_trip,budget_trip_litres')
         .in('tracecode_id',traceIds),
       supabase.from('fuel_allocation')
         .select('tracecode_id,vehicle_job_id,planned_target_dap,planned_sequence_no,fuel_allocated')
@@ -110,7 +113,13 @@ export default function FuelIssueScreen() {
       return {...j,tracecode_name:b?.tracecode_name??String(j.tracecode_id),
         vehicle_job_name:b?.vehicle_job_name??String(j.vehicle_job_id),
         budget:b?.total_budget_litres==null?null:Number(b.total_budget_litres),
-        tractor_class_id:b?.tractor_class_id==null?null:Number(b.tractor_class_id),issued};
+        tractor_class_id:b?.tractor_class_id==null?null:Number(b.tractor_class_id),
+        effective_hectares:b?.effective_hectares==null?null:Number(b.effective_hectares),
+        standard_l_per_ha:b?.standard_l_per_ha==null?null:Number(b.standard_l_per_ha),
+        budget_work_litres:b?.budget_work_litres==null?null:Number(b.budget_work_litres),
+        budget_trip_count:b?.budget_trip_count==null?null:Number(b.budget_trip_count),
+        trip_litres_per_trip:b?.trip_litres_per_trip==null?null:Number(b.trip_litres_per_trip),
+        budget_trip_litres:b?.budget_trip_litres==null?null:Number(b.budget_trip_litres),issued};
     });
     setPlannedJobs(items);setPlanLoading(false);
   };
@@ -423,10 +432,13 @@ export default function FuelIssueScreen() {
                       value={planKey(j)}/>)}
                   </Picker>
                 </View>
-                {job?<ThemedText style={styles.small}>
-                  Budget: {job.budget===null?'Not available':job.budget.toFixed(1)+' L'} • Already issued: {job.issued.toFixed(1)} L
-                  {job.budget===null?'':` • Balance after this: ${(job.budget-job.issued-(Number(split.litres)||0)).toFixed(1)} L`}
-                </ThemedText>:null}
+                {job?<View style={{gap:4}}>
+                  <ThemedText style={styles.small}>Area: {job.effective_hectares?.toFixed(2) ?? '—'} ha • Field rate: {job.standard_l_per_ha?.toFixed(2) ?? 'N/A'} L/ha</ThemedText>
+                  <ThemedText style={styles.small}>Field work: {job.budget_work_litres?.toFixed(1) ?? '—'} L</ThemedText>
+                  <ThemedText style={styles.small}>Relocation / trips: {job.budget_trip_count?.toFixed(1) ?? '—'} trips × {job.trip_litres_per_trip?.toFixed(2) ?? '—'} L/trip = {job.budget_trip_litres?.toFixed(1) ?? '—'} L</ThemedText>
+                  <ThemedText style={styles.small}>Total budget: {job.budget?.toFixed(1) ?? '—'} L • Previously issued: {job.issued.toFixed(1)} L</ThemedText>
+                  <ThemedText style={styles.small}>Balance after this issue: {job.budget===null?'—':(job.budget-job.issued-(Number(split.litres)||0)).toFixed(1)+' L'}</ThemedText>
+                </View>:null}
                 <TextInput style={styles.input} value={split.litres}
                   onChangeText={litres=>setSplits(old=>old.map((r,n)=>n===i?{...r,litres}:r))}
                   placeholder="Litres for this job" keyboardType="numeric" editable={!saving}/>
