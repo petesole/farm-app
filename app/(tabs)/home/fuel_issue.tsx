@@ -47,7 +47,7 @@ type PlannedJob = {
   week_start: string; tracecode_id: number; vehicle_job_id: number;
   target_dap: number; sequence_no: number;
   tracecode_name: string; vehicle_job_name: string;
-  budget: number | null; issued: number;
+  budget: number | null; issued: number; tractor_class_id: number | null;
 };
 type SplitRow = { key: string; litres: string };
 const planKey = (j: PlannedJob) =>
@@ -89,7 +89,7 @@ export default function FuelIssueScreen() {
     if(!traceIds.length){setPlannedJobs([]);setPlanLoading(false);return;}
     const [budget,allocated]=await Promise.all([
       supabase.from('fuel_budget_activity_v')
-        .select('tracecode_id,vehicle_job_id,target_dap,sequence_no,tracecode_name,vehicle_job_name,total_budget_litres')
+        .select('tracecode_id,vehicle_job_id,target_dap,sequence_no,tracecode_name,vehicle_job_name,total_budget_litres,tractor_class_id')
         .in('tracecode_id',traceIds),
       supabase.from('fuel_allocation')
         .select('tracecode_id,vehicle_job_id,planned_target_dap,planned_sequence_no,fuel_allocated')
@@ -109,7 +109,8 @@ export default function FuelIssueScreen() {
         .reduce((n,x)=>n+Number(x.fuel_allocated||0),0);
       return {...j,tracecode_name:b?.tracecode_name??String(j.tracecode_id),
         vehicle_job_name:b?.vehicle_job_name??String(j.vehicle_job_id),
-        budget:b?.total_budget_litres==null?null:Number(b.total_budget_litres),issued};
+        budget:b?.total_budget_litres==null?null:Number(b.total_budget_litres),
+        tractor_class_id:b?.tractor_class_id==null?null:Number(b.tractor_class_id),issued};
     });
     setPlannedJobs(items);setPlanLoading(false);
   };
@@ -122,6 +123,16 @@ export default function FuelIssueScreen() {
   const vehicleType = Number(selectedVehicle?.vehicle_type_id ?? 0);
   const tractorClass = Number(selectedVehicle?.tractor_class_id ?? 0);
   const planEligible = vehicleType === 1 || vehicleType === 2 || [1, 2, 3, 10].includes(tractorClass);
+  const vehicleName = (selectedVehicle?.vehicle_name ?? '').toLowerCase();
+  const isHarvester = tractorClass === 10 || /harvest|combine|case 2388/.test(vehicleName);
+  const visiblePlannedJobs = plannedJobs.filter(j => {
+    const jobName=j.vehicle_job_name.toLowerCase();
+    const harvesting=/harvest|combin/.test(jobName);
+    if(isHarvester) return harvesting;
+    if(harvesting) return false;
+    if(vehicleType===2) return /tpt|transport|haul|cart|truck|produce/.test(jobName);
+    return vehicleType===1 && Number(j.tractor_class_id)===tractorClass;
+  });
   const issueUnplanned = !planEligible || unplanned;
   const showMeter = !!selectedVehicle?.has_meter;
   const meterLabel =
@@ -222,6 +233,7 @@ export default function FuelIssueScreen() {
     setMeterReading('');
     loadLastMeterReading(vehicleId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+    setSplits([{key:'',litres:''}]);
   }, [vehicleId, vehicles]);
 
   const saveFuelIssue = async () => {
@@ -278,6 +290,9 @@ export default function FuelIssueScreen() {
     }
 
     if(!issueUnplanned){
+      if(splits.some(x=>!visiblePlannedJobs.some(j=>planKey(j)===x.key))){
+        Alert.alert('Wrong vehicle class','Select a planned job valid for this vehicle.');return;
+      }
       if(!splits.length||splits.some(x=>!x.key||!Number.isFinite(Number(x.litres))||Number(x.litres)<=0)){
         Alert.alert('Planned jobs required','Select a job and litres for every row, or mark issue as unplanned.');return;
       }
@@ -394,16 +409,16 @@ export default function FuelIssueScreen() {
         {planEligible && !unplanned ? (
           <View style={{gap:10}}>
             {planLoading ? <ActivityIndicator/> : null}
-            {!planLoading&&plannedJobs.length===0?
+            {!planLoading&&visiblePlannedJobs.length===0?
               <ThemedText style={styles.small}>No selected weekly jobs in the current window. Select work in Weekly Planning or mark this issue Unplanned.</ThemedText>:null}
             {splits.map((split,i)=>{
-              const job=plannedJobs.find(j=>planKey(j)===split.key);
+              const job=visiblePlannedJobs.find(j=>planKey(j)===split.key);
               return <View key={i} style={{gap:6}}>
                 <ThemedText style={styles.small}>Job {i+1}</ThemedText>
                 <View style={styles.pickerBox}>
                   <Picker selectedValue={split.key} enabled={!saving} onValueChange={key=>setSplits(old=>old.map((r,n)=>n===i?{...r,key}:r))}>
                     <Picker.Item label="Select planned job..." value=""/>
-                    {plannedJobs.map(j=><Picker.Item key={planKey(j)}
+                    {visiblePlannedJobs.map(j=><Picker.Item key={planKey(j)}
                       label={`${j.tracecode_name} • ${j.vehicle_job_name} • DAP ${j.target_dap} • ${j.week_start}`}
                       value={planKey(j)}/>)}
                   </Picker>
