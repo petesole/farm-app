@@ -41,6 +41,16 @@ type DashboardForStock = {
   current_stock: number;
 };
 
+type PlannedJob = {
+  week_start: string; tracecode_id: number; vehicle_job_id: number;
+  target_dap: number; sequence_no: number;
+  tracecode_name: string; vehicle_job_name: string;
+  budget: number | null; issued: number;
+};
+type SplitRow = { key: string; litres: string };
+const planKey = (j: PlannedJob) =>
+  [j.week_start,j.tracecode_id,j.vehicle_job_id,j.target_dap,j.sequence_no].join('|');
+
 type LastMeterRow = {
   meter_reading: number | null;
 };
@@ -58,6 +68,49 @@ export default function FuelIssueScreen() {
   const [meterReading, setMeterReading] = useState<string>('');
   const [lastMeterReading, setLastMeterReading] = useState<number | null>(null);
   const [notes, setNotes] = useState<string>('');
+  const [plannedJobs,setPlannedJobs] = useState<PlannedJob[]>([]);
+  const [splits,setSplits] = useState<SplitRow[]>([{key:'',litres:''}]);
+  const [unplanned,setUnplanned] = useState(false);
+  const [planLoading,setPlanLoading] = useState(false);
+  const splitTotal = splits.reduce((n,r)=>n+(Number(r.litres)||0),0);
+  const loadPlannedJobs = async () => {
+    setPlanLoading(true);
+    const from=new Date(); from.setDate(from.getDate()-14);
+    const to=new Date(); to.setDate(to.getDate()+14);
+    const selected=await supabase.from('fuel_weekly_selected_job')
+      .select('week_start,tracecode_id,vehicle_job_id,target_dap,sequence_no')
+      .gte('week_start',toISODate(from)).lte('week_start',toISODate(to))
+      .order('week_start',{ascending:false});
+    if(selected.error){Alert.alert('Planning load failed',selected.error.message);setPlanLoading(false);return;}
+    const selection=selected.data??[];
+    const traceIds=[...new Set(selection.map(j=>j.tracecode_id))];
+    if(!traceIds.length){setPlannedJobs([]);setPlanLoading(false);return;}
+    const [budget,allocated]=await Promise.all([
+      supabase.from('fuel_budget_activity_v')
+        .select('tracecode_id,vehicle_job_id,target_dap,sequence_no,tracecode_name,vehicle_job_name,total_budget_litres')
+        .in('tracecode_id',traceIds),
+      supabase.from('fuel_allocation')
+        .select('tracecode_id,vehicle_job_id,planned_target_dap,planned_sequence_no,fuel_allocated')
+        .not('planned_week_start','is',null).in('tracecode_id',traceIds)
+    ]);
+    if(budget.error||allocated.error){
+      Alert.alert('Planning load failed',budget.error?.message??allocated.error?.message??'Unknown');
+      setPlanLoading(false);return;
+    }
+    const items: PlannedJob[]=selection.map(j=>{
+      const b=(budget.data??[]).find(x=>
+        x.tracecode_id===j.tracecode_id&&x.vehicle_job_id===j.vehicle_job_id&&
+        x.target_dap===j.target_dap&&x.sequence_no===j.sequence_no);
+      const issued=(allocated.data??[]).filter(x=>
+        x.tracecode_id===j.tracecode_id&&x.vehicle_job_id===j.vehicle_job_id&&
+        x.planned_target_dap===j.target_dap&&x.planned_sequence_no===j.sequence_no)
+        .reduce((n,x)=>n+Number(x.fuel_allocated||0),0);
+      return {...j,tracecode_name:b?.tracecode_name??String(j.tracecode_id),
+        vehicle_job_name:b?.vehicle_job_name??String(j.vehicle_job_id),
+        budget:b?.total_budget_litres==null?null:Number(b.total_budget_litres),issued};
+    });
+    setPlannedJobs(items);setPlanLoading(false);
+  };
 
   const selectedVehicle = useMemo(
     () => vehicles.find((v) => v.vehicle_id === vehicleId) ?? null,
@@ -155,6 +208,7 @@ export default function FuelIssueScreen() {
 
   useEffect(() => {
     loadVehicles();
+    loadPlannedJobs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -217,6 +271,17 @@ export default function FuelIssueScreen() {
       return;
     }
 
+    if(!unplanned){
+      if(!splits.length||splits.some(x=>!x.key||!Number.isFinite(Number(x.litres))||Number(x.litres)<=0)){
+        Alert.alert('Planned jobs required','Select a job and litres for every row, or mark issue as unplanned.');return;
+      }
+      if(new Set(splits.map(x=>x.key)).size!==splits.length){
+        Alert.alert('Duplicate planned job','Combine litres into one row per job.');return;
+      }
+      if(Math.abs(splitTotal-qty)>0.001){
+        Alert.alert('Allocation mismatch',`The planned jobs total ${splitTotal} L; the issue is ${qty} L.`);return;
+      }
+    }
     setSaving(true);
 
     const { data: dash, error: dashError } = await supabase.rpc('fuel_dashboard', {
@@ -240,13 +305,23 @@ export default function FuelIssueScreen() {
       return;
     }
 
-    const { error } = await supabase.from('fuel_issue').insert({
-      fuel_issue_date: todayISO,
-      vehicle_id: vehicleId,
-      fuel_issued: qty,
-      meter_reading: selected.has_meter ? meterValue : null,
-      notes: notes.trim() ? notes.trim() : null,
-    });
+    const result = unplanned
+      ? await supabase.from('fuel_issue').insert({
+          fuel_issue_date:todayISO,vehicle_id:vehicleId,fuel_issued:qty,
+          meter_reading:selected.has_meter?meterValue:null,
+          notes:'[UNPLANNED] '+notes.trim(),
+        })
+      : await supabase.rpc('create_planned_fuel_issue',{
+          p_date:todayISO,p_vehicle_id:vehicleId,p_litres:qty,
+          p_meter_reading:selected.has_meter?meterValue:null,p_notes:notes.trim(),
+          p_allocations:splits.map(x=>{
+            const job=plannedJobs.find(j=>planKey(j)===x.key)!;
+            return {week_start:job.week_start,tracecode_id:job.tracecode_id,
+              vehicle_job_id:job.vehicle_job_id,target_dap:job.target_dap,
+              sequence_no:job.sequence_no,litres:Number(x.litres)};
+          }),
+        });
+    const {error}=result;
 
     setSaving(false);
 
@@ -299,6 +374,50 @@ export default function FuelIssueScreen() {
             </Picker>
           </View>
         )}
+      </ThemedView>
+
+      <ThemedView style={styles.card}>
+        <ThemedText type="subtitle">Planned Job Allocation</ThemedText>
+        <ThemedText style={styles.small}>Select jobs from weekly planning. Fuel may be divided across multiple jobs.</ThemedText>
+        <Pressable style={styles.secondaryBtn} disabled={saving} onPress={()=>setUnplanned(x=>!x)}>
+          <ThemedText>{unplanned?'Unplanned issue ✓ (tap for planned)':'Planned issue ✓ (tap for unplanned)'}</ThemedText>
+        </Pressable>
+        {!unplanned ? (
+          <View style={{gap:10}}>
+            {planLoading ? <ActivityIndicator/> : null}
+            {!planLoading&&plannedJobs.length===0?
+              <ThemedText style={styles.small}>No selected weekly jobs in the current window. Select work in Weekly Planning or mark this issue Unplanned.</ThemedText>:null}
+            {splits.map((split,i)=>{
+              const job=plannedJobs.find(j=>planKey(j)===split.key);
+              return <View key={i} style={{gap:6}}>
+                <ThemedText style={styles.small}>Job {i+1}</ThemedText>
+                <View style={styles.pickerBox}>
+                  <Picker selectedValue={split.key} enabled={!saving} onValueChange={key=>setSplits(old=>old.map((r,n)=>n===i?{...r,key}:r))}>
+                    <Picker.Item label="Select planned job..." value=""/>
+                    {plannedJobs.map(j=><Picker.Item key={planKey(j)}
+                      label={`${j.tracecode_name} • ${j.vehicle_job_name} • DAP ${j.target_dap} • ${j.week_start}`}
+                      value={planKey(j)}/>)}
+                  </Picker>
+                </View>
+                {job?<ThemedText style={styles.small}>
+                  Budget: {job.budget===null?'Not available':job.budget.toFixed(1)+' L'} • Already issued: {job.issued.toFixed(1)} L
+                  {job.budget===null?'':` • Balance after this: ${(job.budget-job.issued-(Number(split.litres)||0)).toFixed(1)} L`}
+                </ThemedText>:null}
+                <TextInput style={styles.input} value={split.litres}
+                  onChangeText={litres=>setSplits(old=>old.map((r,n)=>n===i?{...r,litres}:r))}
+                  placeholder="Litres for this job" keyboardType="numeric" editable={!saving}/>
+                {splits.length>1?<Pressable onPress={()=>setSplits(old=>old.filter((_,n)=>n!==i))} disabled={saving}>
+                  <ThemedText style={styles.small}>Remove job</ThemedText>
+                </Pressable>:null}
+              </View>;
+            })}
+            <Pressable style={styles.secondaryBtn} onPress={()=>setSplits(old=>[...old,{key:'',litres:''}])} disabled={saving}>
+              <ThemedText>+ Add another planned job</ThemedText>
+            </Pressable>
+            <ThemedText style={styles.small}>Allocated to planned jobs: {splitTotal.toFixed(1)} L</ThemedText>
+            <Pressable onPress={loadPlannedJobs} disabled={saving}><ThemedText style={styles.small}>Refresh planned jobs</ThemedText></Pressable>
+          </View>
+        ):<ThemedText style={styles.small}>This issue will be flagged as unplanned and can be allocated later.</ThemedText>}
       </ThemedView>
 
       <ThemedView style={styles.card}>
@@ -418,6 +537,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   buttonDisabled: { opacity: 0.6 },
+  secondaryBtn: {borderWidth:1,borderRadius:12,paddingVertical:9,alignItems:'center'},
   buttonText: { fontSize: 16 },
 
   link: { alignItems: 'center', paddingVertical: 6 },
