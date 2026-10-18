@@ -115,7 +115,7 @@ export default function FuelIssueScreen() {
   };
 
   const selectedVehicle = useMemo(
-    () => vehicles.find((v) => v.vehicle_id === vehicleId) ?? null,
+    () => vehicles.find((v) => Number(v.vehicle_id) === Number(vehicleId)) ?? null,
     [vehicles, vehicleId]
   );
 
@@ -168,7 +168,7 @@ export default function FuelIssueScreen() {
     setVehicles(list);
 
     const stillValid =
-      vehicleId !== null && list.some((v) => v.vehicle_id === vehicleId);
+      vehicleId !== null && list.some((v) => Number(v.vehicle_id) === Number(vehicleId));
 
     const nextVehicleId = stillValid
       ? vehicleId
@@ -186,7 +186,7 @@ export default function FuelIssueScreen() {
       return;
     }
 
-    const vehicle = vehicles.find((v) => v.vehicle_id === selectedVehicleId);
+    const vehicle = vehicles.find((v) => Number(v.vehicle_id) === Number(selectedVehicleId));
 
     if (!vehicle?.has_meter) {
       setLastMeterReading(null);
@@ -238,7 +238,7 @@ export default function FuelIssueScreen() {
       return;
     }
 
-    const selected = vehicles.find((v) => v.vehicle_id === vehicleId);
+    const selected = vehicles.find((v) => Number(v.vehicle_id) === Number(vehicleId));
 
     if (!selected) {
       Alert.alert('Vehicle not available', 'Please reselect a vehicle.');
@@ -367,7 +367,7 @@ export default function FuelIssueScreen() {
           <View style={styles.pickerBox}>
             <Picker
               selectedValue={vehicleId}
-              onValueChange={(val) => setVehicleId(val)}
+              onValueChange={(val) => setVehicleId(val == null ? null : Number(val))}
               enabled={!saving}
             >
               {vehicles.map((v) => (
@@ -384,6 +384,7 @@ export default function FuelIssueScreen() {
 
       <ThemedView style={styles.card}>
         <ThemedText type="subtitle">{planEligible ? 'Planned Job Allocation' : 'Unplanned Fuel Issue'}</ThemedText>
+        <ThemedText style={styles.small}>Vehicle check: {selectedVehicle?.vehicle_name ?? 'No vehicle matched'} • Type {String(selectedVehicle?.vehicle_type_id ?? 'missing')} • Class {String(selectedVehicle?.tractor_class_id ?? 'missing')} • {planEligible ? 'PLANNED ELIGIBLE' : 'UNPLANNED ONLY'}</ThemedText>
         {planEligible ? <ThemedText style={styles.small}>Select jobs from weekly planning. Fuel may be divided across multiple jobs.</ThemedText> : null}
         {planEligible ? (
           <Pressable style={styles.secondaryBtn} disabled={saving} onPress={()=>setUnplanned(x=>!x)}>
