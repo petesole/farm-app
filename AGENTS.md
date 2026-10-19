@@ -1,16 +1,14 @@
 # JSPL Farm Management UI Standards
 
-All new or updated UI must follow the JSPL design system in `constants/jspl-design.ts` and use reusable UI primitives from `components/jspl/` when appropriate.
+All new or updated UI must follow `constants/jspl-design.ts`, `utils/jspl-input.ts` and reusable components in `components/jspl/`.
 
 ## Required conventions
-- Preserve existing business logic, routing, Supabase queries, database schemas and permissions when modifying presentation.
-- Use a clean light workspace and dark green navigation. Do not introduce individual feature-specific palettes.
-- Never improvise font sizes, field heights, button heights, border radii or spacing. Use the exported design tokens.
-- Labels and free-text values align left; quantities, rates, weights, volumes and currency align right with tabular digits; dates and statuses align centre in tables.
-- Use consistent column widths and header/body alignment; horizontal scrolling is acceptable on narrow screens rather than compressing values into illegibility.
-- Display numeric values with an explicit unit and agreed decimal precision. Store and calculate from raw numbers, not formatted display strings.
-- Display dates as DD/MM/YYYY, accept D/M as day/month in the current year where applicable, and preserve ISO YYYY-MM-DD for data transfer.
-- Prefer accessible input labels and minimum 44 px touch targets. Never truncate numbers silently.
-- Check desktop web and mobile widths and verify long labels, empty states, loading states and error messages.
-- Reuse the JSPL form, table, dashboard, master-detail and planning-grid patterns rather than hand-positioning individual elements.
-- Avoid adding another UI framework before verifying compatibility with Expo / React Native Web.
+- Preserve business logic, existing Supabase database schemas, permissions, queries and routing when changing presentation.
+- Use light workspaces, dark green navigation and central design tokens. Never improvise colours, sizes, spacing, column widths or form control dimensions.
+- Text left; numeric quantities, rates, weights and currency right with tabular digits; date, status and action table columns centred.
+- Standard date **display and manual input** is **DD/MM/YYYY** throughout the application. Accept D/M or DD/MM and expand to the **current calendar year on input commit** (e.g. 01/01 -> 01/01/2026 in 2026). Validate actual calendar dates. Existing explicit 4-digit years must be retained. Do not infer crop-season years. Persist ISO YYYY-MM-DD to APIs and Supabase; never alter historical database dates.
+- Any new crop filter defaults to **active crops only**; any trace-code filter defaults to **active trace codes only**. An explicit user option/requirement may include inactive records. Determine the actual active field and its truth mapping from the existing schema; don't guess property names.
+- Crop, trace-code and product selectors must be **searchable combo boxes**, with a visible result list as users type. Filter **case-insensitive from the beginning** of the option label (typing A shows options starting A), with an optional explicit mode for other matching behaviour. Product list defaults to all available products unless the screen specifies another product status rule. User should be able to type, choose one item, clear and use keyboard/touch; don't silently select the first match.
+- Use a single shared combo component and filtering helpers. If option names are duplicated, use stable IDs as values.
+- Check desktop and mobile widths, long names, loading/empty lists and disabled states. Do not silently truncate numeric values.
+- Reuse the JSPL form, table, dashboard, master-detail and planning-grid patterns. No new styling frameworks unless confirmed compatible with Expo / React Native Web.
