@@ -42,8 +42,12 @@ export default function StockV2DirectIssue(){
   <TextInput style={styles.input} value={purpose} onChangeText={setPurpose} placeholder="e.g. Mosquito spraying at domestic house"/>
   <ThemedText style={styles.head}>Products to issue</ThemedText>
   {lines.map(line=><View key={line.id} style={styles.card}>
-   <ThemedText style={styles.label}>Input (type any letters to search)</ThemedText>
-   <TextInput style={styles.input} value={line.query} onChangeText={v=>{edit(line.id,{query:v,input_id:null});setOpen(line.id)}} onFocus={()=>setOpen(line.id)} autoCorrect={false} placeholder="Find chemical / fertiliser"/>
+   <ThemedText style={styles.label}>Chemical / Fertiliser</ThemedText>
+   <View style={{flexDirection:"row",gap:6}}>
+    <TextInput style={[styles.input,{flex:1}]} value={line.query} onChangeText={v=>{edit(line.id,{query:v,input_id:null});setOpen(line.id)}} onFocus={()=>setOpen(line.id)} autoCorrect={false} placeholder="Type any letters to filter"/>
+    <Pressable accessibilityLabel="Open input dropdown" style={styles.dropdownButton} onPress={()=>setOpen(open===line.id?null:line.id)}><ThemedText>▼</ThemedText></Pressable>
+   </View>
+   {line.input_id!==null?<ThemedText style={styles.selectedText}>✓ Selected from inputs master</ThemedText>:<ThemedText style={styles.warn}>Choose a product from the dropdown</ThemedText>}
    {open===line.id?<View style={styles.suggest}><ScrollView nestedScrollEnabled keyboardShouldPersistTaps="always" style={{maxHeight:190}}>
     {inputs.filter(x=>x.inputs_name.toLowerCase().includes(line.query.toLowerCase().trim())).slice(0,30).map(x=><Pressable key={x.input_id} style={styles.option} onPress={()=>{edit(line.id,{query:x.inputs_name,input_id:x.input_id});setOpen(null)}}><ThemedText>{x.inputs_name}</ThemedText></Pressable>)}
    </ScrollView><Pressable onPress={()=>setOpen(null)} style={styles.option}><ThemedText>Close list</ThemedText></Pressable></View>:null}
@@ -62,4 +66,4 @@ export default function StockV2DirectIssue(){
   </View>
  </ScrollView></ThemedView>;
 }
-const styles=StyleSheet.create({root:{flex:1},page:{padding:16,gap:10,paddingBottom:40},head:{fontWeight:"700",fontSize:16},label:{opacity:0.8},warn:{color:"#9b6c19"},error:{color:"#b22"},chip:{padding:9,borderWidth:1,borderColor:"#999",borderRadius:8,marginRight:6},sel:{backgroundColor:"#c8e8d8"},input:{borderWidth:1,borderColor:"#888",padding:10,borderRadius:8,backgroundColor:"white",color:"#222"},card:{borderWidth:1,borderColor:"#aaa",borderRadius:10,padding:12,gap:8},option:{padding:9,borderBottomWidth:1,borderBottomColor:"#ddd"},suggest:{backgroundColor:"white",borderWidth:1,borderColor:"#ddd",padding:4},btn:{padding:12,borderWidth:1,borderColor:"#888",borderRadius:9,alignItems:"center"},disabled:{backgroundColor:"#ddd",borderRadius:8,padding:14,alignItems:"center"}});
+const styles=StyleSheet.create({root:{flex:1},page:{padding:16,gap:10,paddingBottom:40},head:{fontWeight:"700",fontSize:16},label:{opacity:0.8},warn:{color:"#9b6c19"},error:{color:"#b22"},chip:{padding:9,borderWidth:1,borderColor:"#999",borderRadius:8,marginRight:6},sel:{backgroundColor:"#c8e8d8"},dropdownButton:{borderWidth:1,borderColor:"#888",borderRadius:8,paddingHorizontal:14,justifyContent:"center"},selectedText:{color:"#187a48",fontWeight:"600"},input:{borderWidth:1,borderColor:"#888",padding:10,borderRadius:8,backgroundColor:"white",color:"#222"},card:{borderWidth:1,borderColor:"#aaa",borderRadius:10,padding:12,gap:8},option:{padding:9,borderBottomWidth:1,borderBottomColor:"#ddd"},suggest:{backgroundColor:"white",borderWidth:1,borderColor:"#ddd",padding:4},btn:{padding:12,borderWidth:1,borderColor:"#888",borderRadius:9,alignItems:"center"},disabled:{backgroundColor:"#ddd",borderRadius:8,padding:14,alignItems:"center"}});
