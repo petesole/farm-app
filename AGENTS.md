@@ -12,3 +12,10 @@ All new or updated UI must follow `constants/jspl-design.ts`, `utils/jspl-input.
 - Use a single shared combo component and filtering helpers. If option names are duplicated, use stable IDs as values.
 - Check desktop and mobile widths, long names, loading/empty lists and disabled states. Do not silently truncate numeric values.
 - Reuse the JSPL form, table, dashboard, master-detail and planning-grid patterns. No new styling frameworks unless confirmed compatible with Expo / React Native Web.
+
+## Approved JSPL theme and navigation standards
+- JSPL's approved default is a professional agricultural interface with **dark forest-green sidebar/header navigation, white and very-light-grey content surfaces, restrained green highlights, clean typography, and consistent buttons/forms/tables**. Use tokens from `constants/jspl-design.ts`, not ad-hoc screen CSS.
+- A **dashboard** is a navigational home screen for its module by default: show clearly labelled, large, consistent **buttons/cards users can press to open the relevant screens**. KPI summaries can supplement navigation but must not replace the navigation buttons. Only build a different dashboard flow if explicitly requested.
+- After a **successful creation or save** in a data-entry screen, default to **navigate back to that module's dashboard**. Do not navigate on failed validation, Supabase error, or pending save. Keep the save feedback meaningful. If the user explicitly requests "save and add another", staying on the screen, returning to a list, or another destination, honour that instead.
+- Each module must explicitly identify its correct dashboard route. **Never guess a route or alter save navigation in an existing screen without verifying its workflow**, because some existing flows require consecutive operations.
+- Existing screens are **not automatically restyled or rerouted** by this policy. Apply design and navigation updates incrementally, validate web and mobile layouts, and do not change data rules, relationships, database actions or security policies.
