@@ -24,7 +24,7 @@ function Field({label,value,onChange,numeric=false}:{label:string;value:string;o
 }
 export default function StockV2Workflow(){
  const {width}=useWindowDimensions();
- const [tab,setTab]=useState<Tab>("Purchase Orders"),[snapshot,setSnapshot]=useState<Snapshot|null>(null);
+ const [tab,setTab]=useState<Tab|null>(null),[snapshot,setSnapshot]=useState<Snapshot|null>(null);
  const [traces,setTraces]=useState<Trace[]>([]),[crops,setCrops]=useState<Crop[]>([]);
  const [busy,setBusy]=useState(false),[status,setStatus]=useState(""),[confirmed,setConfirmed]=useState(false);
  const [lines,setLines]=useState<Line[]>([emptyLine(1)]),[nextLine,setNextLine]=useState(2);
@@ -49,7 +49,7 @@ export default function StockV2Workflow(){
  const changeLine=(id:number,key:keyof Line,value:string)=>{setLines(old=>old.map(l=>l.id===id?{...l,[key]:value}:l));resetEdit()};
  const addLine=()=>{setLines(old=>[...old,emptyLine(nextLine,snapshot?.items?.[0]?.item_code??"DEMO_MOSQUITO")]);setNextLine(n=>n+1);resetEdit()};
  const removeLine=(id:number)=>{setLines(old=>old.filter(l=>l.id!==id));resetEdit()};
- const switchTab=(v:Tab)=>{setTab(v);setLines([emptyLine(nextLine)]);setNextLine(n=>n+1);setOrderId(null);setJobId(null);setDropdown(null);setStatus("");resetEdit()};
+ const switchTab=(v:Tab|null)=>{setTab(v);setLines([emptyLine(nextLine)]);setNextLine(n=>n+1);setOrderId(null);setJobId(null);setDropdown(null);setStatus("");resetEdit()};
  const products=snapshot?.items??[];
  const orders=useMemo(()=>{
   const map=new Map<number,OrderLine[]>();
@@ -105,7 +105,7 @@ export default function StockV2Workflow(){
  const submit=async()=>{if(!valid||!confirmed||busy)return;setBusy(true);setStatus("");
   const req=request&&request.action===action&&JSON.stringify(request.payload)===JSON.stringify(payload)?request:{action,payload,id:uuid()};setRequest(req);
   try{const r=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+await token()},body:JSON.stringify({action,request_id:req.id,payload:req.payload})});const d=await r.json();if(!r.ok)throw Error(d.error||"Posting failed");
-   setStatus("Posted "+tab+": "+JSON.stringify(d.result));setConfirmed(false);setRequest(null);await refresh(false);
+   setStatus("Posted "+tab+" successfully. "+(d.result?.order_id?"PO #"+d.result.order_id:d.result?.document_id?"Document #"+d.result.document_id:d.result?.job_id?"Job #"+d.result.job_id:"")+" — returned to Stock Home.");setConfirmed(false);setRequest(null);await refresh(false);setTab(null);
    if(tab==="GRV")setOrderId(null);if(tab==="Planned Issue")setJobId(null);
    setLines([emptyLine(nextLine)]);setNextLine(n=>n+1);
   }catch(e){setStatus("NOT POSTED: "+(e instanceof Error?e.message:String(e)))}finally{setBusy(false)}
@@ -116,11 +116,15 @@ export default function StockV2Workflow(){
  return <ThemedView style={styles.root}><ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
   <ThemedText style={styles.title}>Stock Control — V2 Test</ThemedText>
   <ThemedText style={styles.muted}>Isolated demo records only • TEST_JS • TEST_WH • No live Access changes</ThemedText>
-  <View style={styles.nav}>{tabs.map(x=><Pressable key={x} style={[styles.navTab,tab===x&&styles.navActive]} onPress={()=>switchTab(x)}><ThemedText style={tab===x?styles.navActiveText:undefined}>{x}</ThemedText></Pressable>)}</View>
+  {tab===null?<View style={styles.home}>
+    <ThemedText style={styles.homeTitle}>Stock Home</ThemedText>
+    <ThemedText style={styles.muted}>Choose a stock operation</ThemedText>
+    <View style={styles.homeGrid}>{tabs.map(x=><Pressable key={x} style={styles.homeButton} onPress={()=>switchTab(x)}><ThemedText style={styles.homeButtonText}>{x}</ThemedText><ThemedText style={styles.homeArrow}>›</ThemedText></Pressable>)}</View>
+   </View>:<Pressable style={styles.back} onPress={()=>switchTab(null)}><ThemedText style={styles.backText}>← Back to Stock Home</ThemedText></Pressable>}
   <Pressable style={styles.refresh} onPress={()=>refresh()}><ThemedText>↻ Refresh records</ThemedText></Pressable>
   {busy?<ActivityIndicator/>:null}
   {status?<View style={styles.notice}><ThemedText>{status}</ThemedText></View>:null}
-  {tab==="Stock Balances"?<View style={styles.sheet}>
+  {tab===null?null:tab==="Stock Balances"?<View style={styles.sheet}>
    {header("STOCK BALANCES",["Owner: TEST_JS","Warehouse: TEST_WH"])}
    {gridHead(["Product","Unit","Available"])}
    {(snapshot?.items??[]).map(i=><View key={i.item_code} style={styles.registerRow}><ThemedText style={{flex:2.4}}>{i.item_name}</ThemedText><ThemedText style={{flex:1}}>{i.base_unit}</ThemedText><ThemedText style={{flex:1}}>{i.quantity}</ThemedText></View>)}
@@ -151,18 +155,9 @@ export default function StockV2Workflow(){
    <View style={styles.footer}><Pressable onPress={()=>setConfirmed(x=>!x)} style={styles.confirm}><ThemedText>{confirmed?"☑":"☐"} Confirm TEST transaction</ThemedText></Pressable><Pressable disabled={!valid||!confirmed||busy} onPress={submit} style={[styles.submit,(!valid||!confirmed||busy)&&styles.off]}><ThemedText style={styles.submitText}>{busy?"Posting…":"Post "+tab}</ThemedText></Pressable></View>
    {!valid?<ThemedText style={styles.muted}>Complete all required fields, quantities and outstanding-order limits before posting.</ThemedText>:null}
   </View>}
-  <View style={styles.sheet}>{header("PURCHASE ORDER REGISTER",[])}
-   {(snapshot?.orders??[]).length===0?<ThemedText>No demo POs yet.</ThemedText>:null}
-   {(snapshot?.orders??[]).slice(0,25).map((o,i)=><View key={i} style={styles.registerRow}><ThemedText style={{flex:2}}>{o.order_id} · {o.item_name}</ThemedText><ThemedText style={{flex:1}}>{o.received_quantity}/{o.ordered_quantity} {o.base_unit}</ThemedText><ThemedText style={{flex:1}}>{currency(o.ordered_unit_price??NaN)}</ThemedText></View>)}
-  </View>
-  <View style={styles.sheet}>{header("SPRAY PROGRAMME REGISTER",[])}
-   {(snapshot?.sprays??[]).slice(0,25).map((j,i)=><View key={i} style={styles.registerRow}><ThemedText style={{flex:2}}>#{j.job_id} · {j.tracecode_name} · {j.item_name}</ThemedText><ThemedText style={{flex:1}}>{j.issued_quantity}/{j.planned_quantity}</ThemedText><ThemedText style={{flex:1}}>{j.status}</ThemedText></View>)}
-  </View>
-  <View style={styles.sheet}>{header("GRVS & STOCK ISSUES",[])}
-   {(snapshot?.documents??[]).slice(0,20).map((d,i)=><View key={i} style={styles.registerRow}><ThemedText style={{flex:2}}>{d.document_type.toUpperCase()} #{d.document_id} · {d.item_name}</ThemedText><ThemedText style={{flex:1}}>{d.quantity}</ThemedText><ThemedText style={{flex:1}}>{d.tracecode_name??"Warehouse"}</ThemedText></View>)}
-  </View>
  </ScrollView></ThemedView>
 }
 const styles=StyleSheet.create({
+ home:{gap:16,paddingVertical:12},homeTitle:{fontSize:25,fontWeight:"700"},homeGrid:{flexDirection:"row",flexWrap:"wrap",gap:14},homeButton:{flexGrow:1,flexBasis:230,minWidth:210,minHeight:100,borderWidth:1,borderColor:"#9cb0c0",borderRadius:8,backgroundColor:"#edf3f8",padding:18,flexDirection:"row",alignItems:"center",justifyContent:"space-between"},homeButtonText:{fontSize:18,fontWeight:"700",color:"#244d69"},homeArrow:{fontSize:30,color:"#537a96"},back:{alignSelf:"flex-start",backgroundColor:"#e5edf4",borderWidth:1,borderColor:"#9cabb8",borderRadius:6,paddingVertical:10,paddingHorizontal:16},backText:{fontWeight:"700",color:"#315c7a"},
  root:{flex:1},page:{padding:18,gap:14,paddingBottom:50},title:{fontSize:23,fontWeight:"700"},muted:{fontSize:12,color:"#82888f"},nav:{flexDirection:"row",flexWrap:"wrap",borderBottomWidth:2,borderColor:"#486986"},navTab:{backgroundColor:"#e7ebf0",paddingVertical:11,paddingHorizontal:16,borderTopLeftRadius:4,borderTopRightRadius:4},navActive:{backgroundColor:"#345f81"},navActiveText:{color:"white",fontWeight:"700"},refresh:{alignSelf:"flex-start",padding:9,borderWidth:1,borderColor:"#a5b1bd",borderRadius:5},notice:{borderWidth:1,borderColor:"#a3b4c1",padding:10,borderRadius:5},sheet:{padding:15,borderWidth:1,borderColor:"#b5bfc9",borderRadius:5,gap:12},documentHead:{gap:6,borderBottomWidth:1,borderColor:"#b5bfc9",paddingBottom:10},heading:{fontSize:17,fontWeight:"700"},headerDetails:{flexDirection:"row",flexWrap:"wrap",gap:16},detail:{fontSize:12,color:"#697b87"},field:{flex:1,gap:5,minWidth:150},label:{fontWeight:"600",fontSize:13},input:{paddingHorizontal:10,paddingVertical:9,borderWidth:1,borderColor:"#aab4bd",borderRadius:4,color:"#222",backgroundColor:"#fff"},filters:{flexDirection:"row",flexWrap:"wrap",gap:12},dropdown:{flex:1,minWidth:210,maxWidth:500,gap:4},selector:{padding:10,borderWidth:1,borderColor:"#9aabb7",borderRadius:4},choices:{padding:6,borderWidth:1,borderColor:"#bbc3cb",borderRadius:4,gap:4},choice:{padding:10,borderBottomWidth:1,borderColor:"#e6e7e9"},section:{fontSize:14,fontWeight:"700",marginTop:6},lineHeader:{flexDirection:"row",paddingVertical:10,backgroundColor:"#e0eaf2"},gridHeading:{fontSize:12,fontWeight:"700",paddingHorizontal:5},line:{flexDirection:"row",alignItems:"center",borderBottomWidth:1,borderColor:"#d9dfe4",paddingVertical:6},cell:{flex:1,paddingHorizontal:4,minWidth:70},tableInput:{padding:9,borderWidth:1,borderColor:"#aeb8c1",borderRadius:4,backgroundColor:"#fff",color:"#111"},remove:{paddingHorizontal:8},alert:{color:"#a93525"},add:{borderWidth:1,borderColor:"#a7b8c4",padding:10,alignSelf:"flex-start",borderRadius:5},total:{fontWeight:"700",textAlign:"right"},footer:{flexDirection:"row",flexWrap:"wrap",justifyContent:"flex-end",gap:15,alignItems:"center"},confirm:{padding:12,borderWidth:1,borderColor:"#9babb9",borderRadius:4},submit:{backgroundColor:"#226d4f",paddingVertical:13,paddingHorizontal:25,borderRadius:5},submitText:{color:"white",fontWeight:"700"},off:{backgroundColor:"#a9adb0"},gridHead:{flexDirection:"row",backgroundColor:"#e0eaf2",paddingVertical:8},registerRow:{flexDirection:"row",paddingVertical:8,borderBottomWidth:1,borderColor:"#e2e6e8",gap:5}
 });
