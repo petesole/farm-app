@@ -5,10 +5,11 @@ import {ThemedView} from "@/components/themed-view";
 import {supabase} from "../../../supabase";
 import {parseJsplDateInput,displayJsplDate} from "@/utils/jspl-input";
 import {JsplDashboardButton} from "@/components/jspl/JsplDashboardButton";
+import {JsplTable} from "@/components/jspl/JsplTable";
 import {jsplColors,jsplSpacing,jsplRadii,jsplDashboardTheme,formatJsplNumber} from "@/constants/jspl-design";
 
 const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
-type Item={item_code:string;item_name:string;base_unit:string;quantity:number};
+type Item={item_code:string;item_name:string;base_unit:string;quantity:number;input_type:string|null;input_category:string|null;active_ingredient:string|null;last_purchase_price:number|null;weighted_average_price:number|null;last_purchase_supplier:string|null};
 type OrderLine={order_id:number;order_number:string;supplier_name:string;item_code:string;item_name:string;base_unit:string;ordered_quantity:number;received_quantity:number;ordered_unit_price:number|null;status:string};
 type SprayLine={job_id:number;external_tracecode_id:number;tracecode_name:string;item_code:string;item_name:string;area_ha:number;rate_per_ha:number;planned_quantity:number;issued_quantity:number;status:string};
 type Doc={document_id:number;document_type:string;document_number:string;item_name:string;quantity:number;tracecode_name:string|null};
@@ -31,6 +32,7 @@ export default function StockV2Workflow(){
  const [traces,setTraces]=useState<Trace[]>([]),[crops,setCrops]=useState<Crop[]>([]);
  const [busy,setBusy]=useState(false),[status,setStatus]=useState(""),[confirmed,setConfirmed]=useState(false);
  const [lines,setLines]=useState<Line[]>([emptyLine(1)]),[nextLine,setNextLine]=useState(2);
+ const [typeFilter,setTypeFilter]=useState(""),[categoryFilter,setCategoryFilter]=useState("");
  const [supplier,setSupplier]=useState("DEMO Supplier"),[orderDate,setOrderDate]=useState(()=>new Date().toLocaleDateString("en-GB")),[orderId,setOrderId]=useState<number|null>(null);
  const [jobId,setJobId]=useState<number|null>(null),[traceId,setTraceId]=useState<number|null>(null),[cropId,setCropId]=useState<number|null>(null);
  const [area,setArea]=useState(""),[water,setWater]=useState(""),[part,setPart]=useState(""),[sprayType,setSprayType]=useState(""),[deliveryNote,setDeliveryNote]=useState("");
@@ -55,6 +57,9 @@ export default function StockV2Workflow(){
  const removeLine=(id:number)=>{setLines(old=>old.filter(l=>l.id!==id));resetEdit()};
  const switchTab=(v:Tab|null)=>{setTab(v);if(v==="GRV"||v==="Planned Issue")void refresh(false);setLines([emptyLine(nextLine)]);setNextLine(n=>n+1);setOrderId(null);setJobId(null);setDropdown(null);setStatus("");resetEdit()};
  const products=snapshot?.items??[];
+ const inputTypes=[...new Set(products.map(x=>x.input_type).filter((x):x is string=>!!x))].sort();
+ const inputCategories=[...new Set(products.map(x=>x.input_category).filter((x):x is string=>!!x))].sort();
+ const balanceRows=products.filter(p=>(!typeFilter||p.input_type===typeFilter)&&(!categoryFilter||p.input_category===categoryFilter));
  const orders=useMemo(()=>{
   const map=new Map<number,OrderLine[]>();
   for(const o of snapshot?.orders??[]){if(!map.has(o.order_id))map.set(o.order_id,[]);map.get(o.order_id)!.push(o)}
@@ -136,8 +141,26 @@ export default function StockV2Workflow(){
   {status?<View style={styles.notice}><ThemedText>{status}</ThemedText></View>:null}
   {tab===null?null:tab==="Stock Balances"?<View style={styles.sheet}>
    {header("STOCK BALANCES",["Owner: TEST_JS","Warehouse: TEST_WH"])}
-   {gridHead(["Product","Unit","Available"])}
-   {(snapshot?.items??[]).map(i=><View key={i.item_code} style={styles.registerRow}><ThemedText style={{flex:2.4}}>{i.item_name}</ThemedText><ThemedText style={{flex:1}}>{i.base_unit}</ThemedText><ThemedText style={{flex:1,textAlign:"right",fontVariant:["tabular-nums"]}}>{formatJsplNumber(i.quantity,2)}</ThemedText></View>)}
+   <View style={styles.filters}>
+    {menu("balanceType",typeFilter||"All input types",[{label:"All input types",value:"all",onSelect:()=>setTypeFilter("")},...inputTypes.map(t=>({label:t,value:t,onSelect:()=>setTypeFilter(t)}))],true)}
+    {menu("balanceCategory",categoryFilter||"All input categories",[{label:"All input categories",value:"all",onSelect:()=>setCategoryFilter("")},...inputCategories.map(x=>({label:x,value:x,onSelect:()=>setCategoryFilter(x)}))],true)}
+   </View>
+   <ThemedText style={styles.muted}>{balanceRows.length} products · Prices are shown only where actual receipt pricing is available.</ThemedText>
+   <JsplTable rows={balanceRows} rowKey={x=>x.item_code}
+    columns={[
+      {key:"item",title:"Product",width:240,value:x=>x.item_name},
+      {key:"type",title:"Input Type",width:135,value:x=>x.input_type||"—"},
+      {key:"cat",title:"Input Category",width:140,value:x=>x.input_category||"—"},
+      {key:"ai",title:"Active Ingredient",width:210,value:x=>x.active_ingredient||"—"},
+      {key:"qty",title:"On Hand",kind:"number",width:115,value:x=>x.quantity},
+      {key:"unit",title:"Unit",width:75,value:x=>x.base_unit},
+      {key:"last",title:"Last Purchase Price",kind:"number",width:155,value:x=>x.last_purchase_price},
+      {key:"supplier",title:"Last Purchase Supplier",width:210,value:x=>x.last_purchase_supplier||"—"},
+      {key:"avg",title:"Weighted Avg Price*",kind:"number",width:155,value:x=>x.weighted_average_price},
+      {key:"lastval",title:"Value at Last Price",kind:"number",width:160,value:x=>x.last_purchase_price==null?null:x.quantity*x.last_purchase_price},
+      {key:"avgval",title:"Value at Weighted Avg*",kind:"number",width:190,value:x=>x.weighted_average_price==null?null:x.quantity*x.weighted_average_price}
+     ]}/>
+   <ThemedText style={styles.muted}>* Weighted receipt price is a provisional indicator, not a verified perpetual inventory cost. Missing opening stock costs and issue valuations are shown as unavailable.</ThemedText>
   </View>:<View style={styles.sheet}>
    {header(tab.toUpperCase(),["Owner: TEST_JS","Warehouse: TEST_WH","Date: "+new Date().toLocaleDateString("en-GB")])}
    {tab==="Purchase Orders"?<View style={styles.poHeaderFields}>
