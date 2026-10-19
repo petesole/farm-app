@@ -1,4 +1,5 @@
 import {useEffect,useState} from "react";
+import type {ReactNode} from "react";
 import {ActivityIndicator,Pressable,ScrollView,StyleSheet,TextInput,View} from "react-native";
 import {ThemedText} from "@/components/themed-text";
 import {ThemedView} from "@/components/themed-view";
@@ -40,7 +41,7 @@ setTrace((t.data??[]).find(x=>x.tracecode_name?.toUpperCase()==="DOMESTICHS")?.t
  const simpleField=(label:string,value:string,change:(v:string)=>void,keyboardType:"default"|"decimal-pad"="default")=><View style={{flex:1,minWidth:130,gap:3}}><ThemedText style={styles.label}>{label}</ThemedText><TextInput style={styles.input} value={value} onChangeText={v=>{change(v);setConfirm(false)}} keyboardType={keyboardType}/></View>;
  const option=(text:string,selected:boolean,fn:()=>void)=><Pressable key={text} onPress={()=>{fn();setConfirm(false)}} style={[styles.option,selected&&styles.selected]}><ThemedText>{text}</ThemedText></Pressable>;
  const gridHeader=(cells:string[])=><View style={styles.gridHead}>{cells.map((x,i)=><ThemedText key={i} style={[styles.gridCell,styles.gridHeadText]}>{x}</ThemedText>)}</View>;
- const gridRow=(cells:React.ReactNode[])=><View style={styles.gridRow}>{cells.map((x,i)=><View key={i} style={styles.gridCell}>{typeof x==="string"||typeof x==="number"?<ThemedText>{x}</ThemedText>:x}</View>)}</View>;
+ const gridRow=(cells:ReactNode[])=><View style={styles.gridRow}>{cells.map((x,i)=><View key={i} style={styles.gridCell}>{typeof x==="string"||typeof x==="number"?<ThemedText>{x}</ThemedText>:x}</View>)}</View>;
  const controls=()=>{
   const num=Number(qty),ar=Number(area),rt=Number(rate);
   const validNum=Number.isFinite(num)&&num>0;
