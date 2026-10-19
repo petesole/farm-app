@@ -7,6 +7,9 @@ import { supabase } from "../../../supabase";
 type Trace={tracecode_id:number;tracecode_name:string;end_date:string|null};
 type Input={input_id:number;inputs_name:string};
 type IssueLine={id:number;input_id:number|null;query:string;quantity:string};
+type InventoryRow={input_id:number;stock_item_id:number;owner_code:string;location_name:string;available:number;unit:string};
+type BalanceResult={verified_owner:boolean;owner_code:string|null;balances:InventoryRow[]};
+const inventoryEndpoint=process.env.EXPO_PUBLIC_STOCK_V2_READ_API_URL || "";
 let nextLineId=1;
 export default function StockV2DirectIssue(){
  const [traces,setTraces]=useState<Trace[]>([]);
@@ -17,6 +20,9 @@ export default function StockV2DirectIssue(){
  const [open,setOpen]=useState<number|null>(null);
  const [loading,setLoading]=useState(true);
  const [error,setError]=useState("");
+ const [inventory,setInventory]=useState<BalanceResult|null>(null);
+ const [inventoryStatus,setInventoryStatus]=useState("Private Stock V2 balance service not configured");
+ const [inventoryLoading,setInventoryLoading]=useState(false);
  useEffect(()=>{let active=true;(async()=>{
   const [t,i]=await Promise.all([
    supabase.from("tracecode").select("tracecode_id,tracecode_name,end_date").order("tracecode_name"),
@@ -27,6 +33,22 @@ export default function StockV2DirectIssue(){
   else {const today=new Date().toISOString().slice(0,10);const rows=((t.data??[]) as Trace[]).filter(x=>!x.end_date||x.end_date.slice(0,10)>=today);setTraces(rows);setInputs((i.data??[]) as Input[]);}
   setLoading(false);
  })();return()=>{active=false}},[]);
+ useEffect(()=>{let active=true;setInventory(null);
+   if(traceId===null||!inventoryEndpoint){setInventoryStatus("Stock V2 balances unavailable until a private read service is configured.");return;}
+   (async()=>{setInventoryLoading(true);try{
+     const {data:{session}}=await supabase.auth.getSession();
+     if(!session?.access_token)throw new Error("Authentication required");
+     const url=new URL(inventoryEndpoint);
+     url.searchParams.set("tracecode_id",String(traceId));
+     const response=await fetch(url.toString(),{headers:{Authorization:"Bearer "+session.access_token}});
+     if(!response.ok)throw new Error("Stock service returned "+response.status);
+     const result=await response.json() as BalanceResult;
+     if(!Array.isArray(result.balances)||typeof result.verified_owner!=="boolean")throw new Error("Invalid stock response");
+     if(active){setInventory(result);setInventoryStatus(result.verified_owner?"Ownership checked":"Tracecode ownership not verified");}
+   }catch(e){if(active)setInventoryStatus(e instanceof Error?e.message:String(e))}
+   finally{if(active)setInventoryLoading(false)}})();
+   return()=>{active=false};
+ },[traceId]);
  const chosen=traces.find(t=>t.tracecode_id===traceId);
  const edit=(id:number,changes:Partial<IssueLine>)=>setLines(old=>old.map(x=>x.id===id?{...x,...changes}:x));
  const valid=!!chosen&&purpose.trim().length>0&&lines.length>0&&lines.every(x=>x.input_id!==null&&Number(x.quantity)>0&&Number.isFinite(Number(x.quantity)));
@@ -40,6 +62,12 @@ export default function StockV2DirectIssue(){
   <ScrollView horizontal showsHorizontalScrollIndicator={false}>{traces.map(t=><Pressable key={t.tracecode_id} onPress={()=>setTraceId(t.tracecode_id)} style={[styles.chip,traceId===t.tracecode_id&&styles.sel]}><ThemedText>{t.tracecode_name}</ThemedText></Pressable>)}</ScrollView>
   <ThemedText style={styles.label}>Purpose / job description</ThemedText>
   <TextInput style={styles.input} value={purpose} onChangeText={setPurpose} placeholder="e.g. Mosquito spraying at domestic house"/>
+  <View style={styles.card}>
+   <ThemedText style={styles.head}>Available Stock V2 balances</ThemedText>
+   {inventoryLoading?<ActivityIndicator/>:null}
+   <ThemedText style={styles.warn}>{inventoryStatus}</ThemedText>
+   {inventory?.owner_code?<ThemedText>Stock owner: {inventory.owner_code}</ThemedText>:null}
+  </View>
   <ThemedText style={styles.head}>Products to issue</ThemedText>
   {lines.map(line=><View key={line.id} style={styles.card}>
    <ThemedText style={styles.label}>Chemical / Fertiliser</ThemedText>
@@ -51,6 +79,10 @@ export default function StockV2DirectIssue(){
    {open===line.id?<View style={styles.suggest}><ScrollView nestedScrollEnabled keyboardShouldPersistTaps="always" style={{maxHeight:190}}>
     {inputs.filter(x=>x.inputs_name.toLowerCase().includes(line.query.toLowerCase().trim())).slice(0,30).map(x=><Pressable key={x.input_id} style={styles.option} onPress={()=>{edit(line.id,{query:x.inputs_name,input_id:x.input_id});setOpen(null)}}><ThemedText>{x.inputs_name}</ThemedText></Pressable>)}
    </ScrollView><Pressable onPress={()=>setOpen(null)} style={styles.option}><ThemedText>Close list</ThemedText></Pressable></View>:null}
+   {line.input_id!==null?<View>
+     {(inventory?.verified_owner?inventory.balances:[]).filter(b=>b.input_id===line.input_id&&b.owner_code===inventory?.owner_code).map((b,i)=><ThemedText key={i} style={styles.selectedText}>Available: {b.available} {b.unit} at {b.location_name} ({b.owner_code})</ThemedText>)}
+     {!inventory?.verified_owner||!inventory.balances.some(b=>b.input_id===line.input_id)?<ThemedText style={styles.warn}>No verified Stock V2 stock balance mapped to this product.</ThemedText>:null}
+   </View>:null}
    <ThemedText style={styles.label}>Actual quantity to issue (in product's stock unit)</ThemedText>
    <TextInput style={styles.input} keyboardType="decimal-pad" value={line.quantity} onChangeText={v=>edit(line.id,{quantity:v})} placeholder="e.g. 0.5"/>
    <Pressable onPress={()=>setLines(old=>old.filter(x=>x.id!==line.id))}><ThemedText style={styles.error}>Remove product</ThemedText></Pressable>
@@ -66,4 +98,4 @@ export default function StockV2DirectIssue(){
   </View>
  </ScrollView></ThemedView>;
 }
-const styles=StyleSheet.create({root:{flex:1},page:{padding:16,gap:10,paddingBottom:40},head:{fontWeight:"700",fontSize:16},label:{opacity:0.8},warn:{color:"#9b6c19"},error:{color:"#b22"},chip:{padding:9,borderWidth:1,borderColor:"#999",borderRadius:8,marginRight:6},sel:{backgroundColor:"#c8e8d8"},dropdownButton:{borderWidth:1,borderColor:"#888",borderRadius:8,paddingHorizontal:14,justifyContent:"center"},selectedText:{color:"#187a48",fontWeight:"600"},input:{borderWidth:1,borderColor:"#888",padding:10,borderRadius:8,backgroundColor:"white",color:"#222"},card:{borderWidth:1,borderColor:"#aaa",borderRadius:10,padding:12,gap:8},option:{padding:9,borderBottomWidth:1,borderBottomColor:"#ddd"},suggest:{backgroundColor:"white",borderWidth:1,borderColor:"#ddd",padding:4},btn:{padding:12,borderWidth:1,borderColor:"#888",borderRadius:9,alignItems:"center"},disabled:{backgroundColor:"#ddd",borderRadius:8,padding:14,alignItems:"center"}});
+const styles=StyleSheet.create({root:{flex:1},page:{padding:16,gap:10,paddingBottom:40},head:{fontWeight:"700",fontSize:16},label:{opacity:0.8},warn:{color:"#9b6c19"},error:{color:"#b22"},chip:{padding:9,borderWidth:1,borderColor:"#999",borderRadius:8,marginRight:6},sel:{backgroundColor:"#c8e8d8"},dropdownButton:{borderWidth:1,borderColor:"#888",borderRadius:8,paddingHorizontal:14,justifyContent:"center"},selectedText:{color:"#187a48",fontWeight:"600"},selectedText:{color:"#187a48",fontWeight:"600"},input:{borderWidth:1,borderColor:"#888",padding:10,borderRadius:8,backgroundColor:"white",color:"#222"},card:{borderWidth:1,borderColor:"#aaa",borderRadius:10,padding:12,gap:8},option:{padding:9,borderBottomWidth:1,borderBottomColor:"#ddd"},suggest:{backgroundColor:"white",borderWidth:1,borderColor:"#ddd",padding:4},btn:{padding:12,borderWidth:1,borderColor:"#888",borderRadius:9,alignItems:"center"},disabled:{backgroundColor:"#ddd",borderRadius:8,padding:14,alignItems:"center"}});
