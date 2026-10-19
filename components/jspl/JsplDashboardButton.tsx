@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text } from 'react-native';
-import { jsplColors, jsplRadii, jsplSizes, jsplSpacing, jsplType } from '../../constants/jspl-design';
+import { jsplDashboardTheme } from '../../constants/jspl-design';
 
 type Props = { title: string; onPress: () => void; description?: string; disabled?: boolean };
 /** Standard module dashboard navigation button. Caller supplies verified route action. */
@@ -11,12 +11,12 @@ export function JsplDashboardButton({ title, description, onPress, disabled = fa
   </Pressable>;
 }
 const styles = StyleSheet.create({
-  button: { minHeight: jsplSizes.buttonHeight + 14, backgroundColor: jsplColors.surface,
-    borderRadius: jsplRadii.md, borderWidth: 1, borderColor: jsplColors.border,
-    paddingHorizontal: jsplSpacing.lg, paddingVertical: jsplSpacing.md,
-    justifyContent: 'center', gap: jsplSpacing.xs },
-  pressed: { backgroundColor: jsplColors.successTint, borderColor: jsplColors.primary },
+  button: { minHeight: jsplDashboardTheme.cardMinHeight, backgroundColor: jsplDashboardTheme.cardBackground,
+    borderRadius: jsplDashboardTheme.cardRadius, borderWidth: 1, borderColor: jsplDashboardTheme.cardBorder,
+    paddingHorizontal: jsplDashboardTheme.cardPaddingHorizontal, paddingVertical: jsplDashboardTheme.cardPaddingVertical,
+    justifyContent: 'center', gap: 8 },
+  pressed: { backgroundColor: jsplDashboardTheme.cardPressed, borderColor: jsplDashboardTheme.cardPressedBorder },
   disabled: { opacity: 0.5 },
-  title: { fontSize: jsplType.cardTitle, fontWeight: '700', color: jsplColors.primaryDark },
-  description: { fontSize: jsplType.body, color: jsplColors.textSecondary },
+  title: { fontSize: jsplDashboardTheme.cardTitleSize, fontWeight: '700', color: jsplDashboardTheme.cardTitle },
+  description: { fontSize: jsplDashboardTheme.descriptionSize, color: jsplDashboardTheme.cardDescription },
 });
