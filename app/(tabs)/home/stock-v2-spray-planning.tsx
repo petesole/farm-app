@@ -4,7 +4,9 @@ import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { supabase } from "../../../supabase";
 
-type Trace = { tracecode_id: number; tracecode_name: string; tracecode_size: number | null; planned_planting_date?: string | null; actual_planting_date?: string | null };
+type Trace = { tracecode_id: number; tracecode_name: string; tracecode_size: number | null; crop_id: number | null; end_date: string | null; planned_planting_date?: string | null; actual_planting_date?: string | null };
+type Crop = { crop_id: number; crop_name: string; active: boolean | null };
+type CatalogInput = { input_id: number; inputs_name: string };
 type InputLine = { key: number; input: string; rate: string };
 // Demo-only values from the user's Access example. Not fetched from Supabase.
 const exampleBudget = [
@@ -26,6 +28,10 @@ export default function StockV2SprayPlanningPreview() {
   const { width }=useWindowDimensions();
   const wide=width>=760;
   const [traces,setTraces]=useState<Trace[]>([]);
+  const [crops,setCrops]=useState<Crop[]>([]);
+  const [cropId,setCropId]=useState<number|null>(null);
+  const [catalog,setCatalog]=useState<CatalogInput[]>([]);
+  const [openLine,setOpenLine]=useState<number|null>(null);
   const [traceId,setTraceId]=useState<number|null>(null);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState("");
@@ -38,16 +44,31 @@ export default function StockV2SprayPlanningPreview() {
   const [part,setPart]=useState("");
   const [jobCode,setJobCode]=useState("");
   const [lines,setLines]=useState<InputLine[]>([]);
-  const selected=useMemo(()=>traces.find(t=>t.tracecode_id===traceId),[traceId,traces]);
+  const visibleTraces=useMemo(()=>traces.filter(t=>{
+    const notEnded=!t.end_date || t.end_date.slice(0,10)>=new Date().toISOString().slice(0,10);
+    return notEnded && (cropId===null || t.crop_id===cropId);
+  }),[traces,cropId]);
+  const visibleCrops=useMemo(()=>crops.filter(c=>c.active!==false && traces.some(t=>t.crop_id===c.crop_id && (!t.end_date || t.end_date.slice(0,10)>=new Date().toISOString().slice(0,10)))),[crops,traces]);
+  const selected=useMemo(()=>visibleTraces.find(t=>t.tracecode_id===traceId),[traceId,visibleTraces]);
+  useEffect(()=>{if(!visibleTraces.some(t=>t.tracecode_id===traceId))setTraceId(visibleTraces[0]?.tracecode_id??null)},[visibleTraces,traceId]);
   const operationalWeek=addWeeks(monday(new Date()),operationalOffset);
   const budgetWeek=addWeeks(monday(new Date()),budgetOffset);
   useEffect(()=>{ let mounted=true; (async()=>{
-    const result=await supabase.from("tracecode").select("tracecode_id,tracecode_name,tracecode_size,planned_planting_date,actual_planting_date").order("tracecode_name");
+    const [traceResult,cropResult,inputResult]=await Promise.all([
+      supabase.from("tracecode").select("tracecode_id,tracecode_name,tracecode_size,crop_id,end_date,planned_planting_date,actual_planting_date").order("tracecode_name"),
+      supabase.from("crop").select("crop_id,crop_name,active").order("crop_name"),
+      supabase.from("inputs").select("input_id,inputs_name").order("inputs_name").range(0,999)
+    ]);
     if(!mounted)return;
-    if(result.error)setError(result.error.message);
-    else {const rows=(result.data??[]) as Trace[];setTraces(rows);setTraceId(rows[0]?.tracecode_id??null);}
+    const failures=[traceResult.error,cropResult.error,inputResult.error].filter(Boolean);
+    if(failures.length)setError(failures.map(e=>e?.message).join("; "));
+    else {
+      setTraces((traceResult.data??[]) as Trace[]);
+      setCrops((cropResult.data??[]) as Crop[]);
+      setCatalog((inputResult.data??[]) as CatalogInput[]);
+    }
     setLoading(false);
-  })(); return()=>{mounted=false};},[]);
+  })();return()=>{mounted=false};},[]);
   useEffect(()=>{setArea(selected?.tracecode_size?.toString()??"");setBudgetOffset(0);setLines([])},[traceId]);
   const addLine=(input="")=>setLines(old=>[...old,{key:nextKey++,input,rate:""}]);
   const copyBudgetInput=(input:string,rate:number)=>setLines(old=>{
@@ -55,14 +76,18 @@ export default function StockV2SprayPlanningPreview() {
     if(existing)return old; // avoid accidental duplicates on repeated taps
     return [...old,{key:nextKey++,input,rate:String(rate)}];
   });
+  const matches=(search:string)=>catalog.filter(p=>p.inputs_name.toLowerCase().includes(search.trim().toLowerCase())).slice(0,30);
   const changeLine=(key:number,field:"input"|"rate",value:string)=>setLines(old=>old.map(x=>x.key===key?{...x,[field]:value}:x));
   const totalWater=Number(area)*Number(waterRate);
   return <ThemedView style={styles.root}><ScrollView contentContainerStyle={styles.page}>
     <ThemedText type="title">Stock V2 · Weekly Spray Planning</ThemedText>
     <ThemedText style={styles.warning}>Development preview only. No spray plans or stock movements are saved.</ThemedText>
     {loading?<ActivityIndicator/>:error?<ThemedText style={styles.error}>{error}</ThemedText>:<View style={styles.traces}>
-      <ThemedText style={styles.heading}>Select tracecode</ThemedText>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>{traces.map(t=><Pressable key={t.tracecode_id} onPress={()=>setTraceId(t.tracecode_id)} style={[styles.chip,traceId===t.tracecode_id&&styles.selected]}><ThemedText>{t.tracecode_name}</ThemedText></Pressable>)}</ScrollView>
+      <ThemedText style={styles.heading}>Filter by crop</ThemedText>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}><Pressable onPress={()=>setCropId(null)} style={[styles.chip,cropId===null&&styles.selected]}><ThemedText>All active crops</ThemedText></Pressable>{visibleCrops.map(c=><Pressable key={c.crop_id} onPress={()=>setCropId(c.crop_id)} style={[styles.chip,cropId===c.crop_id&&styles.selected]}><ThemedText>{c.crop_name}</ThemedText></Pressable>)}</ScrollView>
+      <ThemedText style={styles.heading}>Active tracecodes ({visibleTraces.length})</ThemedText>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>{visibleTraces.map(t=><Pressable key={t.tracecode_id} onPress={()=>setTraceId(t.tracecode_id)} style={[styles.chip,traceId===t.tracecode_id&&styles.selected]}><ThemedText>{t.tracecode_name}</ThemedText></Pressable>)}</ScrollView>
+      {visibleTraces.length===0?<ThemedText style={styles.muted}>No active tracecodes for this crop.</ThemedText>:null}
     </View>}
     <View style={[styles.panels,wide?styles.sideBySide:styles.stacked]}>
       <View style={styles.panel}>
@@ -75,7 +100,14 @@ export default function StockV2SprayPlanningPreview() {
         <ThemedText style={styles.muted}>Water required: {fmt(totalWater)} L</ThemedText>
         <View style={styles.two}><View style={styles.half}><ThemedText style={styles.label}>Part of field</ThemedText><TextInput style={styles.input} value={part} onChangeText={setPart}/></View><View style={styles.half}><ThemedText style={styles.label}>Job code</ThemedText><TextInput style={styles.input} value={jobCode} onChangeText={setJobCode}/></View></View>
         <ThemedText style={styles.heading}>Inputs & rates</ThemedText>
-        {lines.map(x=><View key={x.key} style={styles.line}><View style={{flex:2}}><ThemedText style={styles.label}>Input</ThemedText><TextInput style={styles.input} value={x.input} onChangeText={v=>changeLine(x.key,"input",v)}/></View><View style={{flex:1}}><ThemedText style={styles.label}>Rate/ha</ThemedText><TextInput style={styles.input} keyboardType="decimal-pad" value={x.rate} onChangeText={v=>changeLine(x.key,"rate",v)}/></View><View style={{flex:1}}><ThemedText style={styles.label}>Required</ThemedText><ThemedText>{fmt(Number(area)*Number(x.rate))}</ThemedText></View><Pressable onPress={()=>setLines(v=>v.filter(y=>y.key!==x.key))}><ThemedText style={styles.error}>Remove</ThemedText></Pressable></View>)}
+        {lines.map(x=><View key={x.key} style={styles.line}><View style={{flex:2}}><ThemedText style={styles.label}>Input</ThemedText><TextInput style={styles.input} value={x.input} onFocus={()=>setOpenLine(x.key)} onChangeText={v=>{changeLine(x.key,"input",v);setOpenLine(x.key)}} placeholder="Type product name or letters" autoCorrect={false}/>
+          {openLine===x.key?<View style={styles.suggestions}><ThemedText style={styles.label}>Matching inputs ({matches(x.input).length}{catalog.length>=1000?"+":""})</ThemedText>
+            <ScrollView nestedScrollEnabled style={{maxHeight:190}} keyboardShouldPersistTaps="always">
+              {matches(x.input).map(p=><Pressable key={p.input_id} style={styles.suggestion} onPress={()=>{changeLine(x.key,"input",p.inputs_name);setOpenLine(null)}}><ThemedText>{p.inputs_name}</ThemedText></Pressable>)}
+              {matches(x.input).length===0?<ThemedText style={styles.muted}>No matching input in the current master.</ThemedText>:null}
+            </ScrollView>
+            <Pressable onPress={()=>setOpenLine(null)} style={styles.chip}><ThemedText>Close list</ThemedText></Pressable>
+          </View>:null}</View><View style={{flex:1}}><ThemedText style={styles.label}>Rate/ha</ThemedText><TextInput style={styles.input} keyboardType="decimal-pad" value={x.rate} onChangeText={v=>changeLine(x.key,"rate",v)}/></View><View style={{flex:1}}><ThemedText style={styles.label}>Required</ThemedText><ThemedText>{fmt(Number(area)*Number(x.rate))}</ThemedText></View><Pressable onPress={()=>setLines(v=>v.filter(y=>y.key!==x.key))}><ThemedText style={styles.error}>Remove</ThemedText></Pressable></View>)}
         <Pressable style={styles.action} onPress={()=>addLine()}><ThemedText>+ Add input</ThemedText></Pressable>
         <ThemedText style={styles.warning}>Saving is disabled until the private Stock V2 API and verified JS/AO ownership mapping are ready.</ThemedText>
       </View>
@@ -105,5 +137,5 @@ const styles=StyleSheet.create({
  weekNav:{flexDirection:"row",alignItems:"center",justifyContent:"space-between",gap:4,flexWrap:"wrap"},label:{fontSize:12,opacity:0.75,marginBottom:3},
  input:{borderWidth:1,borderColor:"#999",borderRadius:7,padding:8,minHeight:38,color:"#222",backgroundColor:"#fff"},two:{flexDirection:"row",gap:8},half:{flex:1},
  line:{flexDirection:"row",alignItems:"center",gap:7,flexWrap:"wrap"},action:{borderWidth:1,borderColor:"#999",padding:10,alignItems:"center",borderRadius:8},
- empty:{borderWidth:1,borderStyle:"dashed",borderColor:"#aaa",padding:14,borderRadius:8,gap:8,marginTop:10},budgetRow:{paddingVertical:9,borderBottomWidth:1,borderColor:"#ccc",flexDirection:"row",gap:8,alignItems:"center"},copy:{fontWeight:"700",color:"#19744a"}
+ empty:{borderWidth:1,borderStyle:"dashed",borderColor:"#aaa",padding:14,borderRadius:8,gap:8,marginTop:10},budgetRow:{paddingVertical:9,borderBottomWidth:1,borderColor:"#ccc",flexDirection:"row",gap:8,alignItems:"center"},copy:{fontWeight:"700",color:"#19744a"},suggestions:{borderWidth:1,borderColor:"#bbb",borderRadius:7,padding:6,backgroundColor:"#fff"},suggestion:{paddingVertical:8,borderBottomWidth:1,borderBottomColor:"#ddd"}
 });
