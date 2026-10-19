@@ -46,8 +46,8 @@ export default function StockV2SprayPlanningPreview() {
   const [lines,setLines]=useState<InputLine[]>([]);
   const visibleTraces=useMemo(()=>traces.filter(t=>{
     const notEnded=!t.end_date || t.end_date.slice(0,10)>=new Date().toISOString().slice(0,10);
-    return notEnded && (cropId===null || t.crop_id===cropId);
-  }),[traces,cropId]);
+    return notEnded && crops.some(c=>c.crop_id===t.crop_id && c.active!==false) && (cropId===null || t.crop_id===cropId);
+  }),[traces,crops,cropId]);
   const visibleCrops=useMemo(()=>crops.filter(c=>c.active!==false && traces.some(t=>t.crop_id===c.crop_id && (!t.end_date || t.end_date.slice(0,10)>=new Date().toISOString().slice(0,10)))),[crops,traces]);
   const selected=useMemo(()=>visibleTraces.find(t=>t.tracecode_id===traceId),[traceId,visibleTraces]);
   useEffect(()=>{if(!visibleTraces.some(t=>t.tracecode_id===traceId))setTraceId(visibleTraces[0]?.tracecode_id??null)},[visibleTraces,traceId]);
