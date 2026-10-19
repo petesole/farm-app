@@ -18,7 +18,7 @@ export default function StockV2Workflow(){
  const [qty,setQty]=useState("1"),[supplier,setSupplier]=useState("Demo Supplier"),[purpose,setPurpose]=useState("Test job");
  const [orderId,setOrderId]=useState<number|null>(null),[jobId,setJobId]=useState<number|null>(null);
  const [area,setArea]=useState("19"),[rate,setRate]=useState("0.5"),[water,setWater]=useState("200");
- const [cropId,setCropId]=useState<number|null>(null),[traceSearch,setTraceSearch]=useState(""),[traceOpen,setTraceOpen]=useState(false),[productSearch,setProductSearch]=useState(""),[productOpen,setProductOpen]=useState(false),[orderOpen,setOrderOpen]=useState(false),[unitPrice,setUnitPrice]=useState("7.50");
+ const [cropId,setCropId]=useState<number|null>(null),[cropOpen,setCropOpen]=useState(false),[traceSearch,setTraceSearch]=useState(""),[traceOpen,setTraceOpen]=useState(false),[productSearch,setProductSearch]=useState(""),[productOpen,setProductOpen]=useState(false),[orderOpen,setOrderOpen]=useState(false),[unitPrice,setUnitPrice]=useState("7.50");
  const [busy,setBusy]=useState(false),[message,setMessage]=useState(""),[confirm,setConfirm]=useState(false),[pending,setPending]=useState<{id:string;action:string;payload:any}|null>(null);
  const getToken=async()=>{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw new Error("Sign in to Supabase to use the test stock system");return session.access_token};
  const load=async()=>{setBusy(true);try{const token=await getToken();const res=await fetch(url,{headers:{authorization:"Bearer "+token}});const d=await res.json();if(!res.ok)throw new Error(d.error||"Cannot load stock");setData(d);setMessage("")}catch(e){setMessage(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
@@ -68,7 +68,11 @@ setTrace((t.data??[]).find(x=>x.tracecode_name?.toUpperCase()==="DOMESTICHS")?.t
    {tab==="Planned Issue"?<><ThemedText style={styles.label}>Choose outstanding spray job</ThemedText><View style={styles.wrap}>{matchingJobs.map(j=>option("Job #"+j.job_id+" "+j.tracecode_name+" remaining "+(j.planned_quantity-j.issued_quantity).toFixed(2),jobId===j.job_id,()=>setJobId(j.job_id)))}</View></>:null}
    {["Spray Programme","Direct Issue"].includes(tab)?<>
     <ThemedText style={styles.label}>Crop filter</ThemedText>
-    <View style={styles.wrap}>{option("All crops",cropId===null,()=>setCropId(null))}{crops.map(x=>option(x.crop_name,cropId===x.crop_id,()=>{setCropId(x.crop_id);setTrace(null)}))}</View>
+    <Pressable style={styles.option} onPress={()=>setCropOpen(v=>!v)}><ThemedText>{crops.find(x=>x.crop_id===cropId)?.crop_name??"All crops"} ▼</ThemedText></Pressable>
+    {cropOpen?<View style={styles.panel}>
+      {option("All crops",cropId===null,()=>{setCropId(null);setCropOpen(false);setTrace(null)})}
+      {crops.map(x=>option(x.crop_name,cropId===x.crop_id,()=>{setCropId(x.crop_id);setCropOpen(false);setTrace(null)}))}
+    </View>:null}
     <ThemedText style={styles.label}>Active tracecode</ThemedText>
     <Pressable style={styles.option} onPress={()=>setTraceOpen(v=>!v)}><ThemedText>{traces.find(t=>t.tracecode_id===trace)?.tracecode_name??"Choose active tracecode"} ▼</ThemedText></Pressable>
     {traceOpen?<View style={styles.panel}><TextInput style={styles.input} placeholder="Search tracecodes" placeholderTextColor="#777" value={traceSearch} onChangeText={setTraceSearch}/>
