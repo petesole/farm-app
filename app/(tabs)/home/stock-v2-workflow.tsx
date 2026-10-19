@@ -13,7 +13,7 @@ type Snapshot={items:Item[];orders:OrderLine[];sprays:SprayLine[];documents:Doc[
 type Trace={tracecode_id:number;tracecode_name:string;crop_id:number|null};
 type Crop={crop_id:number;crop_name:string};
 type Line={id:number;item_code:string;quantity:string;unit_price:string;rate_per_ha:string};
-const emptyLine=(id:number,item_code="DEMO_MOSQUITO"):Line=>({id,item_code,quantity:"",unit_price:"",rate_per_ha:""});
+const emptyLine=(id:number,item_code=""):Line=>({id,item_code,quantity:"",unit_price:"",rate_per_ha:""});
 const uuid=()=>"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const r=Math.floor(Math.random()*16);return(c==="x"?r:(r&3)|8).toString(16)});
 const number=(x:string)=>Number(x);
 const currency=(n:number)=>Number.isFinite(n)?n.toFixed(2):"—";
@@ -47,7 +47,7 @@ export default function StockV2Workflow(){
  })()},[]);
  const resetEdit=()=>{setConfirmed(false);setRequest(null)};
  const changeLine=(id:number,key:keyof Line,value:string)=>{setLines(old=>old.map(l=>l.id===id?{...l,[key]:value}:l));resetEdit()};
- const addLine=()=>{setLines(old=>[...old,emptyLine(nextLine,snapshot?.items?.[0]?.item_code??"DEMO_MOSQUITO")]);setNextLine(n=>n+1);resetEdit()};
+ const addLine=()=>{setLines(old=>[...old,emptyLine(nextLine)]);setNextLine(n=>n+1);resetEdit()};
  const removeLine=(id:number)=>{setLines(old=>old.filter(l=>l.id!==id));resetEdit()};
  const switchTab=(v:Tab|null)=>{setTab(v);if(v==="GRV"||v==="Planned Issue")void refresh(false);setLines([emptyLine(nextLine)]);setNextLine(n=>n+1);setOrderId(null);setJobId(null);setDropdown(null);setStatus("");resetEdit()};
  const products=snapshot?.items??[];
@@ -80,7 +80,7 @@ export default function StockV2Workflow(){
     {locked?<ThemedText>{product?.item_name??l.item_code}</ThemedText>:menu("item-"+l.id,product?.item_name??"Select product",products.filter(p=>!lines.some(x=>x.id!==l.id&&x.item_code===p.item_code)).map(p=>({label:p.item_name+" ("+p.base_unit+")",value:p.item_code,onSelect:()=>changeLine(l.id,"item_code",p.item_code)})),true)}
     <ThemedText style={styles.muted}>{product?.base_unit??""}</ThemedText>
    </View>
-   {tab==="GRV"?<><View style={styles.numberColumn}><ThemedText>{(reference as OrderLine)?.ordered_quantity??"—"}</ThemedText></View><View style={styles.cell}><ThemedText>{(reference as OrderLine)?.received_quantity??"—"}</ThemedText></View><View style={styles.cell}><ThemedText>{currency((reference as OrderLine)?.ordered_unit_price??NaN)}</ThemedText></View></>:null}
+   {tab==="GRV"?<><View style={styles.numberColumn}><ThemedText>{(reference as OrderLine)?.ordered_quantity??"—"}</ThemedText></View><View style={styles.numberColumn}><ThemedText>{(reference as OrderLine)?.received_quantity??"—"}</ThemedText></View><View style={styles.cell}><ThemedText>{currency((reference as OrderLine)?.ordered_unit_price??NaN)}</ThemedText></View></>:null}
    {tab==="Planned Issue"?<View style={styles.cell}><ThemedText>{max?.toFixed(2)??"—"}</ThemedText></View>:null}
    <View style={styles.cell}><TextInput style={styles.tableInput} keyboardType="decimal-pad" value={tab==="Spray Programme"?l.rate_per_ha:l.quantity} onChangeText={v=>changeLine(l.id,tab==="Spray Programme"?"rate_per_ha":"quantity",v)} placeholder={tab==="Spray Programme"?"Rate/ha":"Quantity"} placeholderTextColor="#777"/></View>
    {tab==="Purchase Orders"||tab==="GRV"?<><View style={styles.cell}><TextInput style={styles.tableInput} keyboardType="decimal-pad" value={l.unit_price} onChangeText={v=>changeLine(l.id,"unit_price",v)} placeholder="Unit price" placeholderTextColor="#777"/></View><View style={styles.cell}><ThemedText>{currency(number(l.quantity)*number(l.unit_price))}</ThemedText></View></>:null}
@@ -92,7 +92,7 @@ export default function StockV2Workflow(){
  const action=tab==="Purchase Orders"?"order":tab==="GRV"?"grv":tab==="Spray Programme"?"spray":tab==="Planned Issue"?"planned_issue":"direct_issue";
  const normalizedLines=lines.map(l=>tab==="Spray Programme"?{item_code:l.item_code,rate_per_ha:number(l.rate_per_ha)}:{item_code:l.item_code,quantity:number(l.quantity),...(["Purchase Orders","GRV"].includes(tab)?{unit_price:l.unit_price.trim()?number(l.unit_price):null}:{})});
  const payload={supplier,order_id:orderId,job_id:jobId,tracecode_id:traceId,area_ha:number(area),water_rate:number(water),delivery_note:deliveryNote,lines:normalizedLines};
- const valid=lines.length>0&&lines.length<=30&&new Set(lines.map(l=>l.item_code)).size===lines.length&&lines.every(l=>{
+ const valid=!!snapshot&&lines.length>0&&lines.length<=30&&new Set(lines.map(l=>l.item_code)).size===lines.length&&lines.every(l=>{
   if(!products.some(p=>p.item_code===l.item_code))return false;
   const n=number(tab==="Spray Programme"?l.rate_per_ha:l.quantity);
   if(!Number.isFinite(n)||n<=0)return false;
@@ -104,7 +104,9 @@ export default function StockV2Workflow(){
  })&&(tab!=="GRV"||!!selectedPO)&&(tab!=="Planned Issue"||!!selectedJob)&&(!["Spray Programme","Direct Issue"].includes(tab)||!!traceId)&&(tab!=="Spray Programme"||number(area)>0);
  const submit=async()=>{if(!valid||!confirmed||busy)return;setBusy(true);setStatus("");
   const req=request&&request.action===action&&JSON.stringify(request.payload)===JSON.stringify(payload)?request:{action,payload,id:uuid()};setRequest(req);
-  try{const r=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+await token()},body:JSON.stringify({action,request_id:req.id,payload:req.payload})});const d=await r.json();if(!r.ok)throw Error(d.error||"Posting failed");
+  try{
+   if(!Array.isArray(req.payload.lines)||req.payload.lines.length===0)throw Error("Cannot post an order without products");
+   const r=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+await token()},body:JSON.stringify({action,request_id:req.id,payload:req.payload})});const d=await r.json();if(!r.ok)throw Error(d.error||"Posting failed");
    setStatus("Posted "+tab+" successfully. "+(d.result?.order_id?"PO #"+d.result.order_id:d.result?.document_id?"Document #"+d.result.document_id:d.result?.job_id?"Job #"+d.result.job_id:"")+" — returned to Stock Home.");setConfirmed(false);setRequest(null);await refresh(false);setTab(null);
    if(tab==="GRV")setOrderId(null);if(tab==="Planned Issue")setJobId(null);
    setLines([emptyLine(nextLine)]);setNextLine(n=>n+1);
@@ -155,8 +157,9 @@ export default function StockV2Workflow(){
    </ScrollView>
    {!["GRV","Planned Issue"].includes(tab)?<Pressable style={styles.add} onPress={addLine}><ThemedText>＋ Add product line</ThemedText></Pressable>:null}
    {["Purchase Orders","GRV"].includes(tab)?<ThemedText style={styles.total}>Document total: {currency(lines.reduce((s,l)=>s+number(l.quantity)*number(l.unit_price||"0"),0))}</ThemedText>:null}
+   <ThemedText style={styles.label}>Products on this document: {lines.filter(l=>products.some(p=>p.item_code===l.item_code)&&Number(tab==="Spray Programme"?l.rate_per_ha:l.quantity)>0).length} / {lines.length}</ThemedText>
    <View style={styles.footer}><Pressable onPress={()=>setConfirmed(x=>!x)} style={styles.confirm}><ThemedText>{confirmed?"☑":"☐"} Confirm TEST transaction</ThemedText></Pressable><Pressable disabled={!valid||!confirmed||busy} onPress={submit} style={[styles.submit,(!valid||!confirmed||busy)&&styles.off]}><ThemedText style={styles.submitText}>{busy?"Posting…":"Post "+tab}</ThemedText></Pressable></View>
-   {!valid?<ThemedText style={styles.muted}>Complete all required fields, quantities and outstanding-order limits before posting.</ThemedText>:null}
+   {!valid?<ThemedText style={styles.alert}>Select a product on every line and enter a positive quantity (or spray rate). Empty documents cannot be posted.</ThemedText>:null}
   </View>}
  </ScrollView></ThemedView>
 }
