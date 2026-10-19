@@ -14,6 +14,8 @@ import { supabase } from "../../supabase";
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { JsplDashboardButton } from "@/components/jspl/JsplDashboardButton";
+import { jsplColors, jsplSpacing, jsplRadii } from "@/constants/jspl-design";
 
 /** Helpers */
 function toISODate(d: Date) {
@@ -212,49 +214,19 @@ export default function FuelScreen() {
 
       <ThemedView style={styles.bottomBar}>
         {isAdmin && (
-          <Pressable
-            style={styles.navBtn}
-            onPress={() => router.push("/(tabs)/home/fuel_admin_home")}
-          >
-            <ThemedText>Fuel Admin</ThemedText>
-          </Pressable>
+          <JsplDashboardButton title="Fuel Admin" onPress={() => router.push("/(tabs)/home/fuel_admin_home")} />
         )}
 
-        <Pressable
-          style={styles.navBtn}
-          onPress={() => router.push("/(tabs)/home/fuel_issue")}
-        >
-          <ThemedText>Fuel Issue</ThemedText>
-        </Pressable>
+        <JsplDashboardButton title="Fuel Issue" onPress={() => router.push("/(tabs)/home/fuel_issue")} />
 
-        <Pressable
-          style={styles.navBtn}
-          onPress={() => router.push("/(tabs)/home/fuel_received")}
-        >
-          <ThemedText>Fuel Received</ThemedText>
-        </Pressable>
+        <JsplDashboardButton title="Fuel Received" onPress={() => router.push("/(tabs)/home/fuel_received")} />
 
-        <Pressable
-          style={styles.navBtn}
-          onPress={() => router.push("/(tabs)/home/fuel_unallocated")}
-        >
-          <ThemedText>Fuel Unallocated</ThemedText>
-        </Pressable>
+        <JsplDashboardButton title="Fuel Unallocated" onPress={() => router.push("/(tabs)/home/fuel_unallocated")} />
 
-        <Pressable
-          style={styles.navBtn}
-          onPress={() => router.push("/(tabs)/home/fuel_report")}
-        >
-          <ThemedText>Fuel Report</ThemedText>
-        </Pressable>
+        <JsplDashboardButton title="Fuel Report" onPress={() => router.push("/(tabs)/home/fuel_report")} />
 
         {canSeeMonthlyAllocations && (
-          <Pressable
-            style={styles.navBtn}
-            onPress={() => router.push("/(tabs)/home/fuel_monthly_allocations")}
-          >
-            <ThemedText>Monthly Allocations</ThemedText>
-          </Pressable>
+          <JsplDashboardButton title="Monthly Allocations" onPress={() => router.push("/(tabs)/home/fuel_monthly_allocations")} />
         )}
       </ThemedView>
     </ScrollView>
@@ -262,10 +234,10 @@ export default function FuelScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 18, gap: 12 },
-  card: { borderWidth: 1, padding: 12 },
-  input: { borderWidth: 1, padding: 10 },
-  button: { borderWidth: 1, padding: 10 },
-  bottomBar: { marginTop: 20, gap: 10 },
+  container: { padding: jsplSpacing.lg, gap: jsplSpacing.md, backgroundColor: jsplColors.background },
+  card: { borderWidth: 1, borderColor: jsplColors.border, backgroundColor: jsplColors.surface, borderRadius: jsplRadii.md, padding: jsplSpacing.lg },
+  input: { borderWidth: 1, borderColor: jsplColors.border, backgroundColor: jsplColors.surface, borderRadius: jsplRadii.md, padding: jsplSpacing.md },
+  button: { backgroundColor: jsplColors.primary, borderRadius: jsplRadii.md, padding: jsplSpacing.md },
+  bottomBar: { marginTop: jsplSpacing.xl, gap: jsplSpacing.md, backgroundColor: jsplColors.background },
   navBtn: { borderWidth: 1, padding: 12 },
 });
