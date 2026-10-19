@@ -6,6 +6,12 @@ import { supabase } from "../../../supabase";
 
 type Trace={tracecode_id:number;tracecode_name:string;end_date:string|null};
 type Input={input_id:number;inputs_name:string};
+const demoProducts:Input[]=[
+ {input_id:-1001,inputs_name:"DEMO Mosquito Spray (L)"},
+ {input_id:-1002,inputs_name:"DEMO Glyphosate (L)"},
+ {input_id:-1003,inputs_name:"DEMO Lambda Insecticide (L)"},
+ {input_id:-1004,inputs_name:"DEMO Compound D Fertiliser (kg)"}
+];
 type IssueLine={id:number;input_id:number|null;query:string;quantity:string};
 type InventoryRow={input_id:number;stock_item_id:number;owner_code:string;location_name:string;available:number;unit:string};
 type BalanceResult={verified_owner:boolean;owner_code:string|null;balances:InventoryRow[]};
@@ -30,7 +36,7 @@ export default function StockV2DirectIssue(){
   ]);
   if(!active)return;
   if(t.error||i.error)setError([t.error?.message,i.error?.message].filter(Boolean).join("; "));
-  else {const today=new Date().toISOString().slice(0,10);const rows=((t.data??[]) as Trace[]).filter(x=>!x.end_date||x.end_date.slice(0,10)>=today);setTraces(rows);setInputs((i.data??[]) as Input[]);}
+  else {const today=new Date().toISOString().slice(0,10);const rows=((t.data??[]) as Trace[]).filter(x=>!x.end_date||x.end_date.slice(0,10)>=today);setTraces(rows);setInputs([...demoProducts,...((i.data??[]) as Input[])]);}
   setLoading(false);
  })();return()=>{active=false}},[]);
  useEffect(()=>{let active=true;setInventory(null);
@@ -55,7 +61,7 @@ export default function StockV2DirectIssue(){
  const qtyTotal=useMemo(()=>lines.filter(x=>Number(x.quantity)>0).length,[lines]);
  return <ThemedView style={styles.root}><ScrollView keyboardShouldPersistTaps="always" contentContainerStyle={styles.page}>
   <ThemedText type="title">Stock V2 · Direct Issue</ThemedText>
-  <ThemedText style={styles.warn}>Development preview. No stock is deducted and posting is disabled.</ThemedText>
+  <ThemedText style={styles.warn}>Test products are selectable below. Posting from this screen is still disabled; demo stock movements are tested in Stock V2 separately.</ThemedText>
   {loading?<ActivityIndicator/>:error?<ThemedText style={styles.error}>{error}</ThemedText>:null}
   <ThemedText style={styles.head}>Issue type: Direct (no spray programme)</ThemedText>
   <ThemedText style={styles.label}>Allocate to tracecode</ThemedText>
@@ -81,7 +87,7 @@ export default function StockV2DirectIssue(){
    </ScrollView><Pressable onPress={()=>setOpen(null)} style={styles.option}><ThemedText>Close list</ThemedText></Pressable></View>:null}
    {line.input_id!==null?<View>
      {(inventory?.verified_owner?inventory.balances:[]).filter(b=>b.input_id===line.input_id&&b.owner_code===inventory?.owner_code).map((b,i)=><ThemedText key={i} style={styles.selectedText}>Available: {b.available} {b.unit} at {b.location_name} ({b.owner_code})</ThemedText>)}
-     {!inventory?.verified_owner||!inventory.balances.some(b=>b.input_id===line.input_id)?<ThemedText style={styles.warn}>No verified Stock V2 stock balance mapped to this product.</ThemedText>:null}
+     {!inventory?.verified_owner||!inventory.balances.some(b=>b.input_id===line.input_id)?<ThemedText style={styles.warn}>Stock balance display requires the secured Stock V2 read service. Demo product selection is for screen testing.</ThemedText>:null}
    </View>:null}
    <ThemedText style={styles.label}>Actual quantity to issue (in product's stock unit)</ThemedText>
    <TextInput style={styles.input} keyboardType="decimal-pad" value={line.quantity} onChangeText={v=>edit(line.id,{quantity:v})} placeholder="e.g. 0.5"/>
