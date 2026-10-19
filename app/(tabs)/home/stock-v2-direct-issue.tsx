@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { supabase } from "../../../supabase";
@@ -29,6 +29,10 @@ export default function StockV2DirectIssue(){
  const [inventory,setInventory]=useState<BalanceResult|null>(null);
  const [inventoryStatus,setInventoryStatus]=useState("Private Stock V2 balance service not configured");
  const [inventoryLoading,setInventoryLoading]=useState(false);
+ const [posting,setPosting]=useState(false);
+ const [confirmed,setConfirmed]=useState(false);
+ const [postMessage,setPostMessage]=useState("");
+ const [requestId,setRequestId]=useState<string|null>(null);
  useEffect(()=>{let active=true;(async()=>{
   const [t,i]=await Promise.all([
    supabase.from("tracecode").select("tracecode_id,tracecode_name,end_date").order("tracecode_name"),
@@ -57,11 +61,35 @@ export default function StockV2DirectIssue(){
  },[traceId]);
  const chosen=traces.find(t=>t.tracecode_id===traceId);
  const edit=(id:number,changes:Partial<IssueLine>)=>setLines(old=>old.map(x=>x.id===id?{...x,...changes}:x));
- const valid=!!chosen&&purpose.trim().length>0&&lines.length>0&&lines.every(x=>x.input_id!==null&&Number(x.quantity)>0&&Number.isFinite(Number(x.quantity)));
+ const valid=!!chosen&&purpose.trim().length>0&&lines.length>0&&lines.every(x=>x.input_id!==null&&x.input_id<=-1001&&x.input_id>=-1004&&Number(x.quantity)>0&&Number.isFinite(Number(x.quantity)));
+ const postDemo=async()=>{
+  if(!valid||posting||!confirmed)return;
+  setPosting(true);setPostMessage("");
+  const id=requestId??"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,ch=>{
+    const r=Math.floor(Math.random()*16);return(ch==="x"?r:(r&3)|8).toString(16);
+  });
+  setRequestId(id);
+  try{
+   const {data:{session}}=await supabase.auth.getSession();
+   if(!session?.access_token)throw new Error("Sign in to Supabase first. Demo posting requires an authenticated user.");
+   const body={request_id:id,tracecode_id:traceId,purpose,lines:lines.map(x=>({input_id:x.input_id,quantity:Number(x.quantity)}))};
+   const res=await fetch("https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-issue",{
+     method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.access_token},body:JSON.stringify(body)
+   });
+   const result=await res.json();
+   if(!res.ok)throw new Error(result.error||"Posting failed");
+   setPostMessage("Posted test issue #"+result.document_id+(result.duplicate?" (already posted)":"")+". Test stock deducted.");
+   setConfirmed(false);
+   setRequestId(null);
+   setLines([{id:nextLineId++,input_id:null,query:"",quantity:""}]);
+   setPurpose("");
+  }catch(e){setPostMessage("NOT POSTED: "+(e instanceof Error?e.message:String(e)));}
+  finally{setPosting(false)}
+ };
  const qtyTotal=useMemo(()=>lines.filter(x=>Number(x.quantity)>0).length,[lines]);
  return <ThemedView style={styles.root}><ScrollView keyboardShouldPersistTaps="always" contentContainerStyle={styles.page}>
   <ThemedText type="title">Stock V2 · Direct Issue</ThemedText>
-  <ThemedText style={styles.warn}>Test products are selectable below. Posting from this screen is still disabled; demo stock movements are tested in Stock V2 separately.</ThemedText>
+  <ThemedText style={styles.warn}>TEST MODE — only four DEMO products will be posted to TEST_JS stock, never live inventory.</ThemedText>
   {loading?<ActivityIndicator/>:error?<ThemedText style={styles.error}>{error}</ThemedText>:null}
   <ThemedText style={styles.head}>Issue type: Direct (no spray programme)</ThemedText>
   <ThemedText style={styles.label}>Allocate to tracecode</ThemedText>
@@ -100,7 +128,11 @@ export default function StockV2DirectIssue(){
    <ThemedText>Products with quantities: {qtyTotal}</ThemedText>
    {lines.map(x=><ThemedText key={x.id}>{x.input_id!==null?"✓":"○"} {x.query||"Choose input"} — {x.quantity||"0"} stock units</ThemedText>)}
    <ThemedText style={styles.warn}>{valid?"Entry complete for preview. Actual stock availability and stock ownership still need to be validated before posting.":"Select a tracecode, enter a purpose and choose products and quantities."}</ThemedText>
-   <View style={styles.disabled}><ThemedText style={{color:"#666"}}>Post Issue — not enabled yet</ThemedText></View>
+   <Pressable style={[styles.btn,confirmed&&styles.sel]} onPress={()=>setConfirmed(x=>!x)}><ThemedText>{confirmed?"✓ Confirmed: Test stock issue":"Tap to confirm TEST stock issue"}</ThemedText></Pressable>
+   <Pressable disabled={!valid||!confirmed||posting} style={[styles.btn,(!valid||!confirmed||posting)&&styles.disabled]} onPress={postDemo}>
+    <ThemedText>{posting?"Posting...":"Post DEMO Issue"}</ThemedText>
+   </Pressable>
+   {postMessage?<ThemedText>{postMessage}</ThemedText>:null}
   </View>
  </ScrollView></ThemedView>;
 }
