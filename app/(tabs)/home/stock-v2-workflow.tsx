@@ -1,119 +1,168 @@
-import {useEffect,useState} from "react";
-import type {ReactNode} from "react";
-import {ActivityIndicator,Pressable,ScrollView,StyleSheet,TextInput,View} from "react-native";
+import {useEffect,useMemo,useState} from "react";
+import {ActivityIndicator,Pressable,ScrollView,StyleSheet,TextInput,View,useWindowDimensions} from "react-native";
 import {ThemedText} from "@/components/themed-text";
 import {ThemedView} from "@/components/themed-view";
 import {supabase} from "../../../supabase";
-const url="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
+
+const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
 type Item={item_code:string;item_name:string;base_unit:string;quantity:number};
-type Order={order_id:number;order_number:string;item_code:string;supplier_name:string;ordered_quantity:number;received_quantity:number;ordered_unit_price?:number|null};
-type Spray={job_id:number;tracecode_name:string;item_code:string;area_ha:number;rate_per_ha:number;planned_quantity:number;issued_quantity:number;status:string};
+type OrderLine={order_id:number;order_number:string;supplier_name:string;item_code:string;item_name:string;base_unit:string;ordered_quantity:number;received_quantity:number;ordered_unit_price:number|null;status:string};
+type SprayLine={job_id:number;external_tracecode_id:number;tracecode_name:string;item_code:string;item_name:string;area_ha:number;rate_per_ha:number;planned_quantity:number;issued_quantity:number;status:string};
 type Doc={document_id:number;document_type:string;document_number:string;item_name:string;quantity:number;tracecode_name:string|null};
-type Data={items:Item[];orders:Order[];sprays:Spray[];documents:Doc[]};
+type Snapshot={items:Item[];orders:OrderLine[];sprays:SprayLine[];documents:Doc[]};
 type Trace={tracecode_id:number;tracecode_name:string;crop_id:number|null};
 type Crop={crop_id:number;crop_name:string};
-const makeId=()=> "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const r=Math.floor(Math.random()*16);return(c==="x"?r:(r&3)|8).toString(16)});
+type Line={id:number;item_code:string;quantity:string;unit_price:string;rate_per_ha:string};
+const emptyLine=(id:number,item_code="DEMO_MOSQUITO"):Line=>({id,item_code,quantity:"",unit_price:"",rate_per_ha:""});
+const uuid=()=>"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const r=Math.floor(Math.random()*16);return(c==="x"?r:(r&3)|8).toString(16)});
+const number=(x:string)=>Number(x);
+const currency=(n:number)=>Number.isFinite(n)?n.toFixed(2):"—";
+const tabs=["Purchase Orders","GRV","Stock Balances","Spray Programme","Planned Issue","Direct Issue"] as const;
+type Tab=typeof tabs[number];
+function Field({label,value,onChange,numeric=false}:{label:string;value:string;onChange:(v:string)=>void;numeric?:boolean}){
+ return <View style={styles.field}><ThemedText style={styles.label}>{label}</ThemedText><TextInput style={styles.input} value={value} onChangeText={onChange} keyboardType={numeric?"decimal-pad":"default"}/></View>;
+}
 export default function StockV2Workflow(){
- const [data,setData]=useState<Data|null>(null),[traces,setTraces]=useState<Trace[]>([]),[crops,setCrops]=useState<Crop[]>([]);
- const [tab,setTab]=useState("Order"),[item,setItem]=useState("DEMO_MOSQUITO"),[trace,setTrace]=useState<number|null>(null);
- const [qty,setQty]=useState("1"),[supplier,setSupplier]=useState("Demo Supplier"),[purpose,setPurpose]=useState("Test job");
- const [orderId,setOrderId]=useState<number|null>(null),[jobId,setJobId]=useState<number|null>(null);
- const [area,setArea]=useState("19"),[rate,setRate]=useState("0.5"),[water,setWater]=useState("200");
- const [cropId,setCropId]=useState<number|null>(null),[cropOpen,setCropOpen]=useState(false),[traceSearch,setTraceSearch]=useState(""),[traceOpen,setTraceOpen]=useState(false),[productSearch,setProductSearch]=useState(""),[productOpen,setProductOpen]=useState(false),[orderOpen,setOrderOpen]=useState(false),[unitPrice,setUnitPrice]=useState("7.50");
- const [busy,setBusy]=useState(false),[message,setMessage]=useState(""),[confirm,setConfirm]=useState(false),[pending,setPending]=useState<{id:string;action:string;payload:any}|null>(null);
- const getToken=async()=>{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw new Error("Sign in to Supabase to use the test stock system");return session.access_token};
- const load=async()=>{setBusy(true);try{const token=await getToken();const res=await fetch(url,{headers:{authorization:"Bearer "+token}});const d=await res.json();if(!res.ok)throw new Error(d.error||"Cannot load stock");setData(d);setMessage("")}catch(e){setMessage(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
- useEffect(()=>{load();(async()=>{const [t,c]=await Promise.all([
-supabase.from("tracecode").select("tracecode_id,tracecode_name,crop_id,end_date").or("end_date.is.null,end_date.gte."+new Date().toISOString().slice(0,10)).order("tracecode_name"),
-supabase.from("crop").select("crop_id,crop_name").eq("active",true).order("crop_name")]);
-setTraces((t.data??[]) as Trace[]);setCrops((c.data??[]) as Crop[]);
-setTrace((t.data??[]).find(x=>x.tracecode_name?.toUpperCase()==="DOMESTICHS")?.tracecode_id??null);})();},[]);
- const post=async(action:string,payload:any)=>{if(busy)return;setBusy(true);setMessage("");const op=pending&&pending.action===action&&JSON.stringify(pending.payload)===JSON.stringify(payload)?pending:{id:makeId(),action,payload};setPending(op);
-  try{const token=await getToken();const r=await fetch(url,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+token},body:JSON.stringify({request_id:op.id,action,payload})});const result=await r.json();if(!r.ok)throw new Error(result.error||"Transaction failed");setPending(null);setConfirm(false);setMessage("Posted successfully: "+JSON.stringify(result.result));const fresh=await fetch(url,{headers:{authorization:"Bearer "+token}});if(fresh.ok)setData(await fresh.json())}
-  catch(e){setMessage("Not confirmed: "+(e instanceof Error?e.message:String(e)))}finally{setBusy(false)}
+ const {width}=useWindowDimensions();
+ const [tab,setTab]=useState<Tab>("Purchase Orders"),[snapshot,setSnapshot]=useState<Snapshot|null>(null);
+ const [traces,setTraces]=useState<Trace[]>([]),[crops,setCrops]=useState<Crop[]>([]);
+ const [busy,setBusy]=useState(false),[status,setStatus]=useState(""),[confirmed,setConfirmed]=useState(false);
+ const [lines,setLines]=useState<Line[]>([emptyLine(1)]),[nextLine,setNextLine]=useState(2);
+ const [supplier,setSupplier]=useState("DEMO Supplier"),[orderId,setOrderId]=useState<number|null>(null);
+ const [jobId,setJobId]=useState<number|null>(null),[traceId,setTraceId]=useState<number|null>(null),[cropId,setCropId]=useState<number|null>(null);
+ const [area,setArea]=useState("19"),[water,setWater]=useState("200"),[deliveryNote,setDeliveryNote]=useState("");
+ const [dropdown,setDropdown]=useState<string|null>(null),[search,setSearch]=useState("");
+ const [request,setRequest]=useState<{action:string;payload:any;id:string}|null>(null);
+ const token=async()=>{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Supabase sign-in required");return session.access_token};
+ const refresh=async(show=true)=>{if(show)setBusy(true);try{
+  const r=await fetch(endpoint,{headers:{authorization:"Bearer "+await token()}});
+  const d=await r.json();if(!r.ok)throw Error(d.error||"Unable to read Stock V2");setSnapshot(d);
+ }catch(e){setStatus(e instanceof Error?e.message:String(e))}finally{if(show)setBusy(false)}};
+ useEffect(()=>{refresh();(async()=>{
+  const [t,c]=await Promise.all([
+   supabase.from("tracecode").select("tracecode_id,tracecode_name,crop_id,end_date").or("end_date.is.null,end_date.gte."+new Date().toISOString().slice(0,10)).order("tracecode_name"),
+   supabase.from("crop").select("crop_id,crop_name").eq("active",true).order("crop_name")
+  ]);
+  setTraces((t.data??[]) as Trace[]);setCrops((c.data??[]) as Crop[]);
+ })()},[]);
+ const resetEdit=()=>{setConfirmed(false);setRequest(null)};
+ const changeLine=(id:number,key:keyof Line,value:string)=>{setLines(old=>old.map(l=>l.id===id?{...l,[key]:value}:l));resetEdit()};
+ const addLine=()=>{setLines(old=>[...old,emptyLine(nextLine,snapshot?.items?.[0]?.item_code??"DEMO_MOSQUITO")]);setNextLine(n=>n+1);resetEdit()};
+ const removeLine=(id:number)=>{setLines(old=>old.filter(l=>l.id!==id));resetEdit()};
+ const switchTab=(v:Tab)=>{setTab(v);setLines([emptyLine(nextLine)]);setNextLine(n=>n+1);setOrderId(null);setJobId(null);setDropdown(null);setStatus("");resetEdit()};
+ const products=snapshot?.items??[];
+ const orders=useMemo(()=>{
+  const map=new Map<number,OrderLine[]>();
+  for(const o of snapshot?.orders??[]){if(!map.has(o.order_id))map.set(o.order_id,[]);map.get(o.order_id)!.push(o)}
+  return [...map.entries()].map(([id,lines])=>({id,lines,supplier:lines[0].supplier_name,number:lines[0].order_number,remaining:lines.reduce((s,x)=>s+Math.max(0,x.ordered_quantity-x.received_quantity),0)})).filter(x=>x.remaining>0);
+ },[snapshot]);
+ const selectedPO=orders.find(x=>x.id===orderId);
+ const jobs=useMemo(()=>{
+  const map=new Map<number,SprayLine[]>();for(const j of snapshot?.sprays??[]){if(!map.has(j.job_id))map.set(j.job_id,[]);map.get(j.job_id)!.push(j)}
+  return [...map.entries()].map(([id,lines])=>({id,lines,trace:lines[0].tracecode_name,remaining:lines.reduce((s,x)=>s+Math.max(0,x.planned_quantity-x.issued_quantity),0)})).filter(x=>x.remaining>0);
+ },[snapshot]);
+ const selectedJob=jobs.find(x=>x.id===jobId);
+ const activeTraces=traces.filter(t=>(cropId===null||t.crop_id===cropId)&&t.tracecode_name.toLowerCase().includes(search.toLowerCase()));
+ const choosePO=(po:typeof orders[number])=>{setOrderId(po.id);setSupplier(po.supplier);setLines(po.lines.filter(x=>x.received_quantity<x.ordered_quantity).map((x,i)=>({...emptyLine(nextLine+i,x.item_code),quantity:String(x.ordered_quantity-x.received_quantity),unit_price:String(x.ordered_unit_price??"")})));setNextLine(n=>n+po.lines.length);setDropdown(null);resetEdit()};
+ const chooseJob=(job:typeof jobs[number])=>{setJobId(job.id);setTraceId(job.lines[0].external_tracecode_id);setLines(job.lines.filter(x=>x.planned_quantity>x.issued_quantity).map((x,i)=>({...emptyLine(nextLine+i,x.item_code),quantity:String(Number((x.planned_quantity-x.issued_quantity).toFixed(4))),rate_per_ha:String(x.rate_per_ha)})));setNextLine(n=>n+job.lines.length);setDropdown(null);resetEdit()};
+ const menu=(id:string,title:string,choices:{label:string;value:string;onSelect:()=>void}[],searchable=false)=> <View style={styles.dropdown}>
+  <Pressable style={styles.selector} onPress={()=>{setDropdown(dropdown===id?null:id);setSearch("")}}><ThemedText>{title}  ▾</ThemedText></Pressable>
+  {dropdown===id?<View style={styles.choices}>{searchable?<TextInput style={styles.input} placeholder="Search..." placeholderTextColor="#777" value={search} onChangeText={setSearch}/>:null}
+   <ScrollView style={{maxHeight:190}} nestedScrollEnabled>{choices.filter(o=>!searchable||o.label.toLowerCase().includes(search.toLowerCase())).map(o=><Pressable key={o.value} style={styles.choice} onPress={()=>{o.onSelect();setDropdown(null);setSearch("");resetEdit()}}><ThemedText>{o.label}</ThemedText></Pressable>)}</ScrollView>
+  </View>:null}
+ </View>;
+ const lineCells=(l:Line,locked=false)=>{
+  const product=products.find(p=>p.item_code===l.item_code);
+  const reference=tab==="GRV"?selectedPO?.lines.find(x=>x.item_code===l.item_code):tab==="Planned Issue"?selectedJob?.lines.find(x=>x.item_code===l.item_code):null;
+  const max=tab==="GRV"&&reference?(reference as OrderLine).ordered_quantity-(reference as OrderLine).received_quantity:tab==="Planned Issue"&&reference?(reference as SprayLine).planned_quantity-(reference as SprayLine).issued_quantity:null;
+  return <View key={l.id} style={styles.line}>
+   <View style={[styles.cell,{flex:2.4,minWidth:175}]}>
+    {locked?<ThemedText>{product?.item_name??l.item_code}</ThemedText>:menu("item-"+l.id,product?.item_name??"Select product",products.filter(p=>!lines.some(x=>x.id!==l.id&&x.item_code===p.item_code)).map(p=>({label:p.item_name+" ("+p.base_unit+")",value:p.item_code,onSelect:()=>changeLine(l.id,"item_code",p.item_code)})),true)}
+    <ThemedText style={styles.muted}>{product?.base_unit??""}</ThemedText>
+   </View>
+   {tab==="GRV"?<><View style={styles.cell}><ThemedText>{(reference as OrderLine)?.ordered_quantity??"—"}</ThemedText></View><View style={styles.cell}><ThemedText>{(reference as OrderLine)?.received_quantity??"—"}</ThemedText></View><View style={styles.cell}><ThemedText>{currency((reference as OrderLine)?.ordered_unit_price??NaN)}</ThemedText></View></>:null}
+   {tab==="Planned Issue"?<View style={styles.cell}><ThemedText>{max?.toFixed(2)??"—"}</ThemedText></View>:null}
+   <View style={styles.cell}><TextInput style={styles.tableInput} keyboardType="decimal-pad" value={tab==="Spray Programme"?l.rate_per_ha:l.quantity} onChangeText={v=>changeLine(l.id,tab==="Spray Programme"?"rate_per_ha":"quantity",v)} placeholder={tab==="Spray Programme"?"Rate/ha":"Quantity"} placeholderTextColor="#777"/></View>
+   {tab==="Purchase Orders"||tab==="GRV"?<><View style={styles.cell}><TextInput style={styles.tableInput} keyboardType="decimal-pad" value={l.unit_price} onChangeText={v=>changeLine(l.id,"unit_price",v)} placeholder="Unit price" placeholderTextColor="#777"/></View><View style={styles.cell}><ThemedText>{currency(number(l.quantity)*number(l.unit_price))}</ThemedText></View></>:null}
+   {tab==="Spray Programme"?<View style={styles.cell}><ThemedText>{currency(number(l.rate_per_ha)*number(area))} {product?.base_unit??""}</ThemedText></View>:null}
+   {max!==null&&max!==undefined&&number(l.quantity)>max?<ThemedText style={styles.alert}>Over outstanding</ThemedText>:null}
+   {!locked?<Pressable style={styles.remove} onPress={()=>removeLine(l.id)}><ThemedText style={styles.alert}>×</ThemedText></Pressable>:null}
+  </View>;
  };
- const itemOptions=data?.items??[];
- const matchingOrders=(data?.orders??[]).filter(o=>o.received_quantity<o.ordered_quantity);
- const selectedOrder=matchingOrders.find(o=>o.order_id===orderId);
- const visibleTraces=traces.filter(t=>(cropId===null||t.crop_id===cropId)&&t.tracecode_name.toLowerCase().includes(traceSearch.toLowerCase()));
- const matchingJobs=(data?.sprays??[]).filter(j=>j.item_code===item&&j.status==="planned"&&j.issued_quantity<j.planned_quantity);
- const chosenItem=itemOptions.find(i=>i.item_code===item);
- const simpleField=(label:string,value:string,change:(v:string)=>void,keyboardType:"default"|"decimal-pad"="default")=><View style={{flex:1,minWidth:130,gap:3}}><ThemedText style={styles.label}>{label}</ThemedText><TextInput style={styles.input} value={value} onChangeText={v=>{change(v);setConfirm(false)}} keyboardType={keyboardType}/></View>;
- const option=(text:string,selected:boolean,fn:()=>void)=><Pressable key={text} onPress={()=>{fn();setConfirm(false)}} style={[styles.option,selected&&styles.selected]}><ThemedText>{text}</ThemedText></Pressable>;
- const gridHeader=(cells:string[])=><View style={styles.gridHead}>{cells.map((x,i)=><ThemedText key={i} style={[styles.gridCell,styles.gridHeadText]}>{x}</ThemedText>)}</View>;
- const gridRow=(cells:ReactNode[])=><View style={styles.gridRow}>{cells.map((x,i)=><View key={i} style={styles.gridCell}>{typeof x==="string"||typeof x==="number"?<ThemedText>{x}</ThemedText>:x}</View>)}</View>;
- const controls=()=>{
-  const num=Number(qty),ar=Number(area),rt=Number(rate);
-  const validNum=Number.isFinite(num)&&num>0;
-  let action="",payload:any={},valid=true;
-  if(tab==="Order"){action="order";payload={item_code:item,quantity:num,supplier,unit_price:Number(unitPrice)};valid=validNum}
-  if(tab==="GRV"){action="grv";payload={item_code:selectedOrder?.item_code,quantity:num,order_id:orderId,unit_price:Number(unitPrice)};valid=validNum&&!!selectedOrder&&num<=selectedOrder.ordered_quantity-selectedOrder.received_quantity}
-  if(tab==="Spray Programme"){action="spray";payload={item_code:item,tracecode_id:trace,area_ha:ar,rate_per_ha:rt,water_rate:water};valid=!!trace&&ar>0&&rt>0}
-  if(tab==="Planned Issue"){action="planned_issue";payload={item_code:item,job_id:jobId,quantity:num};valid=validNum&&matchingJobs.some(j=>j.job_id===jobId)}
-  if(tab==="Direct Issue"){action="direct_issue";payload={item_code:item,tracecode_id:trace,quantity:num};valid=validNum&&!!trace}
-  return <View style={styles.panel}>
-   <ThemedText style={styles.head}>{tab==="Order"?"PURCHASE ORDER":tab==="GRV"?"GOODS RECEIVED VOUCHER":tab.toUpperCase()}</ThemedText>
-   <View style={styles.documentHeader}><ThemedText>Owner: TEST_JS</ThemedText><ThemedText>Warehouse: TEST_WH</ThemedText><ThemedText>Document: DEMO / New</ThemedText><ThemedText>Date: {new Date().toLocaleDateString("en-GB")}</ThemedText></View>
-   {tab==="GRV"?<>
-    <ThemedText style={styles.label}>Outstanding purchase order</ThemedText>
-    <Pressable style={styles.option} onPress={()=>setOrderOpen(v=>!v)}><ThemedText>{selectedOrder?"PO #"+selectedOrder.order_id+" · "+selectedOrder.supplier_name:"Choose outstanding PO"} ▼</ThemedText></Pressable>
-    {orderOpen?<View style={styles.panel}>{matchingOrders.length===0?<ThemedText>No outstanding orders.</ThemedText>:matchingOrders.map(o=>option("PO #"+o.order_id+" · "+o.item_code+" · remaining "+(o.ordered_quantity-o.received_quantity),orderId===o.order_id,()=>{setOrderId(o.order_id);setItem(o.item_code);setQty(String(o.ordered_quantity-o.received_quantity));setUnitPrice(String(o.ordered_unit_price??""));setOrderOpen(false)}))}</View>:null}
-    {selectedOrder?<View style={styles.sheet}>
-      <ThemedText style={styles.label}>Supplier: {selectedOrder.supplier_name}</ThemedText>
-      <ThemedText style={styles.label}>Purchase order: {selectedOrder.order_number}</ThemedText>
-      {gridHeader(["Product","Ordered","Received","Outstanding","PO price"])}
-      {gridRow([selectedOrder.item_code,String(selectedOrder.ordered_quantity),String(selectedOrder.received_quantity),String(selectedOrder.ordered_quantity-selectedOrder.received_quantity),selectedOrder.ordered_unit_price===null||selectedOrder.ordered_unit_price===undefined?"—":String(selectedOrder.ordered_unit_price)])}
-      <ThemedText style={styles.label}>This delivery</ThemedText>
-      <View style={styles.wrap}>{simpleField("Quantity received",qty,setQty,"decimal-pad")}{simpleField("Actual unit price",unitPrice,setUnitPrice,"decimal-pad")}</View>
-      <ThemedText>Delivery value: {(Number(qty)*Number(unitPrice)||0).toFixed(2)} · Remaining after receipt: {selectedOrder.ordered_quantity-selectedOrder.received_quantity-Number(qty)}</ThemedText>
-    </View>:null}
-   </>:<>
-    <ThemedText style={styles.label}>Product</ThemedText>
-    <Pressable style={styles.option} onPress={()=>setProductOpen(v=>!v)}><ThemedText>{chosenItem?.item_name??"Choose product"} ▼</ThemedText></Pressable>
-    {productOpen?<View style={styles.panel}><TextInput placeholder="Search products" placeholderTextColor="#777" style={styles.input} value={productSearch} onChangeText={setProductSearch}/>
-    {itemOptions.filter(i=>i.item_name.toLowerCase().includes(productSearch.toLowerCase())).map(i=>option(i.item_name+" ("+i.base_unit+")",item===i.item_code,()=>{setItem(i.item_code);setProductOpen(false);setJobId(null)}))}</View>:null}
-    <ThemedText>Available: {chosenItem?.quantity??"—"} {chosenItem?.base_unit??""}</ThemedText>
-    {tab==="Order"?<View style={styles.wrap}>{simpleField("Supplier",supplier,setSupplier)}{simpleField("Ordered unit price",unitPrice,setUnitPrice,"decimal-pad")}</View>:null}
-   </>}
-   {tab==="Planned Issue"?<><ThemedText style={styles.label}>Choose outstanding spray job</ThemedText><View style={styles.wrap}>{matchingJobs.map(j=>option("Job #"+j.job_id+" "+j.tracecode_name+" remaining "+(j.planned_quantity-j.issued_quantity).toFixed(2),jobId===j.job_id,()=>setJobId(j.job_id)))}</View></>:null}
-   {["Spray Programme","Direct Issue"].includes(tab)?<>
-    <ThemedText style={styles.label}>Crop filter</ThemedText>
-    <Pressable style={styles.option} onPress={()=>setCropOpen(v=>!v)}><ThemedText>{crops.find(x=>x.crop_id===cropId)?.crop_name??"All crops"} ▼</ThemedText></Pressable>
-    {cropOpen?<View style={styles.panel}>
-      {option("All crops",cropId===null,()=>{setCropId(null);setCropOpen(false);setTrace(null)})}
-      {crops.map(x=>option(x.crop_name,cropId===x.crop_id,()=>{setCropId(x.crop_id);setCropOpen(false);setTrace(null)}))}
-    </View>:null}
-    <ThemedText style={styles.label}>Active tracecode</ThemedText>
-    <Pressable style={styles.option} onPress={()=>setTraceOpen(v=>!v)}><ThemedText>{traces.find(t=>t.tracecode_id===trace)?.tracecode_name??"Choose active tracecode"} ▼</ThemedText></Pressable>
-    {traceOpen?<View style={styles.panel}><TextInput style={styles.input} placeholder="Search tracecodes" placeholderTextColor="#777" value={traceSearch} onChangeText={setTraceSearch}/>
-    <ScrollView style={{maxHeight:220}}>{visibleTraces.map(t=>option(t.tracecode_name,trace===t.tracecode_id,()=>{setTrace(t.tracecode_id);setTraceOpen(false)}))}</ScrollView></View>:null}
-   </>:null}
-   {tab!=="GRV"?<View style={styles.wrap}>
-    {tab==="Spray Programme"?<>{simpleField("Field area (ha)",area,setArea,"decimal-pad")}{simpleField("Product rate/ha",rate,setRate,"decimal-pad")}{simpleField("Water rate L/ha",water,setWater,"decimal-pad")}</>:simpleField("Quantity ("+(chosenItem?.base_unit??"units")+")",qty,setQty,"decimal-pad")}
-   </View>:null}
-   {tab==="Order"?<View style={styles.sheet}>
-     {gridHeader(["Product","Unit","Quantity","Unit price","Line total"])}
-     {gridRow([chosenItem?.item_name??"",chosenItem?.base_unit??"",qty,unitPrice,(Number(qty)*Number(unitPrice)||0).toFixed(2)])}
-     <ThemedText style={styles.label}>Order total: {(Number(qty)*Number(unitPrice)||0).toFixed(2)}</ThemedText>
-     <ThemedText style={styles.warn}>Test workflow currently saves one product per order. Multi-line posting will be added separately.</ThemedText>
-    </View>:null}
-   {tab==="Spray Programme"?<ThemedText>Planned input: {(ar*rt).toFixed(2)} {chosenItem?.base_unit??""}</ThemedText>:null}
-   <Pressable style={styles.option} onPress={()=>setConfirm(v=>!v)}><ThemedText>{confirm?"☑ Confirm this DEMO transaction":"☐ Confirm this DEMO transaction"}</ThemedText></Pressable>
-   <Pressable disabled={!valid||!confirm||busy} style={[styles.action,(!valid||!confirm||busy)&&styles.disabled]} onPress={()=>post(action,payload)}><ThemedText style={styles.actionText}>{busy?"Working...":"Post "+tab}</ThemedText></Pressable>
-   {!valid?<ThemedText style={styles.warn}>Select an appropriate order / job / tracecode and enter a valid quantity.</ThemedText>:null}
-  </View>
+ const action=tab==="Purchase Orders"?"order":tab==="GRV"?"grv":tab==="Spray Programme"?"spray":tab==="Planned Issue"?"planned_issue":"direct_issue";
+ const normalizedLines=lines.map(l=>tab==="Spray Programme"?{item_code:l.item_code,rate_per_ha:number(l.rate_per_ha)}:{item_code:l.item_code,quantity:number(l.quantity),...(["Purchase Orders","GRV"].includes(tab)?{unit_price:l.unit_price.trim()?number(l.unit_price):null}:{})});
+ const payload={supplier,order_id:orderId,job_id:jobId,tracecode_id:traceId,area_ha:number(area),water_rate:number(water),delivery_note:deliveryNote,lines:normalizedLines};
+ const valid=lines.length>0&&lines.length<=30&&new Set(lines.map(l=>l.item_code)).size===lines.length&&lines.every(l=>{
+  if(!products.some(p=>p.item_code===l.item_code))return false;
+  const n=number(tab==="Spray Programme"?l.rate_per_ha:l.quantity);
+  if(!Number.isFinite(n)||n<=0)return false;
+  if(["Purchase Orders","GRV"].includes(tab)&&l.unit_price.trim()!==""&&(!Number.isFinite(number(l.unit_price))||number(l.unit_price)<0))return false;
+  const ref=tab==="GRV"?selectedPO?.lines.find(x=>x.item_code===l.item_code):tab==="Planned Issue"?selectedJob?.lines.find(x=>x.item_code===l.item_code):null;
+  if(tab==="GRV"&&(!ref||n>(ref as OrderLine).ordered_quantity-(ref as OrderLine).received_quantity))return false;
+  if(tab==="Planned Issue"&&(!ref||n>(ref as SprayLine).planned_quantity-(ref as SprayLine).issued_quantity))return false;
+  return true;
+ })&&(tab!=="GRV"||!!selectedPO)&&(tab!=="Planned Issue"||!!selectedJob)&&(!["Spray Programme","Direct Issue"].includes(tab)||!!traceId)&&(tab!=="Spray Programme"||number(area)>0);
+ const submit=async()=>{if(!valid||!confirmed||busy)return;setBusy(true);setStatus("");
+  const req=request&&request.action===action&&JSON.stringify(request.payload)===JSON.stringify(payload)?request:{action,payload,id:uuid()};setRequest(req);
+  try{const r=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+await token()},body:JSON.stringify({action,request_id:req.id,payload:req.payload})});const d=await r.json();if(!r.ok)throw Error(d.error||"Posting failed");
+   setStatus("Posted "+tab+": "+JSON.stringify(d.result));setConfirmed(false);setRequest(null);await refresh(false);
+   if(tab==="GRV")setOrderId(null);if(tab==="Planned Issue")setJobId(null);
+   setLines([emptyLine(nextLine)]);setNextLine(n=>n+1);
+  }catch(e){setStatus("NOT POSTED: "+(e instanceof Error?e.message:String(e)))}finally{setBusy(false)}
  };
- return <ThemedView style={styles.root}><ScrollView contentContainerStyle={styles.page}>
-  <ThemedText type="title">Stock V2 · Complete Test Workflow</ThemedText>
-  <ThemedText style={styles.warn}>TEST_JS · TEST_WH · DEMO products only. No Access or live inventory changes.</ThemedText>
-  <View style={styles.nav}>{["Order","GRV","Balances","Spray Programme","Planned Issue","Direct Issue"].map(x=><Pressable key={x} style={[styles.navItem,tab===x&&styles.navSelected]} onPress={()=>{setTab(x);setOrderId(null);setJobId(null);setConfirm(false)}}><ThemedText style={tab===x?styles.navTextSelected:undefined}>{x}</ThemedText></Pressable>)}</View>
-  <Pressable style={styles.option} onPress={load}><ThemedText>↻ Refresh stock and transactions</ThemedText></Pressable>
+ const header=(title:string,details:string[])=><View style={styles.documentHead}><ThemedText style={styles.heading}>{title}</ThemedText><View style={styles.headerDetails}>{details.map((x,i)=><ThemedText key={i} style={styles.detail}>{x}</ThemedText>)}</View></View>;
+ const currentTrace=traces.find(t=>t.tracecode_id===traceId);
+ const gridHead=(cols:string[])=><View style={styles.gridHead}>{cols.map((h,i)=><ThemedText key={i} style={[styles.gridHeading,{flex:i===0?2.4:1}]}>{h}</ThemedText>)}</View>;
+ return <ThemedView style={styles.root}><ScrollView contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
+  <ThemedText style={styles.title}>Stock Control — V2 Test</ThemedText>
+  <ThemedText style={styles.muted}>Isolated demo records only • TEST_JS • TEST_WH • No live Access changes</ThemedText>
+  <View style={styles.nav}>{tabs.map(x=><Pressable key={x} style={[styles.navTab,tab===x&&styles.navActive]} onPress={()=>switchTab(x)}><ThemedText style={tab===x?styles.navActiveText:undefined}>{x}</ThemedText></Pressable>)}</View>
+  <Pressable style={styles.refresh} onPress={()=>refresh()}><ThemedText>↻ Refresh records</ThemedText></Pressable>
   {busy?<ActivityIndicator/>:null}
-  {message?<ThemedText style={styles.warn}>{message}</ThemedText>:null}
-  {tab==="Balances"?<View style={styles.sheet}><ThemedText style={styles.head}>STOCK ON HAND — TEST_WH</ThemedText>{gridHeader(["Product","Warehouse","Owner","On hand"])}{itemOptions.map(i=><View key={i.item_code}>{gridRow([i.item_name,"TEST_WH","TEST_JS",i.quantity+" "+i.base_unit])}</View>)}</View>:controls()}
-  <View style={styles.sheet}><ThemedText style={styles.head}>PURCHASE ORDER REGISTER</ThemedText>{gridHeader(["PO","Product","Ordered","Received","Outstanding"])}{(data?.orders??[]).slice(0,15).map(o=><View key={o.order_id}>{gridRow(["#"+o.order_id,o.item_code,String(o.ordered_quantity),String(o.received_quantity),String(o.ordered_quantity-o.received_quantity)])}</View>)}</View>
-  <View style={styles.sheet}><ThemedText style={styles.head}>SPRAY PROGRAMME REGISTER</ThemedText>{gridHeader(["Job","Tracecode","Product","Required","Issued"])}{(data?.sprays??[]).slice(0,15).map(j=><View key={j.job_id}>{gridRow(["#"+j.job_id,j.tracecode_name??"",j.item_code,j.planned_quantity.toFixed(2),j.issued_quantity.toFixed(2)])}</View>)}</View>
-  <View style={styles.panel}><ThemedText style={styles.head}>Recent posted GRVs and issues</ThemedText>{(data?.documents??[]).slice(0,15).map(d=><ThemedText key={d.document_id}>#{d.document_id} {d.document_type.toUpperCase()} · {d.item_name} {d.quantity} · {d.tracecode_name??"warehouse"}</ThemedText>)}</View>
+  {status?<View style={styles.notice}><ThemedText>{status}</ThemedText></View>:null}
+  {tab==="Stock Balances"?<View style={styles.sheet}>
+   {header("STOCK BALANCES",["Owner: TEST_JS","Warehouse: TEST_WH"])}
+   {gridHead(["Product","Unit","Available"])}
+   {(snapshot?.items??[]).map(i=><View key={i.item_code} style={styles.registerRow}><ThemedText style={{flex:2.4}}>{i.item_name}</ThemedText><ThemedText style={{flex:1}}>{i.base_unit}</ThemedText><ThemedText style={{flex:1}}>{i.quantity}</ThemedText></View>)}
+  </View>:<View style={styles.sheet}>
+   {header(tab.toUpperCase(),["Owner: TEST_JS","Warehouse: TEST_WH","Date: "+new Date().toLocaleDateString("en-GB")])}
+   {tab==="Purchase Orders"?<Field label="Supplier" value={supplier} onChange={v=>{setSupplier(v);resetEdit()}}/>:null}
+   {tab==="GRV"?<>
+    {menu("orders",selectedPO?"PO #"+selectedPO.id+" — "+selectedPO.supplier:"Choose outstanding purchase order",orders.map(o=>({label:"PO #"+o.id+" · "+o.supplier+" · "+o.lines.length+" products",value:String(o.id),onSelect:()=>choosePO(o)})),true)}
+    {selectedPO?<><ThemedText>Original PO: {selectedPO.number}</ThemedText><ThemedText>Supplier: {selectedPO.supplier}</ThemedText><Field label="Supplier delivery note" value={deliveryNote} onChange={v=>{setDeliveryNote(v);resetEdit()}}/></>:<ThemedText style={styles.muted}>Select a PO to load all outstanding product lines.</ThemedText>}
+   </>:null}
+   {tab==="Planned Issue"?<>{menu("jobs",selectedJob?"Spray job #"+selectedJob.id+" — "+selectedJob.trace:"Choose outstanding spray programme",jobs.map(j=>({label:"Job #"+j.id+" · "+j.trace+" · "+j.lines.length+" products",value:String(j.id),onSelect:()=>chooseJob(j)})),true)}</>:null}
+   {["Spray Programme","Direct Issue"].includes(tab)?<View style={styles.filters}>
+    {menu("crops",crops.find(c=>c.crop_id===cropId)?.crop_name??"All crops",[{label:"All crops",value:"all",onSelect:()=>{setCropId(null);setTraceId(null)}},...crops.map(c=>({label:c.crop_name,value:String(c.crop_id),onSelect:()=>{setCropId(c.crop_id);setTraceId(null)}}))])}
+    {menu("traces",currentTrace?.tracecode_name??"Choose active tracecode",activeTraces.map(t=>({label:t.tracecode_name,value:String(t.tracecode_id),onSelect:()=>setTraceId(t.tracecode_id)})),true)}
+   </View>:null}
+   {tab==="Spray Programme"?<View style={styles.filters}><Field label="Area (ha)" value={area} numeric onChange={v=>{setArea(v);resetEdit()}}/><Field label="Water (L/ha)" value={water} numeric onChange={v=>{setWater(v);resetEdit()}}/></View>:null}
+   <ThemedText style={styles.section}>Product lines</ThemedText>
+   <ScrollView horizontal nestedScrollEnabled contentContainerStyle={{minWidth:width>850?width-100:940}}>
+    <View style={{flex:1}}>
+     <View style={styles.lineHeader}>
+      {(["Product","GRV","Planned Issue"].includes(tab)?["Product",...(tab==="GRV"?["Ordered","Prev. rec.","PO price"]:tab==="Planned Issue"?["Outstanding"]:[]),"Quantity",...(["Purchase Orders","GRV"].includes(tab)?["Unit price","Line total"]:tab==="Spray Programme"?["Total input"]:[]),""] : ["Product",tab==="Spray Programme"?"Rate / ha":"Quantity",...(["Purchase Orders"].includes(tab)?["Unit price","Line total"]:[]),""]).map((x,i)=><ThemedText key={i} style={[styles.gridHeading,{flex:i===0?2.4:1}]}>{x}</ThemedText>)}
+     </View>
+     {lines.map(l=>lineCells(l,tab==="GRV"||tab==="Planned Issue"))}
+    </View>
+   </ScrollView>
+   {!["GRV","Planned Issue"].includes(tab)?<Pressable style={styles.add} onPress={addLine}><ThemedText>＋ Add product line</ThemedText></Pressable>:null}
+   {["Purchase Orders","GRV"].includes(tab)?<ThemedText style={styles.total}>Document total: {currency(lines.reduce((s,l)=>s+number(l.quantity)*number(l.unit_price||"0"),0))}</ThemedText>:null}
+   <View style={styles.footer}><Pressable onPress={()=>setConfirmed(x=>!x)} style={styles.confirm}><ThemedText>{confirmed?"☑":"☐"} Confirm TEST transaction</ThemedText></Pressable><Pressable disabled={!valid||!confirmed||busy} onPress={submit} style={[styles.submit,(!valid||!confirmed||busy)&&styles.off]}><ThemedText style={styles.submitText}>{busy?"Posting…":"Post "+tab}</ThemedText></Pressable></View>
+   {!valid?<ThemedText style={styles.muted}>Complete all required fields, quantities and outstanding-order limits before posting.</ThemedText>:null}
+  </View>}
+  <View style={styles.sheet}>{header("PURCHASE ORDER REGISTER",[])}
+   {(snapshot?.orders??[]).length===0?<ThemedText>No demo POs yet.</ThemedText>:null}
+   {(snapshot?.orders??[]).slice(0,25).map((o,i)=><View key={i} style={styles.registerRow}><ThemedText style={{flex:2}}>{o.order_id} · {o.item_name}</ThemedText><ThemedText style={{flex:1}}>{o.received_quantity}/{o.ordered_quantity} {o.base_unit}</ThemedText><ThemedText style={{flex:1}}>{currency(o.ordered_unit_price??NaN)}</ThemedText></View>)}
+  </View>
+  <View style={styles.sheet}>{header("SPRAY PROGRAMME REGISTER",[])}
+   {(snapshot?.sprays??[]).slice(0,25).map((j,i)=><View key={i} style={styles.registerRow}><ThemedText style={{flex:2}}>#{j.job_id} · {j.tracecode_name} · {j.item_name}</ThemedText><ThemedText style={{flex:1}}>{j.issued_quantity}/{j.planned_quantity}</ThemedText><ThemedText style={{flex:1}}>{j.status}</ThemedText></View>)}
+  </View>
+  <View style={styles.sheet}>{header("GRVS & STOCK ISSUES",[])}
+   {(snapshot?.documents??[]).slice(0,20).map((d,i)=><View key={i} style={styles.registerRow}><ThemedText style={{flex:2}}>{d.document_type.toUpperCase()} #{d.document_id} · {d.item_name}</ThemedText><ThemedText style={{flex:1}}>{d.quantity}</ThemedText><ThemedText style={{flex:1}}>{d.tracecode_name??"Warehouse"}</ThemedText></View>)}
+  </View>
  </ScrollView></ThemedView>
 }
-const styles=StyleSheet.create({nav:{flexDirection:"row",flexWrap:"wrap",borderBottomWidth:2,borderColor:"#556473",gap:3,paddingBottom:4},navItem:{paddingVertical:10,paddingHorizontal:14,borderTopLeftRadius:6,borderTopRightRadius:6,backgroundColor:"#e5eaf0"},navSelected:{backgroundColor:"#315e81"},navTextSelected:{color:"white",fontWeight:"700"},documentHeader:{flexDirection:"row",flexWrap:"wrap",gap:20,padding:12,backgroundColor:"#e7eff5",borderRadius:5},sheet:{gap:10,borderWidth:1,borderColor:"#a9b4bf",padding:12,borderRadius:4},gridHead:{flexDirection:"row",backgroundColor:"#dbe7f0",paddingVertical:9,borderBottomWidth:1,borderColor:"#9ca9b3"},gridHeadText:{fontWeight:"700",fontSize:12},gridRow:{flexDirection:"row",borderBottomWidth:1,borderColor:"#e4e9ed",paddingVertical:8},gridCell:{flex:1,minWidth:0,paddingHorizontal:4},root:{flex:1},page:{padding:16,gap:12,paddingBottom:50},wrap:{flexDirection:"row",flexWrap:"wrap",gap:8},panel:{borderWidth:1,borderColor:"#aaa",borderRadius:12,padding:14,gap:12},head:{fontSize:16,fontWeight:"700"},label:{fontWeight:"600"},option:{padding:10,borderWidth:1,borderColor:"#999",borderRadius:8},selected:{backgroundColor:"#b6e2c9"},input:{borderWidth:1,borderColor:"#888",backgroundColor:"#fff",padding:10,borderRadius:8,color:"#222",minWidth:110},action:{padding:14,backgroundColor:"#1f8251",alignItems:"center",borderRadius:9},disabled:{backgroundColor:"#bbb"},actionText:{color:"white",fontWeight:"800"},warn:{color:"#9c691b"},record:{flexDirection:"row",justifyContent:"space-between",padding:9,borderBottomWidth:1,borderColor:"#ddd"}});
+const styles=StyleSheet.create({
+ root:{flex:1},page:{padding:18,gap:14,paddingBottom:50},title:{fontSize:23,fontWeight:"700"},muted:{fontSize:12,color:"#82888f"},nav:{flexDirection:"row",flexWrap:"wrap",borderBottomWidth:2,borderColor:"#486986"},navTab:{backgroundColor:"#e7ebf0",paddingVertical:11,paddingHorizontal:16,borderTopLeftRadius:4,borderTopRightRadius:4},navActive:{backgroundColor:"#345f81"},navActiveText:{color:"white",fontWeight:"700"},refresh:{alignSelf:"flex-start",padding:9,borderWidth:1,borderColor:"#a5b1bd",borderRadius:5},notice:{borderWidth:1,borderColor:"#a3b4c1",padding:10,borderRadius:5},sheet:{padding:15,borderWidth:1,borderColor:"#b5bfc9",borderRadius:5,gap:12},documentHead:{gap:6,borderBottomWidth:1,borderColor:"#b5bfc9",paddingBottom:10},heading:{fontSize:17,fontWeight:"700"},headerDetails:{flexDirection:"row",flexWrap:"wrap",gap:16},detail:{fontSize:12,color:"#697b87"},field:{flex:1,gap:5,minWidth:150},label:{fontWeight:"600",fontSize:13},input:{paddingHorizontal:10,paddingVertical:9,borderWidth:1,borderColor:"#aab4bd",borderRadius:4,color:"#222",backgroundColor:"#fff"},filters:{flexDirection:"row",flexWrap:"wrap",gap:12},dropdown:{flex:1,minWidth:210,maxWidth:500,gap:4},selector:{padding:10,borderWidth:1,borderColor:"#9aabb7",borderRadius:4},choices:{padding:6,borderWidth:1,borderColor:"#bbc3cb",borderRadius:4,gap:4},choice:{padding:10,borderBottomWidth:1,borderColor:"#e6e7e9"},section:{fontSize:14,fontWeight:"700",marginTop:6},lineHeader:{flexDirection:"row",paddingVertical:10,backgroundColor:"#e0eaf2"},gridHeading:{fontSize:12,fontWeight:"700",paddingHorizontal:5},line:{flexDirection:"row",alignItems:"center",borderBottomWidth:1,borderColor:"#d9dfe4",paddingVertical:6},cell:{flex:1,paddingHorizontal:4,minWidth:70},tableInput:{padding:9,borderWidth:1,borderColor:"#aeb8c1",borderRadius:4,backgroundColor:"#fff",color:"#111"},remove:{paddingHorizontal:8},alert:{color:"#a93525"},add:{borderWidth:1,borderColor:"#a7b8c4",padding:10,alignSelf:"flex-start",borderRadius:5},total:{fontWeight:"700",textAlign:"right"},footer:{flexDirection:"row",flexWrap:"wrap",justifyContent:"flex-end",gap:15,alignItems:"center"},confirm:{padding:12,borderWidth:1,borderColor:"#9babb9",borderRadius:4},submit:{backgroundColor:"#226d4f",paddingVertical:13,paddingHorizontal:25,borderRadius:5},submitText:{color:"white",fontWeight:"700"},off:{backgroundColor:"#a9adb0"},gridHead:{flexDirection:"row",backgroundColor:"#e0eaf2",paddingVertical:8},registerRow:{flexDirection:"row",paddingVertical:8,borderBottomWidth:1,borderColor:"#e2e6e8",gap:5}
+});
