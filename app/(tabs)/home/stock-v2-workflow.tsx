@@ -3,6 +3,7 @@ import {ActivityIndicator,Pressable,ScrollView,StyleSheet,TextInput,View,useWind
 import {ThemedText} from "@/components/themed-text";
 import {ThemedView} from "@/components/themed-view";
 import {supabase} from "../../../supabase";
+import {parseJsplDateInput,displayJsplDate} from "@/utils/jspl-input";
 import {JsplDashboardButton} from "@/components/jspl/JsplDashboardButton";
 import {jsplColors,jsplSpacing,jsplRadii,formatJsplNumber} from "@/constants/jspl-design";
 
@@ -30,7 +31,7 @@ export default function StockV2Workflow(){
  const [traces,setTraces]=useState<Trace[]>([]),[crops,setCrops]=useState<Crop[]>([]);
  const [busy,setBusy]=useState(false),[status,setStatus]=useState(""),[confirmed,setConfirmed]=useState(false);
  const [lines,setLines]=useState<Line[]>([emptyLine(1)]),[nextLine,setNextLine]=useState(2);
- const [supplier,setSupplier]=useState("DEMO Supplier"),[orderId,setOrderId]=useState<number|null>(null);
+ const [supplier,setSupplier]=useState("DEMO Supplier"),[orderDate,setOrderDate]=useState(()=>new Date().toLocaleDateString("en-GB")),[orderId,setOrderId]=useState<number|null>(null);
  const [jobId,setJobId]=useState<number|null>(null),[traceId,setTraceId]=useState<number|null>(null),[cropId,setCropId]=useState<number|null>(null);
  const [area,setArea]=useState(""),[water,setWater]=useState(""),[part,setPart]=useState(""),[sprayType,setSprayType]=useState(""),[deliveryNote,setDeliveryNote]=useState("");
  const [dropdown,setDropdown]=useState<string|null>(null),[search,setSearch]=useState("");
@@ -94,8 +95,8 @@ export default function StockV2Workflow(){
  };
  const action=tab==="Purchase Orders"?"order":tab==="GRV"?"grv":tab==="Spray Programme"?"spray":tab==="Planned Issue"?"planned_issue":"direct_issue";
  const normalizedLines=lines.map(l=>tab==="Spray Programme"?{item_code:l.item_code,rate_per_ha:number(l.rate_per_ha)}:{item_code:l.item_code,quantity:number(l.quantity),...(["Purchase Orders","GRV"].includes(tab)?{unit_price:l.unit_price.trim()?number(l.unit_price):null}:{})});
- const payload={supplier,order_id:orderId,job_id:jobId,tracecode_id:traceId,area_ha:part.trim()?number(part):number(area),part_label:part.trim()?"Part "+part.trim()+" ha":"Whole tracecode",spray_type:sprayType,water_rate:number(water),delivery_note:deliveryNote,lines:normalizedLines};
- const valid=!!snapshot&&lines.length>0&&lines.length<=30&&new Set(lines.map(l=>l.item_code)).size===lines.length&&lines.every(l=>{
+ const payload={supplier,order_date:parseJsplDateInput(orderDate),order_id:orderId,job_id:jobId,tracecode_id:traceId,area_ha:part.trim()?number(part):number(area),part_label:part.trim()?"Part "+part.trim()+" ha":"Whole tracecode",spray_type:sprayType,water_rate:number(water),delivery_note:deliveryNote,lines:normalizedLines};
+ const valid=!!snapshot&&(tab!=="Purchase Orders"||!!parseJsplDateInput(orderDate))&&lines.length>0&&lines.length<=30&&new Set(lines.map(l=>l.item_code)).size===lines.length&&lines.every(l=>{
   if(!products.some(p=>p.item_code===l.item_code))return false;
   const n=number(tab==="Spray Programme"?l.rate_per_ha:l.quantity);
   if(!Number.isFinite(n)||n<=0)return false;
@@ -135,7 +136,12 @@ export default function StockV2Workflow(){
    {(snapshot?.items??[]).map(i=><View key={i.item_code} style={styles.registerRow}><ThemedText style={{flex:2.4}}>{i.item_name}</ThemedText><ThemedText style={{flex:1}}>{i.base_unit}</ThemedText><ThemedText style={{flex:1,textAlign:"right",fontVariant:["tabular-nums"]}}>{formatJsplNumber(i.quantity,2)}</ThemedText></View>)}
   </View>:<View style={styles.sheet}>
    {header(tab.toUpperCase(),["Owner: TEST_JS","Warehouse: TEST_WH","Date: "+new Date().toLocaleDateString("en-GB")])}
-   {tab==="Purchase Orders"?<Field label="Supplier" value={supplier} onChange={v=>{setSupplier(v);resetEdit()}}/>:null}
+   {tab==="Purchase Orders"?<View style={styles.poHeaderFields}>
+     <View style={styles.poSupplier}><Field label="Supplier" value={supplier} onChange={v=>{setSupplier(v);resetEdit()}}/></View>
+     <View style={styles.poDate}><Field label="Purchase Order Date (DD/MM/YYYY)" value={orderDate} onChange={v=>{setOrderDate(v);resetEdit()}}/>
+       {!parseJsplDateInput(orderDate)?<ThemedText style={styles.alert}>Enter a valid date, e.g. 19/10/2026</ThemedText>:null}
+     </View>
+   </View>:null}
    {tab==="GRV"?<>
     <Pressable style={styles.refresh} onPress={()=>refresh()}><ThemedText>↻ Reload outstanding purchase orders</ThemedText></Pressable>
     {orders.length===0?<ThemedText style={styles.alert}>No outstanding DEMO POs returned. Only successfully posted and unreceived orders are listed.</ThemedText>:null}
@@ -154,7 +160,7 @@ export default function StockV2Workflow(){
      <Field label="Water (L/ha) — editable" value={water} numeric onChange={v=>{setWater(v);resetEdit()}}/>
      <ThemedText style={styles.label}>Area to spray: {part.trim()?part:(area||"—")} ha</ThemedText>
    </View>:null}
-   <ThemedText style={styles.section}>Product lines</ThemedText>
+   <View style={styles.productSectionHeading}><ThemedText style={styles.section}>Product lines</ThemedText></View>
    <ScrollView horizontal nestedScrollEnabled contentContainerStyle={{minWidth:tab==="GRV"?1130:tab==="Purchase Orders"?790:tab==="Spray Programme"?710:tab==="Planned Issue"?710:650}}>
     <View style={{flex:1}}>
      <View style={styles.lineHeader}>
@@ -178,7 +184,7 @@ export default function StockV2Workflow(){
   </View>}
  </ScrollView></ThemedView>
 }
-const styles=StyleSheet.create({sprayFields:{flexDirection:"row",flexWrap:"wrap",alignItems:"flex-end",gap:12},readOnly:{padding:12,backgroundColor:"#e7edf2",borderWidth:1,borderColor:"#b0bfcb",borderRadius:4,minHeight:43},errorPanel:{backgroundColor:"#fff0ed",borderWidth:1,borderColor:"#bf4436",padding:12,borderRadius:5},errorText:{color:"#8a241a",fontWeight:"700"},
+const styles=StyleSheet.create({poHeaderFields:{flexDirection:"row",flexWrap:"wrap",alignItems:"flex-start",gap:24,paddingBottom:20,marginBottom:12,borderBottomWidth:1,borderBottomColor:jsplColors.border},poSupplier:{flex:2,minWidth:270},poDate:{flex:1,minWidth:235},productSectionHeading:{paddingTop:14,paddingBottom:12,marginTop:12},sprayFields:{flexDirection:"row",flexWrap:"wrap",alignItems:"flex-end",gap:12},readOnly:{padding:12,backgroundColor:"#e7edf2",borderWidth:1,borderColor:"#b0bfcb",borderRadius:4,minHeight:43},errorPanel:{backgroundColor:"#fff0ed",borderWidth:1,borderColor:"#bf4436",padding:12,borderRadius:5},errorText:{color:"#8a241a",fontWeight:"700"},
  home:{gap:16,paddingVertical:12},homeTitle:{fontSize:25,fontWeight:"700"},homeGrid:{flexDirection:"row",flexWrap:"wrap",gap:14},homeButton:{flexGrow:1,flexBasis:230,minWidth:210,minHeight:100,borderWidth:1,borderColor:"#9cb0c0",borderRadius:8,backgroundColor:"#edf3f8",padding:18,flexDirection:"row",alignItems:"center",justifyContent:"space-between"},homeButtonText:{fontSize:18,fontWeight:"700",color:"#244d69"},homeArrow:{fontSize:30,color:"#537a96"},back:{alignSelf:"flex-start",backgroundColor:jsplColors.successTint,borderWidth:1,borderColor:jsplColors.border,borderRadius:jsplRadii.md,paddingVertical:10,paddingHorizontal:16},backText:{fontWeight:"700",color:jsplColors.primaryDark},
  pickerPanel:{padding:12,borderWidth:1,borderColor:"#9babb8",borderRadius:5,gap:8,maxWidth:540},pickerTop:{flexDirection:"row",justifyContent:"space-between"},productColumn:{width:260,paddingHorizontal:6,justifyContent:"center"},numberColumn:{width:135,paddingHorizontal:6,justifyContent:"center"},removeColumn:{width:44},root:{flex:1,backgroundColor:jsplColors.background},page:{padding:jsplSpacing.xl,gap:jsplSpacing.lg,paddingBottom:50,backgroundColor:jsplColors.background},title:{fontSize:23,fontWeight:"700"},muted:{fontSize:12,color:"#82888f"},nav:{flexDirection:"row",flexWrap:"wrap",borderBottomWidth:2,borderColor:"#486986"},navTab:{backgroundColor:"#e7ebf0",paddingVertical:11,paddingHorizontal:16,borderTopLeftRadius:4,borderTopRightRadius:4},navActive:{backgroundColor:"#345f81"},navActiveText:{color:"white",fontWeight:"700"},refresh:{alignSelf:"flex-start",padding:9,borderWidth:1,borderColor:"#a5b1bd",borderRadius:5},notice:{borderWidth:1,borderColor:"#a3b4c1",padding:10,borderRadius:5},sheet:{padding:jsplSpacing.lg,borderWidth:1,borderColor:jsplColors.border,borderRadius:jsplRadii.md,gap:jsplSpacing.md,backgroundColor:jsplColors.surface},documentHead:{gap:6,borderBottomWidth:1,borderColor:"#b5bfc9",paddingBottom:10},heading:{fontSize:17,fontWeight:"700"},headerDetails:{flexDirection:"row",flexWrap:"wrap",gap:16},detail:{fontSize:12,color:"#697b87"},field:{flex:1,gap:5,minWidth:150},label:{fontWeight:"600",fontSize:13},input:{minHeight:44,paddingHorizontal:jsplSpacing.md,paddingVertical:9,borderWidth:1,borderColor:jsplColors.border,borderRadius:jsplRadii.md,color:"#222",backgroundColor:"#fff"},filters:{flexDirection:"row",flexWrap:"wrap",gap:12},dropdown:{flex:1,minWidth:210,maxWidth:500,gap:4},selector:{padding:10,borderWidth:1,borderColor:"#9aabb7",borderRadius:4},choices:{padding:6,borderWidth:1,borderColor:"#bbc3cb",borderRadius:4,gap:4},choice:{padding:10,borderBottomWidth:1,borderColor:"#e6e7e9"},section:{fontSize:14,fontWeight:"700",marginTop:6},lineHeader:{flexDirection:"row",paddingVertical:10,backgroundColor:jsplColors.successTint},gridHeading:{fontSize:12,fontWeight:"700",paddingHorizontal:5},line:{flexDirection:"row",alignItems:"center",borderBottomWidth:1,borderColor:"#d9dfe4",paddingVertical:6},cell:{paddingHorizontal:4},tableInput:{minHeight:44,padding:9,borderWidth:1,borderColor:jsplColors.border,borderRadius:jsplRadii.md,backgroundColor:"#fff",color:"#111"},remove:{paddingHorizontal:8},alert:{color:"#a93525"},add:{borderWidth:1,borderColor:"#a7b8c4",padding:10,alignSelf:"flex-start",borderRadius:5},total:{fontWeight:"700",textAlign:"right"},footer:{flexDirection:"row",flexWrap:"wrap",justifyContent:"flex-end",gap:15,alignItems:"center"},confirm:{padding:12,borderWidth:1,borderColor:"#9babb9",borderRadius:4},submit:{backgroundColor:jsplColors.primary,paddingVertical:13,paddingHorizontal:25,borderRadius:5},submitText:{color:"white",fontWeight:"700"},off:{backgroundColor:"#a9adb0"},gridHead:{flexDirection:"row",backgroundColor:jsplColors.successTint,paddingVertical:8},registerRow:{flexDirection:"row",paddingVertical:8,borderBottomWidth:1,borderColor:"#e2e6e8",gap:5}
 });
