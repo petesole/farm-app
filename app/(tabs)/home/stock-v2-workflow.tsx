@@ -9,8 +9,8 @@ type Item={item_code:string;item_name:string;base_unit:string;quantity:number};
 type OrderLine={order_id:number;order_number:string;supplier_name:string;item_code:string;item_name:string;base_unit:string;ordered_quantity:number;received_quantity:number;ordered_unit_price:number|null;status:string};
 type SprayLine={job_id:number;external_tracecode_id:number;tracecode_name:string;item_code:string;item_name:string;area_ha:number;rate_per_ha:number;planned_quantity:number;issued_quantity:number;status:string};
 type Doc={document_id:number;document_type:string;document_number:string;item_name:string;quantity:number;tracecode_name:string|null};
-type Snapshot={items:Item[];orders:OrderLine[];sprays:SprayLine[];documents:Doc[]};
-type Trace={tracecode_id:number;tracecode_name:string;crop_id:number|null};
+type Snapshot={items:Item[];orders:OrderLine[];sprays:SprayLine[];documents:Doc[];sprayers?:{setup_name:string;water_litres_per_ha:number}[]};
+type Trace={tracecode_id:number;tracecode_name:string;tracecode_size:number;crop_id:number|null};
 type Crop={crop_id:number;crop_name:string};
 type Line={id:number;item_code:string;quantity:string;unit_price:string;rate_per_ha:string};
 const emptyLine=(id:number,item_code=""):Line=>({id,item_code,quantity:"",unit_price:"",rate_per_ha:""});
@@ -30,7 +30,7 @@ export default function StockV2Workflow(){
  const [lines,setLines]=useState<Line[]>([emptyLine(1)]),[nextLine,setNextLine]=useState(2);
  const [supplier,setSupplier]=useState("DEMO Supplier"),[orderId,setOrderId]=useState<number|null>(null);
  const [jobId,setJobId]=useState<number|null>(null),[traceId,setTraceId]=useState<number|null>(null),[cropId,setCropId]=useState<number|null>(null);
- const [area,setArea]=useState("19"),[water,setWater]=useState("200"),[deliveryNote,setDeliveryNote]=useState("");
+ const [area,setArea]=useState(""),[water,setWater]=useState(""),[part,setPart]=useState(""),[sprayType,setSprayType]=useState(""),[deliveryNote,setDeliveryNote]=useState("");
  const [dropdown,setDropdown]=useState<string|null>(null),[search,setSearch]=useState("");
  const [pickerLine,setPickerLine]=useState<number|null>(null),[pickerSearch,setPickerSearch]=useState("");
  const [request,setRequest]=useState<{action:string;payload:any;id:string}|null>(null);
@@ -41,7 +41,7 @@ export default function StockV2Workflow(){
  }catch(e){setStatus(e instanceof Error?e.message:String(e))}finally{if(show)setBusy(false)}};
  useEffect(()=>{refresh();(async()=>{
   const [t,c]=await Promise.all([
-   supabase.from("tracecode").select("tracecode_id,tracecode_name,crop_id,end_date").or("end_date.is.null,end_date.gte."+new Date().toISOString().slice(0,10)).order("tracecode_name"),
+   supabase.from("tracecode").select("tracecode_id,tracecode_name,tracecode_size,crop_id,end_date").or("end_date.is.null,end_date.gte."+new Date().toISOString().slice(0,10)).order("tracecode_name"),
    supabase.from("crop").select("crop_id,crop_name").eq("active",true).order("crop_name")
   ]);
   setTraces((t.data??[]) as Trace[]);setCrops((c.data??[]) as Crop[]);
@@ -63,7 +63,7 @@ export default function StockV2Workflow(){
   return [...map.entries()].map(([id,lines])=>({id,lines,trace:lines[0].tracecode_name,remaining:lines.reduce((s,x)=>s+Math.max(0,x.planned_quantity-x.issued_quantity),0)})).filter(x=>x.remaining>0);
  },[snapshot]);
  const selectedJob=jobs.find(x=>x.id===jobId);
- const activeTraces=traces.filter(t=>(cropId===null||t.crop_id===cropId)&&t.tracecode_name.toLowerCase().includes(search.toLowerCase()));
+ const activeTraces=traces.filter(t=>(cropId===null||t.crop_id===cropId)&&crops.some(c=>c.crop_id===t.crop_id)&&t.tracecode_name.toLowerCase().includes(search.toLowerCase()));
  const choosePO=(po:typeof orders[number])=>{setOrderId(po.id);setSupplier(po.supplier);setLines(po.lines.filter(x=>x.received_quantity<x.ordered_quantity).map((x,i)=>({...emptyLine(nextLine+i,x.item_code),quantity:String(x.ordered_quantity-x.received_quantity),unit_price:String(x.ordered_unit_price??"")})));setNextLine(n=>n+po.lines.length);setDropdown(null);resetEdit()};
  const chooseJob=(job:typeof jobs[number])=>{setJobId(job.id);setTraceId(job.lines[0].external_tracecode_id);setLines(job.lines.filter(x=>x.planned_quantity>x.issued_quantity).map((x,i)=>({...emptyLine(nextLine+i,x.item_code),quantity:String(Number((x.planned_quantity-x.issued_quantity).toFixed(4))),rate_per_ha:String(x.rate_per_ha)})));setNextLine(n=>n+job.lines.length);setDropdown(null);resetEdit()};
  const menu=(id:string,title:string,choices:{label:string;value:string;onSelect:()=>void}[],searchable=false)=> <View style={styles.dropdown}>
@@ -85,14 +85,14 @@ export default function StockV2Workflow(){
    {tab==="Planned Issue"?<View style={styles.numberColumn}><ThemedText>{max?.toFixed(2)??"—"}</ThemedText></View>:null}
    <View style={styles.numberColumn}><TextInput style={styles.tableInput} keyboardType="decimal-pad" value={tab==="Spray Programme"?l.rate_per_ha:l.quantity} onChangeText={v=>changeLine(l.id,tab==="Spray Programme"?"rate_per_ha":"quantity",v)} placeholder={tab==="Spray Programme"?"Rate/ha":"Quantity"} placeholderTextColor="#777"/></View>
    {tab==="Purchase Orders"||tab==="GRV"?<><View style={styles.numberColumn}><TextInput style={styles.tableInput} keyboardType="decimal-pad" value={l.unit_price} onChangeText={v=>changeLine(l.id,"unit_price",v)} placeholder="Unit price" placeholderTextColor="#777"/></View><View style={styles.numberColumn}><ThemedText>{currency(number(l.quantity)*number(l.unit_price))}</ThemedText></View></>:null}
-   {tab==="Spray Programme"?<View style={styles.numberColumn}><ThemedText>{currency(number(l.rate_per_ha)*number(area))} {product?.base_unit??""}</ThemedText></View>:null}
+   {tab==="Spray Programme"?<View style={styles.numberColumn}><ThemedText>{currency(number(l.rate_per_ha)*(part.trim()?number(part):number(area)))} {product?.base_unit??""}</ThemedText></View>:null}
    {max!==null&&max!==undefined&&number(l.quantity)>max?<ThemedText style={styles.alert}>Over outstanding</ThemedText>:null}
    {!locked?<Pressable style={[styles.remove,styles.removeColumn]} onPress={()=>removeLine(l.id)}><ThemedText style={styles.alert}>×</ThemedText></Pressable>:null}
   </View>;
  };
  const action=tab==="Purchase Orders"?"order":tab==="GRV"?"grv":tab==="Spray Programme"?"spray":tab==="Planned Issue"?"planned_issue":"direct_issue";
  const normalizedLines=lines.map(l=>tab==="Spray Programme"?{item_code:l.item_code,rate_per_ha:number(l.rate_per_ha)}:{item_code:l.item_code,quantity:number(l.quantity),...(["Purchase Orders","GRV"].includes(tab)?{unit_price:l.unit_price.trim()?number(l.unit_price):null}:{})});
- const payload={supplier,order_id:orderId,job_id:jobId,tracecode_id:traceId,area_ha:number(area),water_rate:number(water),delivery_note:deliveryNote,lines:normalizedLines};
+ const payload={supplier,order_id:orderId,job_id:jobId,tracecode_id:traceId,area_ha:part.trim()?number(part):number(area),part_label:part.trim()?"Part "+part.trim()+" ha":"Whole tracecode",spray_type:sprayType,water_rate:number(water),delivery_note:deliveryNote,lines:normalizedLines};
  const valid=!!snapshot&&lines.length>0&&lines.length<=30&&new Set(lines.map(l=>l.item_code)).size===lines.length&&lines.every(l=>{
   if(!products.some(p=>p.item_code===l.item_code))return false;
   const n=number(tab==="Spray Programme"?l.rate_per_ha:l.quantity);
@@ -102,7 +102,7 @@ export default function StockV2Workflow(){
   if(tab==="GRV"&&(!ref||n>(ref as OrderLine).ordered_quantity-(ref as OrderLine).received_quantity))return false;
   if(tab==="Planned Issue"&&(!ref||n>(ref as SprayLine).planned_quantity-(ref as SprayLine).issued_quantity))return false;
   return true;
- })&&(tab!=="GRV"||!!selectedPO)&&(tab!=="Planned Issue"||!!selectedJob)&&(!["Spray Programme","Direct Issue"].includes(tab)||!!traceId)&&(tab!=="Spray Programme"||number(area)>0);
+ })&&(tab!=="GRV"||!!selectedPO)&&(tab!=="Planned Issue"||!!selectedJob)&&(!["Spray Programme","Direct Issue"].includes(tab)||!!traceId)&&(tab!=="Spray Programme"||(number(area)>0&&(!part.trim()||(number(part)>0&&number(part)<=number(area)))&&!!sprayType&&Number.isFinite(number(water))&&number(water)>0));
  const submit=async()=>{if(!valid||!confirmed||busy)return;setBusy(true);setStatus("");
   const req=request&&request.action===action&&JSON.stringify(request.payload)===JSON.stringify(payload)?request:{action,payload,id:uuid()};setRequest(req);
   try{
@@ -143,9 +143,15 @@ export default function StockV2Workflow(){
    {tab==="Planned Issue"?<>{menu("jobs",selectedJob?"Spray job #"+selectedJob.id+" — "+selectedJob.trace:"Choose outstanding spray programme",jobs.map(j=>({label:"Job #"+j.id+" · "+j.trace+" · "+j.lines.length+" products",value:String(j.id),onSelect:()=>chooseJob(j)})),true)}</>:null}
    {["Spray Programme","Direct Issue"].includes(tab)?<View style={styles.filters}>
     {menu("crops",crops.find(c=>c.crop_id===cropId)?.crop_name??"All crops",[{label:"All crops",value:"all",onSelect:()=>{setCropId(null);setTraceId(null)}},...crops.map(c=>({label:c.crop_name,value:String(c.crop_id),onSelect:()=>{setCropId(c.crop_id);setTraceId(null)}}))])}
-    {menu("traces",currentTrace?.tracecode_name??"Choose active tracecode",activeTraces.map(t=>({label:t.tracecode_name,value:String(t.tracecode_id),onSelect:()=>setTraceId(t.tracecode_id)})),true)}
+    {menu("traces",currentTrace?.tracecode_name??"Choose active tracecode",activeTraces.map(t=>({label:t.tracecode_name,value:String(t.tracecode_id),onSelect:()=>{setTraceId(t.tracecode_id);setArea(String(t.tracecode_size??""));setPart("");}})),true)}
    </View>:null}
-   {tab==="Spray Programme"?<View style={styles.filters}><Field label="Area (ha)" value={area} numeric onChange={v=>{setArea(v);resetEdit()}}/><Field label="Water (L/ha)" value={water} numeric onChange={v=>{setWater(v);resetEdit()}}/></View>:null}
+   {tab==="Spray Programme"?<View style={styles.sprayFields}>
+     <View style={styles.field}><ThemedText style={styles.label}>Tracecode Area (ha) — fixed</ThemedText><View style={styles.readOnly}><ThemedText>{currentTrace?String(currentTrace.tracecode_size):"Select a tracecode"}</ThemedText></View></View>
+     <Field label="Part (ha) — blank = entire field" value={part} numeric onChange={v=>{setPart(v);resetEdit()}}/>
+     <View style={styles.field}><ThemedText style={styles.label}>Spray Type</ThemedText>{menu("spraytypes",sprayType||"Choose spray type",(snapshot?.sprayers??[]).map(x=>({label:x.setup_name,value:x.setup_name,onSelect:()=>{setSprayType(x.setup_name);setWater(String(x.water_litres_per_ha));}})))}</View>
+     <Field label="Water (L/ha) — editable" value={water} numeric onChange={v=>{setWater(v);resetEdit()}}/>
+     <ThemedText style={styles.label}>Area to spray: {part.trim()?part:(area||"—")} ha</ThemedText>
+   </View>:null}
    <ThemedText style={styles.section}>Product lines</ThemedText>
    <ScrollView horizontal nestedScrollEnabled contentContainerStyle={{minWidth:tab==="GRV"?1130:tab==="Purchase Orders"?790:tab==="Spray Programme"?710:tab==="Planned Issue"?710:650}}>
     <View style={{flex:1}}>
@@ -170,7 +176,7 @@ export default function StockV2Workflow(){
   </View>}
  </ScrollView></ThemedView>
 }
-const styles=StyleSheet.create({errorPanel:{backgroundColor:"#fff0ed",borderWidth:1,borderColor:"#bf4436",padding:12,borderRadius:5},errorText:{color:"#8a241a",fontWeight:"700"},
+const styles=StyleSheet.create({sprayFields:{flexDirection:"row",flexWrap:"wrap",alignItems:"flex-end",gap:12},readOnly:{padding:12,backgroundColor:"#e7edf2",borderWidth:1,borderColor:"#b0bfcb",borderRadius:4,minHeight:43},errorPanel:{backgroundColor:"#fff0ed",borderWidth:1,borderColor:"#bf4436",padding:12,borderRadius:5},errorText:{color:"#8a241a",fontWeight:"700"},
  home:{gap:16,paddingVertical:12},homeTitle:{fontSize:25,fontWeight:"700"},homeGrid:{flexDirection:"row",flexWrap:"wrap",gap:14},homeButton:{flexGrow:1,flexBasis:230,minWidth:210,minHeight:100,borderWidth:1,borderColor:"#9cb0c0",borderRadius:8,backgroundColor:"#edf3f8",padding:18,flexDirection:"row",alignItems:"center",justifyContent:"space-between"},homeButtonText:{fontSize:18,fontWeight:"700",color:"#244d69"},homeArrow:{fontSize:30,color:"#537a96"},back:{alignSelf:"flex-start",backgroundColor:"#e5edf4",borderWidth:1,borderColor:"#9cabb8",borderRadius:6,paddingVertical:10,paddingHorizontal:16},backText:{fontWeight:"700",color:"#315c7a"},
  pickerPanel:{padding:12,borderWidth:1,borderColor:"#9babb8",borderRadius:5,gap:8,maxWidth:540},pickerTop:{flexDirection:"row",justifyContent:"space-between"},productColumn:{width:260,paddingHorizontal:6,justifyContent:"center"},numberColumn:{width:135,paddingHorizontal:6,justifyContent:"center"},removeColumn:{width:44},root:{flex:1},page:{padding:18,gap:14,paddingBottom:50},title:{fontSize:23,fontWeight:"700"},muted:{fontSize:12,color:"#82888f"},nav:{flexDirection:"row",flexWrap:"wrap",borderBottomWidth:2,borderColor:"#486986"},navTab:{backgroundColor:"#e7ebf0",paddingVertical:11,paddingHorizontal:16,borderTopLeftRadius:4,borderTopRightRadius:4},navActive:{backgroundColor:"#345f81"},navActiveText:{color:"white",fontWeight:"700"},refresh:{alignSelf:"flex-start",padding:9,borderWidth:1,borderColor:"#a5b1bd",borderRadius:5},notice:{borderWidth:1,borderColor:"#a3b4c1",padding:10,borderRadius:5},sheet:{padding:15,borderWidth:1,borderColor:"#b5bfc9",borderRadius:5,gap:12},documentHead:{gap:6,borderBottomWidth:1,borderColor:"#b5bfc9",paddingBottom:10},heading:{fontSize:17,fontWeight:"700"},headerDetails:{flexDirection:"row",flexWrap:"wrap",gap:16},detail:{fontSize:12,color:"#697b87"},field:{flex:1,gap:5,minWidth:150},label:{fontWeight:"600",fontSize:13},input:{paddingHorizontal:10,paddingVertical:9,borderWidth:1,borderColor:"#aab4bd",borderRadius:4,color:"#222",backgroundColor:"#fff"},filters:{flexDirection:"row",flexWrap:"wrap",gap:12},dropdown:{flex:1,minWidth:210,maxWidth:500,gap:4},selector:{padding:10,borderWidth:1,borderColor:"#9aabb7",borderRadius:4},choices:{padding:6,borderWidth:1,borderColor:"#bbc3cb",borderRadius:4,gap:4},choice:{padding:10,borderBottomWidth:1,borderColor:"#e6e7e9"},section:{fontSize:14,fontWeight:"700",marginTop:6},lineHeader:{flexDirection:"row",paddingVertical:10,backgroundColor:"#e0eaf2"},gridHeading:{fontSize:12,fontWeight:"700",paddingHorizontal:5},line:{flexDirection:"row",alignItems:"center",borderBottomWidth:1,borderColor:"#d9dfe4",paddingVertical:6},cell:{paddingHorizontal:4},tableInput:{padding:9,borderWidth:1,borderColor:"#aeb8c1",borderRadius:4,backgroundColor:"#fff",color:"#111"},remove:{paddingHorizontal:8},alert:{color:"#a93525"},add:{borderWidth:1,borderColor:"#a7b8c4",padding:10,alignSelf:"flex-start",borderRadius:5},total:{fontWeight:"700",textAlign:"right"},footer:{flexDirection:"row",flexWrap:"wrap",justifyContent:"flex-end",gap:15,alignItems:"center"},confirm:{padding:12,borderWidth:1,borderColor:"#9babb9",borderRadius:4},submit:{backgroundColor:"#226d4f",paddingVertical:13,paddingHorizontal:25,borderRadius:5},submitText:{color:"white",fontWeight:"700"},off:{backgroundColor:"#a9adb0"},gridHead:{flexDirection:"row",backgroundColor:"#e0eaf2",paddingVertical:8},registerRow:{flexDirection:"row",paddingVertical:8,borderBottomWidth:1,borderColor:"#e2e6e8",gap:5}
 });
