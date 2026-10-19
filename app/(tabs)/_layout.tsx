@@ -55,6 +55,7 @@ export default function TabsLayout() {
         options={{ title: "Irrigation" }}
       />
       <Tabs.Screen name="scouting" options={{ title: "Scouting" }} />
+      <Tabs.Screen name="spray" options={{ title: "Spray Planning" }} />
     </Tabs>
   );
 }
