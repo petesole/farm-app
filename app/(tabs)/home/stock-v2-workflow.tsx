@@ -155,7 +155,7 @@ export default function StockV2Workflow(){
     {menu("balanceCategory",categoryFilter||"All input categories",[{label:"All input categories",value:"all",onSelect:()=>setCategoryFilter("")},...inputCategories.map(x=>({label:x,value:x,onSelect:()=>setCategoryFilter(x)}))],true)}
    </View>
    <ThemedText style={styles.muted}>{balanceRows.length} products · Prices are shown only where actual receipt pricing is available.</ThemedText>
-   <JsplTable rows={balanceRows} rowKey={x=>x.item_code}
+   <JsplTable rows={balanceRows} rowKey={x=>x.item_code} rowAction={{label:"Movements",onPress:(item)=>router.push({pathname:"/stock-v2-movements",params:{item_code:item.item_code}})}}
     columns={[
       {key:"item",title:"Product",width:240,value:x=>x.item_name},
       {key:"ai",title:"Active Ingredient",width:210,value:x=>x.active_ingredient||"—"},
@@ -163,9 +163,7 @@ export default function StockV2Workflow(){
       {key:"unit",title:"Unit",width:75,value:x=>x.base_unit},
       {key:"last",title:"Last Purchase Price",kind:"number",width:155,value:x=>x.last_purchase_price},
       {key:"supplier",title:"Last Purchase Supplier",width:210,value:x=>x.last_purchase_supplier||"—"},
-      {key:"avg",title:"Weighted Avg Price*",kind:"number",width:155,value:x=>x.weighted_average_price},
-      {key:"lastval",title:"Value at Last Price",kind:"number",width:160,value:x=>x.last_purchase_price==null?null:x.quantity*x.last_purchase_price},
-      {key:"avgval",title:"Value at Weighted Avg*",kind:"number",width:190,value:x=>x.weighted_average_price==null?null:x.quantity*x.weighted_average_price}
+      {key:"avg",title:"Weighted Avg Price*",kind:"number",width:155,value:x=>x.weighted_average_price}
      ]}/>
    <ThemedText style={styles.muted}>* Weighted receipt price is a provisional indicator, not a verified perpetual inventory cost. Missing opening stock costs and issue valuations are shown as unavailable.</ThemedText>
   </View>:<View style={styles.sheet}>
