@@ -1,5 +1,5 @@
 import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   formatJsplNumber, jsplCellAlignment, jsplColors, jsplSizes,
   jsplSpacing, jsplType, type JsplCellKind,
@@ -17,12 +17,13 @@ export type JsplColumn<Row> = {
 };
 
 export function JsplTable<Row>({
-  rows, columns, rowKey, emptyMessage = 'No records',
+  rows, columns, rowKey, emptyMessage = 'No records', rowAction,
 }: {
   rows: readonly Row[];
   columns: readonly JsplColumn<Row>[];
   rowKey: (row: Row, index: number) => string;
   emptyMessage?: string;
+  rowAction?: { label: string; onPress: (row: Row) => void };
 }) {
   return (
     <ScrollView horizontal contentContainerStyle={styles.scrollContent}>
@@ -34,6 +35,7 @@ export function JsplTable<Row>({
               textAlign: jsplCellAlignment(column.kind ?? 'text'),
             }]}>{column.title}</Text>
           ))}
+          {rowAction ? <Text style={[styles.headerCell,{width:115}]}>Movements</Text> : null}
         </View>
         {rows.length === 0 ? <Text style={styles.empty}>{emptyMessage}</Text> :
           rows.map((row, i) => (
@@ -53,6 +55,7 @@ export function JsplTable<Row>({
                   {display}{column.unit && raw != null ? ` ${column.unit}` : ''}
                 </Text>;
               })}
+              {rowAction ? <Pressable accessibilityRole="button" style={styles.actionButton} onPress={()=>rowAction.onPress(row)}><Text style={styles.actionText}>{rowAction.label}</Text></Pressable> : null}
             </View>
           ))}
       </View>
@@ -67,5 +70,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', minHeight: jsplSizes.tableRowMinHeight, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: jsplColors.border },
   alternate: { backgroundColor: '#FAFBFA' },
   cell: { paddingHorizontal: jsplSpacing.md, paddingVertical: jsplSpacing.sm, fontSize: jsplType.body, color: jsplColors.text },
+  actionButton:{width:115,paddingVertical:9,paddingHorizontal:10,borderWidth:1,borderColor:jsplColors.border,borderRadius:5,alignItems:'center',backgroundColor:jsplColors.background},
+  actionText:{fontSize:jsplType.caption,fontWeight:'700',color:jsplColors.primary},
   empty: { padding: jsplSpacing.xl, textAlign: 'center', color: jsplColors.textSecondary },
 });
