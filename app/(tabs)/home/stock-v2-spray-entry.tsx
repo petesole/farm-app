@@ -88,6 +88,8 @@ export default function StockV2SprayPlanningPreview() {
           setTraceId(a.external_tracecode_id);setSprayType(a.spray_type);setWaterRate(String(a.water_litres_per_ha??""));
           setPart(a.part_label?.startsWith("Part ")?a.part_label.slice(5).replace(/ ha$/,""):"");
           setSprayer(a.sprayer_asset_code??"");
+          const currentMonday=monday(new Date());const savedMonday=new Date(String(a.planned_week_start)+"T12:00:00");
+          setOperationalOffset(Math.round((monday(savedMonday).getTime()-currentMonday.getTime())/604800000));
           setLines(matching.map((j:{item_name:string;rate_per_ha:number},i:number)=>({key:i+1,input:j.item_name,rate:String(j.rate_per_ha)})));
         }
         const first=data.sprayers?.[0];if(first){setSprayType(first.setup_name);setWaterRate(String(first.water_litres_per_ha));}
