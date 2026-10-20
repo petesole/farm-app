@@ -14,7 +14,7 @@ type Item={item_code:string;item_name:string;base_unit:string;quantity:number;ao
 type OrderLine={owner_code:string;contract_id:number|null;order_id:number;order_number:string;supplier_name:string;item_code:string;item_name:string;base_unit:string;ordered_quantity:number;received_quantity:number;ordered_unit_price:number|null;status:string};
 type SprayLine={job_id:number;external_tracecode_id:number;tracecode_name:string;item_code:string;item_name:string;area_ha:number;rate_per_ha:number;planned_quantity:number;issued_quantity:number;status:string};
 type Doc={document_id:number;document_type:string;document_number:string;item_name:string;quantity:number;tracecode_name:string|null};
-type Snapshot={items:Item[];orders:OrderLine[];sprays:SprayLine[];documents:Doc[];sprayers?:{setup_name:string;water_litres_per_ha:number}[]};
+type Snapshot={items:Item[];orders:OrderLine[];sprays:SprayLine[];documents:Doc[];pending_invoice_count?:number;sprayers?:{setup_name:string;water_litres_per_ha:number}[]};
 type Trace={tracecode_id:number;tracecode_name:string;tracecode_size:number;crop_id:number|null};
 type Crop={crop_id:number;crop_name:string};
 type Line={id:number;item_code:string;quantity:string;unit_price:string;rate_per_ha:string;mix_instruction:string};
@@ -85,7 +85,7 @@ export default function StockV2Workflow(){
   const map=new Map<number,OrderLine[]>();
   for(const o of snapshot?.orders??[]){if(o.owner_code!==ownerCode)continue;if(!map.has(o.order_id))map.set(o.order_id,[]);map.get(o.order_id)!.push(o)}
   return [...map.entries()].map(([id,lines])=>({id,lines,supplier:lines[0].supplier_name,number:lines[0].order_number,contract_id:lines[0].contract_id,remaining:lines.reduce((s,x)=>s+Math.max(0,x.ordered_quantity-x.received_quantity),0)})).filter(x=>x.remaining>0);
- },[snapshot]);
+ },[snapshot,ownerCode]);
  const selectedPO=orders.find(x=>x.id===orderId);
  const jobs=useMemo(()=>{
   const map=new Map<number,SprayLine[]>();for(const j of snapshot?.sprays??[]){if(j.status!=="planned")continue;if(!map.has(j.job_id))map.set(j.job_id,[]);map.get(j.job_id)!.push(j)}
@@ -168,7 +168,7 @@ export default function StockV2Workflow(){
     </View>
     <View style={styles.homeGrid}>{tabs.map(x=><View key={x} style={styles.dashboardCard}>
       <JsplDashboardButton title={x}
-       count={x==="POs Outstanding"?new Set((snapshot?.orders??[]).filter(o=>o.ordered_quantity>o.received_quantity).map(o=>o.order_id)).size:undefined}
+       count={x==="POs Outstanding"?new Set((snapshot?.orders??[]).filter(o=>o.ordered_quantity>o.received_quantity).map(o=>o.order_id)).size:x==="GRV"?snapshot?.pending_invoice_count:undefined}
        onPress={()=>x==="Spray Planning"?router.push("/stock-v2-spray-planning"):switchTab(x)}/>
      </View>)}</View>
    </View>:null}
