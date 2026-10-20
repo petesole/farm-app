@@ -132,7 +132,7 @@ export default function StockV2Workflow(){
     <ThemedText style={styles.muted}>Choose a stock operation</ThemedText>
     <View style={styles.homeGrid}>{tabs.map(x=><View key={x} style={styles.dashboardCard}>
       <JsplDashboardButton title={x}
-       description={x==="GRV"?(snapshot?`${orders.length} outstanding purchase order${orders.length===1?"":"s"}`:"Loading outstanding POs…"):x==="Planned Issue"?(snapshot?`${jobs.length} spray job${jobs.length===1?"":"s"} awaiting issue · ${jobs.reduce((sum,j)=>sum+j.lines.filter(l=>l.planned_quantity>l.issued_quantity).length,0)} input lines`:"Loading spray programmes…"):"Open screen ›"}
+       count={x==="GRV"?orders.length:x==="Planned Issue"?jobs.length:undefined}
        onPress={()=>switchTab(x)}/>
      </View>)}</View>
    </View>:<Pressable style={styles.back} onPress={()=>switchTab(null)}><ThemedText style={styles.backText}>← Back to Stock Home</ThemedText></Pressable>}
