@@ -90,12 +90,12 @@ export default function StockV2SprayPlanningPreview() {
           setSprayer(a.sprayer_asset_code??"");
           const currentMonday=monday(new Date());
           const savedDate=String(a.planned_week_start??"").slice(0,10);
-          const savedMonday=/^\\d{4}-\\d{2}-\\d{2}$/.test(savedDate)?new Date(savedDate+"T12:00:00"):new Date(NaN);
+          const savedMonday=/^\d{4}-\d{2}-\d{2}$/.test(savedDate)?new Date(savedDate+"T12:00:00"):new Date(NaN);
           if(!Number.isFinite(savedMonday.getTime()))throw Error("This spray has an invalid planned week; please correct the record before editing.");
           setOperationalOffset(Math.round((monday(savedMonday).getTime()-currentMonday.getTime())/604800000));
           setLines(matching.map((j:{item_name:string;rate_per_ha:number},i:number)=>({key:i+1,input:j.item_name,rate:String(j.rate_per_ha)})));
         }
-        const first=data.sprayers?.[0];if(first){setSprayType(first.setup_name);setWaterRate(String(first.water_litres_per_ha));}
+        const first=data.sprayers?.[0];if(first&&!editing){setSprayType(first.setup_name);setWaterRate(String(first.water_litres_per_ha));}
         }catch(e){setError(e instanceof Error?e.message:String(e))}
       }
     }
