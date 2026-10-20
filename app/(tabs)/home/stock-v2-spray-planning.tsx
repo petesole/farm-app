@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from "react-native";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { JsplSearchCombo } from "@/components/jspl/JsplSearchCombo";
+import { jsplColors, jsplRadii, jsplSizes, jsplSpacing, jsplType } from "@/constants/jspl-design";
 import { supabase } from "../../../supabase";
 
 type Trace = { tracecode_id: number; tracecode_name: string; tracecode_size: number | null; crop_id: number | null; end_date: string | null; planned_planting_date?: string | null; actual_planting_date?: string | null };
@@ -21,12 +23,13 @@ const exampleBudget = [
 ];
 const monday = (d: Date) => { const x = new Date(d.getFullYear(),d.getMonth(),d.getDate()); x.setDate(x.getDate() - ((x.getDay()+6)%7)); return x; };
 const addWeeks = (d: Date, count: number) => { const x=new Date(d); x.setDate(x.getDate()+count*7); return x; };
-const weekLabel = (d: Date) => d.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"});
+const weekLabel = (d: Date) => `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
 const fmt = (n: number) => Number.isFinite(n)?n.toLocaleString("en-GB",{maximumFractionDigits:2}):"—";
 let nextKey=1;
 export default function StockV2SprayPlanningPreview() {
-  const { width }=useWindowDimensions();
+  const { width, height }=useWindowDimensions();
   const wide=width>=760;
+  const watermarkSize=Math.min(650,Math.max(240,width-jsplSpacing.xl*2),Math.max(240,height-jsplSpacing.xl*2));
   const [traces,setTraces]=useState<Trace[]>([]);
   const [crops,setCrops]=useState<Crop[]>([]);
   const [cropId,setCropId]=useState<number|null>(null);
@@ -79,14 +82,28 @@ export default function StockV2SprayPlanningPreview() {
   const matches=(search:string)=>catalog.filter(p=>p.inputs_name.toLowerCase().includes(search.trim().toLowerCase())).slice(0,30);
   const changeLine=(key:number,field:"input"|"rate",value:string)=>setLines(old=>old.map(x=>x.key===key?{...x,[field]:value}:x));
   const totalWater=Number(area)*Number(waterRate);
-  return <ThemedView style={styles.root}><ScrollView contentContainerStyle={styles.page}>
-    <ThemedText type="title">Stock V2 · Weekly Spray Planning</ThemedText>
+  return <ThemedView style={styles.root}>
+    <View pointerEvents="none" accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={styles.watermarkLayer}>
+      <Image source={require("../../../assets/images/jspl_farm_watermark.png")} resizeMode="contain" style={[styles.watermark,{width:watermarkSize,height:watermarkSize}]}/>
+    </View>
+    <ScrollView style={styles.foreground} contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
+    <View style={styles.header}>
+      <View style={styles.headerText}>
+        <ThemedText style={styles.brand}>JOHN SOLE (PVT) LTD</ThemedText>
+        <ThemedText type="title" style={styles.title}>Stock V2 · Weekly Spray Planning</ThemedText>
+      </View>
+      <Image source={require("../../../assets/images/jspl_farm_logo.png")} accessibilityLabel="John Sole (Pvt) Ltd" resizeMode="contain" style={styles.logo}/>
+    </View>
     <ThemedText style={styles.warning}>Development preview only. No spray plans or stock movements are saved.</ThemedText>
     {loading?<ActivityIndicator/>:error?<ThemedText style={styles.error}>{error}</ThemedText>:<View style={styles.traces}>
-      <ThemedText style={styles.heading}>Filter by crop</ThemedText>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}><Pressable onPress={()=>setCropId(null)} style={[styles.chip,cropId===null&&styles.selected]}><ThemedText>All active crops</ThemedText></Pressable>{visibleCrops.map(c=><Pressable key={c.crop_id} onPress={()=>setCropId(c.crop_id)} style={[styles.chip,cropId===c.crop_id&&styles.selected]}><ThemedText>{c.crop_name}</ThemedText></Pressable>)}</ScrollView>
-      <ThemedText style={styles.heading}>Active tracecodes ({visibleTraces.length})</ThemedText>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>{visibleTraces.map(t=><Pressable key={t.tracecode_id} onPress={()=>setTraceId(t.tracecode_id)} style={[styles.chip,traceId===t.tracecode_id&&styles.selected]}><ThemedText>{t.tracecode_name}</ThemedText></Pressable>)}</ScrollView>
+      <JsplSearchCombo label="Filter by crop" selector="crop"
+        options={visibleCrops.map(c=>({id:c.crop_id,label:c.crop_name,active:true}))}
+        value={cropId} onChange={value=>setCropId(typeof value==="number"?value:null)}
+        placeholder="All active crops — type to search"/>
+      <JsplSearchCombo label={`Active tracecodes (${visibleTraces.length})`} selector="trace"
+        options={visibleTraces.map(t=>({id:t.tracecode_id,label:t.tracecode_name,active:true}))}
+        value={traceId} onChange={value=>setTraceId(typeof value==="number"?value:null)}
+        placeholder="Type the beginning of a trace code"/>
       {visibleTraces.length===0?<ThemedText style={styles.muted}>No active tracecodes for this crop.</ThemedText>:null}
     </View>}
     <View style={[styles.panels,wide?styles.sideBySide:styles.stacked]}>
@@ -117,7 +134,7 @@ export default function StockV2SprayPlanningPreview() {
         <ThemedText style={styles.muted}>Budget weeks move independently of the operational spray week.</ThemedText>
         <View style={styles.empty}>
           <ThemedText style={styles.heading}>Sample crop budget (demonstration only)</ThemedText>
-          <ThemedText style={styles.warning}>Illustrative Access inputs, NOT the selected tracecode's actual budget. No budget data has been imported or linked yet.</ThemedText>
+          <ThemedText style={styles.warning}>Illustrative Access inputs, NOT the selected tracecode&apos;s actual budget. No budget data has been imported or linked yet.</ThemedText>
           {budgetOffset===0 ? exampleBudget.map((row,i)=><Pressable
             key={i} style={styles.budgetRow} onPress={()=>copyBudgetInput(row.input,row.rate)}>
             <View style={{flex:2}}><ThemedText style={styles.label}>{row.category}</ThemedText><ThemedText>{row.input}</ThemedText></View>
@@ -131,11 +148,12 @@ export default function StockV2SprayPlanningPreview() {
   </ScrollView></ThemedView>;
 }
 const styles=StyleSheet.create({
- root:{flex:1},page:{padding:16,gap:14,paddingBottom:50},heading:{fontWeight:"700",fontSize:16},warning:{color:"#aa7318"},muted:{opacity:0.65},error:{color:"#c0392b"},
- traces:{gap:8},chip:{borderWidth:1,borderColor:"#999",paddingHorizontal:12,paddingVertical:8,borderRadius:8,marginRight:6},selected:{backgroundColor:"rgba(44,150,90,.2)"},
- panels:{gap:14},sideBySide:{flexDirection:"row"},stacked:{flexDirection:"column"},panel:{flex:1,borderWidth:1,borderColor:"#777",borderRadius:12,padding:14,gap:9,minWidth:0},
+ watermarkLayer:{...StyleSheet.absoluteFillObject,zIndex:0,alignItems:"center",justifyContent:"center"},watermark:{opacity:0.08},foreground:{flex:1,zIndex:1,backgroundColor:"transparent"},logo:{width:80,height:80,flexShrink:0},headerText:{flex:1,minWidth:0,gap:jsplSpacing.sm},
+ root:{flex:1,backgroundColor:jsplColors.background},header:{flexDirection:"row",alignItems:"flex-start",justifyContent:"space-between",gap:jsplSpacing.md},brand:{fontSize:jsplType.caption,fontWeight:"700",color:jsplColors.primary,letterSpacing:1},title:{color:jsplColors.primaryDark},page:{padding:jsplSpacing.lg,gap:jsplSpacing.lg,paddingBottom:50},heading:{fontWeight:"700",fontSize:16},warning:{color:jsplColors.warning},muted:{opacity:0.65},error:{color:jsplColors.danger},
+ traces:{gap:8},chip:{borderWidth:1,borderColor:jsplColors.border,paddingHorizontal:12,paddingVertical:8,borderRadius:8,marginRight:6},selected:{backgroundColor:jsplColors.successTint,borderColor:jsplColors.primary},
+ panels:{gap:14},sideBySide:{flexDirection:"row"},stacked:{flexDirection:"column"},panel:{flex:1,borderWidth:1,borderColor:jsplColors.border,backgroundColor:"rgba(255,255,255,0.65)",borderRadius:jsplRadii.lg,padding:jsplSpacing.lg,gap:9,minWidth:0},
  weekNav:{flexDirection:"row",alignItems:"center",justifyContent:"space-between",gap:4,flexWrap:"wrap"},label:{fontSize:12,opacity:0.75,marginBottom:3},
- input:{borderWidth:1,borderColor:"#999",borderRadius:7,padding:8,minHeight:38,color:"#222",backgroundColor:"#fff"},two:{flexDirection:"row",gap:8},half:{flex:1},
- line:{flexDirection:"row",alignItems:"center",gap:7,flexWrap:"wrap"},action:{borderWidth:1,borderColor:"#999",padding:10,alignItems:"center",borderRadius:8},
- empty:{borderWidth:1,borderStyle:"dashed",borderColor:"#aaa",padding:14,borderRadius:8,gap:8,marginTop:10},budgetRow:{paddingVertical:9,borderBottomWidth:1,borderColor:"#ccc",flexDirection:"row",gap:8,alignItems:"center"},copy:{fontWeight:"700",color:"#19744a"},suggestions:{borderWidth:1,borderColor:"#bbb",borderRadius:7,padding:6,backgroundColor:"#fff"},suggestion:{paddingVertical:8,borderBottomWidth:1,borderBottomColor:"#ddd"}
+ input:{borderWidth:1,borderColor:jsplColors.border,borderRadius:jsplRadii.sm,padding:jsplSpacing.sm,minHeight:jsplSizes.inputHeight,color:jsplColors.text,backgroundColor:jsplColors.surface},two:{flexDirection:"row",gap:8},half:{flex:1},
+ line:{flexDirection:"row",alignItems:"center",gap:7,flexWrap:"wrap"},action:{borderWidth:1,borderColor:jsplColors.border,padding:10,alignItems:"center",borderRadius:8},
+ empty:{borderWidth:1,borderStyle:"dashed",borderColor:jsplColors.border,padding:14,borderRadius:8,gap:8,marginTop:10},budgetRow:{paddingVertical:9,borderBottomWidth:1,borderColor:jsplColors.border,flexDirection:"row",gap:8,alignItems:"center"},copy:{fontWeight:"700",color:jsplColors.primary},suggestions:{borderWidth:1,borderColor:jsplColors.border,borderRadius:7,padding:6,backgroundColor:"#fff"},suggestion:{paddingVertical:8,borderBottomWidth:1,borderBottomColor:jsplColors.border}
 });
