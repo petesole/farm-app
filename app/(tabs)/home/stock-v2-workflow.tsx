@@ -142,6 +142,10 @@ export default function StockV2Workflow(){
   {tab===null?<View style={styles.home}>
     <ThemedText style={styles.homeTitle}>Stock Home</ThemedText>
     <ThemedText style={styles.muted}>Choose a stock operation</ThemedText>
+    <View style={styles.navActions}>
+     <Pressable style={styles.back} onPress={()=>router.push("/stock-v2-owner-transactions")}><ThemedText style={styles.backText}>Multi-owner POs, GRVs & Transfers</ThemedText></Pressable>
+     <Pressable style={styles.back} onPress={()=>router.push("/stock-v2-setup")}><ThemedText style={styles.backText}>Manage Stock Owners & Contracts</ThemedText></Pressable>
+    </View>
     <View style={styles.homeGrid}>{tabs.map(x=><View key={x} style={styles.dashboardCard}>
       <JsplDashboardButton title={x}
        count={x==="GRV"?orders.length:x==="Planned Issue"?jobs.length:undefined}
