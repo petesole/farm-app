@@ -9,7 +9,7 @@ import { supabase } from "../../../supabase";
 
 type Trace = { tracecode_id: number; tracecode_name: string; tracecode_size: number | null; crop_id: number | null; end_date: string | null; planned_planting_date?: string | null; actual_planting_date?: string | null };
 type Crop = { crop_id: number; crop_name: string; active: boolean | null };
-type CatalogInput = { input_id: number; inputs_name: string; item_code:string };
+type CatalogInput = { input_id: number; inputs_name: string; item_code:string; quantity:number; base_unit:string };
 type InputLine = { key: number; input: string; rate: string };
 // Demo-only values from the user's Access example. Not fetched from Supabase.
 const workflowEndpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
@@ -79,7 +79,7 @@ export default function StockV2SprayPlanningPreview() {
       setCrops((cropResult.data??[]) as Crop[]);
       if(!inputResult.data.session?.access_token){setError("Sign in to Supabase to load private Stock V2 products.");}else{
         try{const response=await fetch(workflowEndpoint,{headers:{authorization:"Bearer "+inputResult.data.session.access_token}});const data=await response.json();if(!response.ok)throw Error(data.error||"Unable to load Stock V2");
-        setCatalog((data.items??[]).map((p:{item_code:string;item_name:string},i:number)=>({input_id:i+1,inputs_name:p.item_name,item_code:p.item_code})));
+        setCatalog((data.items??[]).map((p:{item_code:string;item_name:string;quantity:number;base_unit:string},i:number)=>({input_id:i+1,inputs_name:p.item_name,item_code:p.item_code,quantity:Number(p.quantity??0),base_unit:p.base_unit})));
         setSpraySetups(data.sprayers??[]);
         if(editing){
           const matching=(data.sprays??[]).filter((j:{job_id:number})=>j.job_id===editJobId);
@@ -169,7 +169,7 @@ export default function StockV2SprayPlanningPreview() {
               {matches(x.input).length===0?<ThemedText style={styles.muted}>No matching input in the current master.</ThemedText>:null}
             </ScrollView>
             <Pressable onPress={()=>setOpenLine(null)} style={styles.chip}><ThemedText>Close list</ThemedText></Pressable>
-          </View>:null}</View><View style={{flex:1}}><ThemedText style={styles.label}>Rate/ha</ThemedText><TextInput style={styles.input} keyboardType="decimal-pad" value={x.rate} onChangeText={v=>changeLine(x.key,"rate",v)}/></View><View style={{flex:1}}><ThemedText style={styles.label}>Required</ThemedText><ThemedText>{fmt(sprayArea*Number(x.rate))}</ThemedText></View><Pressable onPress={()=>setLines(v=>v.filter(y=>y.key!==x.key))}><ThemedText style={styles.error}>Remove</ThemedText></Pressable></View>)}
+          </View>:null}</View><View style={{flex:1}}><ThemedText style={styles.label}>Rate/ha</ThemedText><TextInput style={styles.input} keyboardType="decimal-pad" value={x.rate} onChangeText={v=>changeLine(x.key,"rate",v)}/></View><View style={{flex:1}}><ThemedText style={styles.label}>Required</ThemedText><ThemedText>{fmt(sprayArea*Number(x.rate))}</ThemedText></View><View style={{flex:1}}><ThemedText style={styles.label}>Stock</ThemedText><ThemedText>{catalog.find(p=>p.inputs_name===x.input)?`${fmt(catalog.find(p=>p.inputs_name===x.input)!.quantity)} ${catalog.find(p=>p.inputs_name===x.input)!.base_unit}`:"—"}</ThemedText></View><Pressable onPress={()=>setLines(v=>v.filter(y=>y.key!==x.key))}><ThemedText style={styles.error}>Remove</ThemedText></Pressable></View>)}
         <Pressable style={styles.action} onPress={()=>addLine()}><ThemedText>+ Add input</ThemedText></Pressable>
         {saveError?<ThemedText style={styles.error}>NOT SAVED: {saveError}</ThemedText>:null}
         <Pressable disabled={saving||loading||!!error} style={[styles.saveButton,(saving||loading||!!error)&&{opacity:0.5}]} onPress={savePlan}><ThemedText style={styles.saveText}>{saving?"Saving…":editing?"Save Mix Changes":"Save New Spray"}</ThemedText></Pressable>
