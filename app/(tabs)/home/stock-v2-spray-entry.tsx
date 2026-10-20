@@ -109,7 +109,7 @@ export default function StockV2SprayPlanningPreview() {
       const response=await fetch(workflowEndpoint,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.access_token},body:JSON.stringify({action:"spray",request_id:newRequestId(),payload})});
       const data=await response.json();if(!response.ok)throw Error(data.error||"Unable to save spray plan");
       if(!data.result?.job_id||!Array.isArray(data.result?.lines)||data.result.lines.length!==lines.length)throw Error("Spray job was not fully confirmed by the server");
-      router.replace("/(tabs)/stock-test");
+      router.replace("/stock-v2-spray-planning");
     }catch(e){setSaveError(e instanceof Error?e.message:String(e))}finally{setSaving(false)}
   };
   return <ThemedView style={styles.root}>
@@ -117,7 +117,7 @@ export default function StockV2SprayPlanningPreview() {
       <Image source={require("../../../assets/images/jspl_farm_watermark.png")} resizeMode="contain" style={[styles.watermark,{width:watermarkSize,height:watermarkSize}]}/>
     </View>
     <ScrollView style={styles.foreground} contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
-    <Pressable onPress={()=>router.replace("/(tabs)/stock-test")} style={styles.stockHomeBack}><ThemedText style={styles.stockHomeBackText}>← Back to Stock Home</ThemedText></Pressable>
+    <Pressable onPress={()=>router.replace("/stock-v2-spray-planning")} style={styles.stockHomeBack}><ThemedText style={styles.stockHomeBackText}>← Back to Stock Home</ThemedText></Pressable>
     <View style={styles.header}>
       <View style={styles.headerText}>
         <ThemedText style={styles.brand}>JOHN SOLE (PVT) LTD</ThemedText>
