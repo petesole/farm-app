@@ -21,7 +21,11 @@ export default function GRVOutstanding(){
   const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");
   const payload={document_id:selected,invoice_number:invoice.trim(),invoice_date:fmt(date),lines:selectedLines.map(l=>({line_id:l.line_id,unit_price:Number(prices[l.line_id])}))};
   const r=await fetch(endpoint,{method:"POST",headers:{authorization:"Bearer "+session.access_token,"content-type":"application/json"},body:JSON.stringify({action:"match_invoice",payload})});const d=await r.json();if(!r.ok)throw Error(d.error||"Unable to match invoice");
-  setSuccess("Invoice matched to DNote #"+selected+". No stock was received again.");setSelected(null);setInvoice("");setPrices({});
+  const completed=Array.isArray(d.result?.cost_runs)?d.result.cost_runs.length:0;
+  const pending=Array.isArray(d.result?.cost_pending)?d.result.cost_pending:[];
+  setSuccess("Invoice matched to DNote #"+selected+". No stock was received again. "+
+   (pending.length?"WA COSTING PENDING for "+pending.length+" product(s): "+pending.map((x:{reason:string})=>x.reason).join("; "):
+   "Historical WA recalculated for "+completed+" product(s), including downstream issues and transfers."));setSelected(null);setInvoice("");setPrices({});
   const fresh=await fetch(endpoint+"?outstanding_dnotes=1",{headers:{authorization:"Bearer "+session.access_token}});const data=await fresh.json();if(fresh.ok)setRows(data.rows??[]);
  }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
  return <ThemedView style={styles.root}><ScrollView contentContainerStyle={styles.page}>
