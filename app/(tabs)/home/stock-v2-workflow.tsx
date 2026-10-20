@@ -34,6 +34,7 @@ export default function StockV2Workflow(){
  const [tab,setTab]=useState<Tab|null>(null),[snapshot,setSnapshot]=useState<Snapshot|null>(null);
  const [traces,setTraces]=useState<Trace[]>([]),[crops,setCrops]=useState<Crop[]>([]);
  const [busy,setBusy]=useState(false),[status,setStatus]=useState(""),[confirmed,setConfirmed]=useState(false);
+ const [latestIssueDocument,setLatestIssueDocument]=useState<number|null>(null);
  const [lines,setLines]=useState<Line[]>([emptyLine(1)]),[nextLine,setNextLine]=useState(2);
  const [typeFilter,setTypeFilter]=useState(""),[categoryFilter,setCategoryFilter]=useState("");
  const [supplier,setSupplier]=useState("DEMO Supplier"),[orderDate,setOrderDate]=useState(()=>new Date().toLocaleDateString("en-GB")),[orderId,setOrderId]=useState<number|null>(null);
@@ -118,6 +119,7 @@ export default function StockV2Workflow(){
   try{
    if(!Array.isArray(req.payload.lines)||req.payload.lines.length===0)throw Error("Cannot post an order without products");
    const r=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+await token()},body:JSON.stringify({action,request_id:req.id,payload:req.payload})});const d=await r.json();if(!r.ok)throw Error(d.error||("Posting failed (HTTP "+r.status+")"));if(action==="order"&&(!d.result?.order_id||!Array.isArray(d.result.lines)||d.result.lines.length!==req.payload.lines.length))throw Error("Order not confirmed with all product lines");
+   if((action==="direct_issue"||action==="planned_issue")&&d.result?.document_id)setLatestIssueDocument(Number(d.result.document_id));
    setStatus("Posted "+tab+" successfully. "+(d.result?.order_id?"PO #"+d.result.order_id:d.result?.document_id?"Document #"+d.result.document_id:d.result?.job_id?"Job #"+d.result.job_id:"")+" — returned to Stock Home.");setConfirmed(false);setRequest(null);await refresh(false);setTab(null);
    if(tab==="GRV")setOrderId(null);if(tab==="Planned Issue")setJobId(null);
    setLines([emptyLine(nextLine)]);setNextLine(n=>n+1);
@@ -148,6 +150,7 @@ export default function StockV2Workflow(){
   <Pressable style={styles.refresh} onPress={()=>refresh()}><ThemedText>↻ Refresh records</ThemedText></Pressable>
   {busy?<ActivityIndicator/>:null}
   {status?<View style={styles.notice}><ThemedText>{status}</ThemedText></View>:null}
+  {latestIssueDocument&&tab===null?<Pressable style={styles.submit} onPress={()=>router.push({pathname:"/stock-v2-issue-slip",params:{documentId:String(latestIssueDocument)}})}><ThemedText style={styles.submitText}>Print Issue Slip #{latestIssueDocument}</ThemedText></Pressable>:null}
   {tab===null?null:tab==="Stock Balances"?<View style={styles.sheet}>
    {header("STOCK BALANCES",["Owner: TEST_JS","Warehouse: TEST_WH"])}
    <View style={styles.filters}>
