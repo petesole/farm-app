@@ -21,6 +21,7 @@ export default function WeeklySprayPlanning(){
  const [loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState("");
  const [expanded,setExpanded]=useState(""),[issueId,setIssueId]=useState<number|null>(null),[issueHa,setIssueHa]=useState(""),[confirm,setConfirm]=useState(false);
  const [showCompleted,setShowCompleted]=useState(false);
+ const [latestSlip,setLatestSlip]=useState<number|null>(null);
  const load=useCallback(async()=>{setLoading(true);setError("");try{
   const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Supabase sign-in required");
   const [res,tc,cr]=await Promise.all([
@@ -56,7 +57,7 @@ export default function WeeklySprayPlanning(){
    const res=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.access_token},body:JSON.stringify({action:"planned_issue",request_id:uuid(),payload:{job_id:job.id,tracecode_id:job.lines[0].external_tracecode_id,lines}})});
    const data=await res.json();if(!res.ok)throw Error(data.error||"Transfer failed");
    if(!data.result?.document_id)throw Error("Transfer was not confirmed by the server");
-   setIssueId(null);setConfirm(false);await load();
+   setLatestSlip(Number(data.result.document_id));setIssueId(null);setConfirm(false);await load();
   }catch(e){setError("NOT TRANSFERRED: "+(e instanceof Error?e.message:String(e)))}finally{setSaving(false)}
  };
  return <ThemedView style={styles.root}><ScrollView contentContainerStyle={styles.page}>
@@ -67,6 +68,7 @@ export default function WeeklySprayPlanning(){
   <Pressable style={styles.secondary} onPress={()=>void load()}><ThemedText>↻ Refresh</ThemedText></Pressable>
   <Pressable style={styles.secondary} onPress={()=>setShowCompleted(v=>!v)}><ThemedText>{showCompleted?"Hide completed":"Show history"}</ThemedText></Pressable>
  </View>
+ {latestSlip?<Pressable style={styles.primary} onPress={()=>router.push({pathname:"/stock-v2-issue-slip",params:{documentId:String(latestSlip)}})}><ThemedText style={styles.white}>Print Issue Slip #{latestSlip}</ThemedText></Pressable>:null}
  {error?<ThemedText style={styles.error}>{error}</ThemedText>:null}
  {loading?<ActivityIndicator/>:<View style={styles.panel}>
  <View style={styles.tableHeader}><ThemedText style={[styles.bold,{flex:1}]}>Week</ThemedText><ThemedText style={[styles.bold,{flex:1}]}>Crop</ThemedText><ThemedText style={[styles.bold,{flex:2}]}>Trace Code</ThemedText><ThemedText style={[styles.bold,{width:55,textAlign:"right"}]}>Sprays</ThemedText><View style={{width:75}}/></View>
