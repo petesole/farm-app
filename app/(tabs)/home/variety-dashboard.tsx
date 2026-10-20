@@ -164,7 +164,7 @@ export default function VarietyDashboardScreen() {
         <Pressable
           onPress={() =>
             router.push({
-              pathname: "/(tabs)/variety-edit",
+              pathname: "/(tabs)/home/variety-edit",
               params: { varietyId: String(item.variety_id) },
             })
           }
@@ -194,7 +194,7 @@ export default function VarietyDashboardScreen() {
           style={styles.newBtn}
           onPress={() =>
             router.push({
-              pathname: "/(tabs)/variety-edit",
+              pathname: "/(tabs)/home/variety-edit",
               params: { varietyId: "new" },
             })
           }

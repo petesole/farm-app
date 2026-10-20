@@ -70,7 +70,7 @@ export default function IrrigationDashboardScreen() {
         <Pressable
           onPress={() =>
             router.push({
-              pathname: "/(tabs)/irrigation-edit",
+              pathname: "/(tabs)/home/irrigation-edit",
               params: { irrigationTypeId: String(item.irrigation_type_id) },
             })
           }
@@ -100,7 +100,7 @@ export default function IrrigationDashboardScreen() {
           style={styles.newBtn}
           onPress={() =>
             router.push({
-              pathname: "/(tabs)/irrigation-edit",
+              pathname: "/(tabs)/home/irrigation-edit",
               params: { irrigationTypeId: "new" },
             })
           }

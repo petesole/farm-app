@@ -66,7 +66,7 @@ export default function SeasonDashboardScreen() {
         <Pressable
           onPress={() =>
             router.push({
-              pathname: "/(tabs)/season-edit",
+              pathname: "/(tabs)/home/season-edit",
               params: { seasonId: String(item.season_id) },
             })
           }
@@ -96,7 +96,7 @@ export default function SeasonDashboardScreen() {
           style={styles.newBtn}
           onPress={() =>
             router.push({
-              pathname: "/(tabs)/season-edit",
+              pathname: "/(tabs)/home/season-edit",
               params: { seasonId: "new" },
             })
           }

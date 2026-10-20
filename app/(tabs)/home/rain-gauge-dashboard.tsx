@@ -70,7 +70,7 @@ export default function RainGaugeDashboardScreen() {
         <Pressable
           onPress={() =>
             router.push({
-              pathname: "/(tabs)/rain-gauge-edit",
+              pathname: "/(tabs)/home/rain-gauge-edit",
               params: { rainGaugeId: String(item.rain_gauge_id) },
             })
           }
@@ -100,7 +100,7 @@ export default function RainGaugeDashboardScreen() {
           style={styles.newBtn}
           onPress={() =>
             router.push({
-              pathname: "/(tabs)/rain-gauge-edit",
+              pathname: "/(tabs)/home/rain-gauge-edit",
               params: { rainGaugeId: "new" },
             })
           }

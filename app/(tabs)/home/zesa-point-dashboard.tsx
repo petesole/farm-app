@@ -96,7 +96,7 @@ export default function ZesaPointDashboardScreen() {
         <Pressable
           onPress={() =>
             router.push({
-              pathname: "/(tabs)/zesa-point-edit",
+              pathname: "/(tabs)/home/zesa-point-edit",
               params: { zesaPointId: String(item.zesa_point_id) },
             })
           }
@@ -126,7 +126,7 @@ export default function ZesaPointDashboardScreen() {
           style={styles.newBtn}
           onPress={() =>
             router.push({
-              pathname: "/(tabs)/zesa-point-edit",
+              pathname: "/(tabs)/home/zesa-point-edit",
               params: { zesaPointId: "new" },
             })
           }

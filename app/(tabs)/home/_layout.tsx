@@ -11,7 +11,7 @@ export default function HomeStackLayout() {
           title: "Rainfall",
           headerRight: () => (
             <Pressable
-              onPress={() => router.push("/(tabs)/home/rainfallrainfall_record")}
+              onPress={() => router.push("/(tabs)/home/rainfall/rainfall_record")}
               style={{ paddingHorizontal: 12, paddingVertical: 6 }}
             >
               <Text style={{ fontWeight: "900" }}>Record</Text>
