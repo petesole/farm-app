@@ -88,7 +88,10 @@ export default function StockV2SprayPlanningPreview() {
           setTraceId(a.external_tracecode_id);setSprayType(a.spray_type);setWaterRate(String(a.water_litres_per_ha??""));
           setPart(a.part_label?.startsWith("Part ")?a.part_label.slice(5).replace(/ ha$/,""):"");
           setSprayer(a.sprayer_asset_code??"");
-          const currentMonday=monday(new Date());const savedMonday=new Date(String(a.planned_week_start)+"T12:00:00");
+          const currentMonday=monday(new Date());
+          const savedDate=String(a.planned_week_start??"").slice(0,10);
+          const savedMonday=/^\\d{4}-\\d{2}-\\d{2}$/.test(savedDate)?new Date(savedDate+"T12:00:00"):new Date(NaN);
+          if(!Number.isFinite(savedMonday.getTime()))throw Error("This spray has an invalid planned week; please correct the record before editing.");
           setOperationalOffset(Math.round((monday(savedMonday).getTime()-currentMonday.getTime())/604800000));
           setLines(matching.map((j:{item_name:string;rate_per_ha:number},i:number)=>({key:i+1,input:j.item_name,rate:String(j.rate_per_ha)})));
         }
@@ -119,6 +122,7 @@ export default function StockV2SprayPlanningPreview() {
     setSaving(true);
     try{
       const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Supabase sign-in required");
+      if(!Number.isFinite(operationalWeek.getTime()))throw Error("Invalid spray week. Select a valid week before saving.");
       const payload={...(editing?{job_id:editJobId}:{}),tracecode_id:traceId,area_ha:sprayArea,part_label:part.trim()?"Part "+part.trim()+" ha":"Whole field",spray_type:sprayType,water_rate:Number(waterRate),planned_week_start:operationalWeek.toISOString().slice(0,10),sprayer_asset_code:sprayer,job_tracking_code:jobCode,lines:lines.map(l=>({item_code:catalog.find(p=>p.inputs_name===l.input)!.item_code,rate_per_ha:Number(l.rate)}))};
       const response=await fetch(workflowEndpoint,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.access_token},body:JSON.stringify({action:editing?"spray_edit":"spray",request_id:newRequestId(),payload})});
       const data=await response.json();if(!response.ok)throw Error(data.error||"Unable to save spray plan");
