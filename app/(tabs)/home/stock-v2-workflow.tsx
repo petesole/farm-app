@@ -17,8 +17,8 @@ type Doc={document_id:number;document_type:string;document_number:string;item_na
 type Snapshot={items:Item[];orders:OrderLine[];sprays:SprayLine[];documents:Doc[];sprayers?:{setup_name:string;water_litres_per_ha:number}[]};
 type Trace={tracecode_id:number;tracecode_name:string;tracecode_size:number;crop_id:number|null};
 type Crop={crop_id:number;crop_name:string};
-type Line={id:number;item_code:string;quantity:string;unit_price:string;rate_per_ha:string};
-const emptyLine=(id:number,item_code=""):Line=>({id,item_code,quantity:"",unit_price:"",rate_per_ha:""});
+type Line={id:number;item_code:string;quantity:string;unit_price:string;rate_per_ha:string;mix_instruction:string};
+const emptyLine=(id:number,item_code=""):Line=>({id,item_code,quantity:"",unit_price:"",rate_per_ha:"",mix_instruction:""});
 const uuid=()=>"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const r=Math.floor(Math.random()*16);return(c==="x"?r:(r&3)|8).toString(16)});
 const number=(x:string)=>Number(x);
 const currency=(n:number)=>Number.isFinite(n)?n.toFixed(2):"—";
@@ -97,12 +97,13 @@ export default function StockV2Workflow(){
    {tab==="Planned Issue"?<View style={styles.numberColumn}><ThemedText>{max?.toFixed(2)??"—"}</ThemedText></View>:null}
    <View style={styles.numberColumn}><TextInput style={[styles.tableInput,{textAlign:"right",fontVariant:["tabular-nums"]}]} keyboardType="decimal-pad" value={l.quantity} onChangeText={v=>changeLine(l.id,"quantity",v)} placeholder="Quantity" placeholderTextColor="#777"/></View>
    {tab==="Purchase Orders"||tab==="GRV"?<><View style={styles.numberColumn}><TextInput style={styles.tableInput} keyboardType="decimal-pad" value={l.unit_price} onChangeText={v=>changeLine(l.id,"unit_price",v)} placeholder="Unit price" placeholderTextColor="#777"/></View><View style={styles.numberColumn}><ThemedText>{currency(number(l.quantity)*number(l.unit_price))}</ThemedText></View></>:null}
+   {tab==="Direct Issue"?<View style={[styles.numberColumn,{width:210}]}><TextInput style={styles.tableInput} value={l.mix_instruction} onChangeText={v=>changeLine(l.id,"mix_instruction",v)} placeholder="e.g. 1 L / 16 L knapsack" /></View>:null}
    {max!==null&&max!==undefined&&number(l.quantity)>max?<ThemedText style={styles.alert}>Over outstanding</ThemedText>:null}
    {!locked?<Pressable style={[styles.remove,styles.removeColumn]} onPress={()=>removeLine(l.id)}><ThemedText style={styles.alert}>×</ThemedText></Pressable>:null}
   </View>;
  };
  const action=tab==="Purchase Orders"?"order":tab==="GRV"?"grv":tab==="Planned Issue"?"planned_issue":"direct_issue";
- const normalizedLines=lines.map(l=>({item_code:l.item_code,quantity:number(l.quantity),...(["Purchase Orders","GRV"].includes(tab ?? "")?{unit_price:l.unit_price.trim()?number(l.unit_price):null}:{})}));
+ const normalizedLines=lines.map(l=>({item_code:l.item_code,quantity:number(l.quantity),...(["Purchase Orders","GRV"].includes(tab ?? "")?{unit_price:l.unit_price.trim()?number(l.unit_price):null}:{}),...(tab==="Direct Issue"?{mix_instruction:l.mix_instruction.trim()||null}:{})}));
  const payload={supplier,order_date:parseJsplDateInput(orderDate),order_id:orderId,job_id:jobId,tracecode_id:traceId,area_ha:part.trim()?number(part):number(area),part_label:part.trim()?"Part "+part.trim()+" ha":"Whole tracecode",spray_type:sprayType,water_rate:number(water),delivery_note:deliveryNote,lines:normalizedLines};
  const valid=!!snapshot&&(tab!=="Purchase Orders"||!!parseJsplDateInput(orderDate))&&lines.length>0&&lines.length<=30&&new Set(lines.map(l=>l.item_code)).size===lines.length&&lines.every(l=>{
   if(!products.some(p=>p.item_code===l.item_code))return false;
@@ -192,7 +193,7 @@ export default function StockV2Workflow(){
    <ScrollView horizontal nestedScrollEnabled contentContainerStyle={{minWidth:tab==="GRV"?1130:tab==="Purchase Orders"?790:tab==="Planned Issue"?710:650}}>
     <View style={{flex:1}}>
      <View style={styles.lineHeader}>
-      {(tab==="GRV"?["Product","Ordered","Prev. rec.","PO price","Qty received","Actual price","Line total"]:tab==="Planned Issue"?["Product","Outstanding","Qty issue"]:tab==="Purchase Orders"?["Product","Qty ordered","Unit price","Line total"]:["Product","Qty issue"]).map((x,i)=><View key={i} style={i===0?styles.productColumn:styles.numberColumn}><ThemedText style={styles.gridHeading}>{x}</ThemedText></View>)}
+      {(tab==="GRV"?["Product","Ordered","Prev. rec.","PO price","Qty received","Actual price","Line total"]:tab==="Planned Issue"?["Product","Outstanding","Qty issue"]:tab==="Purchase Orders"?["Product","Qty ordered","Unit price","Line total"]:["Product","Qty issue","Mix Rate (optional)"]).map((x,i)=><View key={i} style={i===0?styles.productColumn:styles.numberColumn}><ThemedText style={styles.gridHeading}>{x}</ThemedText></View>)}
       {!["GRV","Planned Issue"].includes(tab ?? "")?<View style={styles.removeColumn}/>:null}
      </View>
      {lines.map(l=>lineCells(l,tab==="GRV"||tab==="Planned Issue"))}
