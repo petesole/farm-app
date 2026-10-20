@@ -21,6 +21,7 @@ export default function WeeklySprayPlanning(){
  const [loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState("");
  const [expanded,setExpanded]=useState(""),[issueId,setIssueId]=useState<number|null>(null),[issueHa,setIssueHa]=useState(""),[confirm,setConfirm]=useState(false);
  const [showCompleted,setShowCompleted]=useState(false);
+ const [issueHistory,setIssueHistory]=useState<{document_id:number;document_number:string;document_type:string}[]>([]);
  const [latestSlip,setLatestSlip]=useState<number|null>(null);
  const load=useCallback(async()=>{setLoading(true);setError("");try{
   const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Supabase sign-in required");
@@ -31,7 +32,7 @@ export default function WeeklySprayPlanning(){
   ]);
   const data=await res.json();if(!res.ok)throw Error(data.error||"Could not load spray jobs");
   if(tc.error||cr.error)throw Error(tc.error?.message||cr.error?.message);
-  setSprays(data.sprays??[]);setProducts(data.items??[]);setTraces((tc.data??[]) as Trace[]);setCrops((cr.data??[]) as Crop[]);
+  setSprays(data.sprays??[]);setProducts(data.items??[]);setIssueHistory(data.documents??[]);setTraces((tc.data??[]) as Trace[]);setCrops((cr.data??[]) as Crop[]);
  }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setLoading(false)}},[]);
  useEffect(()=>{void load()},[load]);
  const jobs=useMemo(()=>{
@@ -68,6 +69,9 @@ export default function WeeklySprayPlanning(){
   <Pressable style={styles.secondary} onPress={()=>void load()}><ThemedText>↻ Refresh</ThemedText></Pressable>
   <Pressable style={styles.secondary} onPress={()=>setShowCompleted(v=>!v)}><ThemedText>{showCompleted?"Hide completed":"Show history"}</ThemedText></Pressable>
  </View>
+ {showCompleted?<View style={styles.panel}><ThemedText style={styles.bold}>Posted issue slips · Reprint</ThemedText>
+  {[...new Map(issueHistory.filter(d=>d.document_type==="issue").map(d=>[d.document_id,d])).values()].map(d=><Pressable key={d.document_id} style={styles.secondary} onPress={()=>router.push({pathname:"/stock-v2-issue-slip",params:{documentId:String(d.document_id)}})}><ThemedText>Reprint {d.document_number}</ThemedText></Pressable>)}
+ </View>:null}
  {latestSlip?<Pressable style={styles.primary} onPress={()=>router.push({pathname:"/stock-v2-issue-slip",params:{documentId:String(latestSlip)}})}><ThemedText style={styles.white}>Print Issue Slip #{latestSlip}</ThemedText></Pressable>:null}
  {error?<ThemedText style={styles.error}>{error}</ThemedText>:null}
  {loading?<ActivityIndicator/>:<View style={styles.panel}>
