@@ -16,12 +16,13 @@ const empty=(id:number):Line=>({id,item_code:"",quantity:"",unit_price:""});
 const uuid=()=>"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,ch=>{const r=Math.floor(Math.random()*16);return(ch==="x"?r:(r&3)|8).toString(16)});
 export default function OwnerTransactions(){
  const router=useRouter();
- const [tab,setTab]=useState<"order"|"grv"|"transfer">("order"),[data,setData]=useState<Data|null>(null);
+ const [tab,setTab]=useState<"order"|"grv"|"transfer">("transfer"),[data,setData]=useState<Data|null>(null);
  const [ownerCode,setOwnerCode]=useState("JS"),[toOwner,setToOwner]=useState("AO"),[contractId,setContractId]=useState<number|null>(null);
  const [supplier,setSupplier]=useState(""),[deliveryNote,setDeliveryNote]=useState(""),[orderId,setOrderId]=useState<number|null>(null);
  const [lines,setLines]=useState<Line[]>([empty(1)]),[seq,setSeq]=useState(2),[confirmed,setConfirmed]=useState(false);
  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
  const [request,setRequest]=useState<{key:string;id:string}|null>(null);
+ const [pickerId,setPickerId]=useState<number|null>(null),[pickerSearch,setPickerSearch]=useState("");
  const getToken=async()=>{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Supabase sign-in required");return session.access_token};
  const refresh=async()=>{setBusy(true);try{const r=await fetch(url+"?owner_workflow=1",{headers:{authorization:"Bearer "+await getToken()}});const d=await r.json();if(!r.ok)throw Error(d.error||"Failed to load");setData(d)}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
  useEffect(()=>{void refresh()},[]);
@@ -41,7 +42,7 @@ export default function OwnerTransactions(){
   lines.length>0&&new Set(lines.map(l=>l.item_code)).size===lines.length&&lines.every(l=>data.items.some(p=>p.item_code===l.item_code)&&Number(l.quantity)>0&&Number.isFinite(Number(l.quantity))&&(l.unit_price.trim()===""||(Number.isFinite(Number(l.unit_price))&&Number(l.unit_price)>=0))&&
   (tab!=="grv"||!selectedOrder||isDirect||Number(l.quantity)<=(selectedOrder.rows.find(p=>p.item_code===l.item_code)?.ordered_quantity??0)-(selectedOrder.rows.find(p=>p.item_code===l.item_code)?.received_quantity??0)))&&
   (tab!=="transfer"||lines.every(l=>(data.balances.find(b=>b.owner_code===ownerCode&&b.item_code===l.item_code)?.quantity??0)>=Number(l.quantity)));
- const chooseOwner=(code:string)=>{setOwnerCode(code);setOrderId(null);setContractId(null);setLines([empty(seq)]);setSeq(x=>x+1);reset()};
+ const chooseOwner=(code:string)=>{setOwnerCode(code);setOrderId(null);setContractId(null);setLines([empty(seq)]);setSeq(x=>x+1);setPickerId(null);reset()};
  const chooseOrder=(o:typeof ownerOrders[number])=>{setOrderId(o.id);setSupplier(o.supplier);setContractId(o.contract_id);setLines(o.rows.map((l,i)=>({id:seq+i,item_code:l.item_code,quantity:String(Number(l.ordered_quantity)-Number(l.received_quantity)),unit_price:l.ordered_unit_price===null?"":String(l.ordered_unit_price)})));setSeq(x=>x+o.rows.length);reset()};
  const changeLine=(id:number,field:keyof Line,value:string)=>{setLines(ls=>ls.map(l=>l.id===id?{...l,[field]:value}:l));reset()};
  const post=async()=>{if(!valid||!confirmed||busy)return;setBusy(true);setError("");setNotice("");
@@ -56,9 +57,9 @@ export default function OwnerTransactions(){
  const options=<View style={styles.options}>{(data?.owners??[]).filter(o=>o.active).map(o=>button(o.owner_code+" · "+o.owner_name,()=>chooseOwner(o.owner_code),ownerCode===o.owner_code))}</View>;
  return <ThemedView style={styles.root}><ScrollView contentContainerStyle={styles.page}>
   <View style={styles.options}>{button("← Stock Home",()=>router.replace("/(tabs)/stock-test"))}{button("↻ Refresh",()=>void refresh())}{button("Manage Owners / Contracts",()=>router.push("/stock-v2-setup"))}</View>
-  <ThemedText style={styles.title}>Stock V2 · Multi-owner Transactions</ThemedText>
+  <ThemedText style={styles.title}>Stock V2 · Stock Transfer</ThemedText>
   <ThemedText>Private test warehouse and demo products only. Historical Access stock is untouched.</ThemedText>
-  <View style={styles.options}>{button("Purchase Order",()=>changeTab("order"),tab==="order")}{button("GRV",()=>changeTab("grv"),tab==="grv")}{button("Ownership Transfer",()=>changeTab("transfer"),tab==="transfer")}</View>
+
   {busy?<ActivityIndicator/>:null}{error?<ThemedText style={styles.error}>{error}</ThemedText>:null}{notice?<ThemedText style={styles.success}>{notice}</ThemedText>:null}
   <View style={styles.card}>
    {label(tab==="transfer"?"From Stock Owner":"Stock Owner")}{options}
@@ -77,7 +78,16 @@ export default function OwnerTransactions(){
    </>:null}
    {tab==="grv"?<>{label("Delivery note")}<TextInput style={styles.input} value={deliveryNote} onChangeText={v=>{setDeliveryNote(v);reset()}} placeholder="Supplier delivery note"/></>:null}
    {label("Product Lines")}{lines.map(l=>{const item=data?.items.find(i=>i.item_code===l.item_code);return <View key={l.id} style={styles.line}>
-    <View style={{minWidth:200,flex:2}}>{label("Product")}<View style={styles.options}>{!l.item_code?data?.items.filter(p=>!lines.some(other=>other.id!==l.id&&other.item_code===p.item_code)).map(p=>button(p.item_name,()=>changeLine(l.id,"item_code",p.item_code))):<>{button(item?.item_name||l.item_code,()=>changeLine(l.id,"item_code",""))}{item?<ThemedText>{item.base_unit}</ThemedText>:null}</>}</View></View>
+    <View style={{minWidth:200,flex:2}}>{label("Product")}<View style={styles.options}>{<Pressable style={styles.button} onPress={()=>{setPickerId(pickerId===l.id?null:l.id);setPickerSearch("")}}><ThemedText>{item?.item_name||"Choose available product"} ▾</ThemedText></Pressable>
+    {pickerId===l.id?<View style={{width:260,backgroundColor:"#fff",borderWidth:1,borderColor:"#b7c8bc",padding:6}}>
+      <TextInput style={styles.input} placeholder="Search product" value={pickerSearch} onChangeText={setPickerSearch}/>
+      <ScrollView style={{maxHeight:190}} nestedScrollEnabled>
+       {(data?.balances||[]).filter(b=>b.owner_code===ownerCode&&Number(b.quantity)>0&&b.item_name.toLowerCase().includes(pickerSearch.toLowerCase())&&!lines.some(other=>other.id!==l.id&&other.item_code===b.item_code)).map(b=>
+        <Pressable key={b.item_code} style={styles.order} onPress={()=>{changeLine(l.id,"item_code",b.item_code);setPickerId(null)}}>
+         <ThemedText>{b.item_name} · {Number(b.quantity).toLocaleString("en-GB")} {b.base_unit}</ThemedText>
+        </Pressable>)}
+      </ScrollView>
+     </View>:null}}</View></View>
     <View style={styles.quantity}>{label("Quantity")}<TextInput style={styles.input} keyboardType="decimal-pad" value={l.quantity} onChangeText={v=>changeLine(l.id,"quantity",v)} placeholder="0"/></View>
     {tab!=="transfer"?<View style={styles.quantity}>{label("Unit Price (optional)")}<TextInput style={styles.input} keyboardType="decimal-pad" value={l.unit_price} onChangeText={v=>changeLine(l.id,"unit_price",v)} placeholder="Pending"/></View>:null}
     {tab==="transfer"&&item?<ThemedText>Available: {data?.balances.find(b=>b.owner_code===ownerCode&&b.item_code===l.item_code)?.quantity??0} {item.base_unit}</ThemedText>:null}
@@ -86,7 +96,7 @@ export default function OwnerTransactions(){
    {tab!=="grv"||isDirect?button("＋ Add Product",()=>{setLines(ls=>[...ls,empty(seq)]);setSeq(x=>x+1);reset()}):null}
    <Pressable style={styles.confirm} onPress={()=>setConfirmed(c=>!c)}><ThemedText>{confirmed?"☑":"☐"} Confirm {tab==="order"?"Purchase Order":tab==="grv"?"Goods Receipt":"Ownership Transfer"}</ThemedText></Pressable>
    <Pressable disabled={!valid||!confirmed||busy} style={[styles.button,styles.active,(!valid||!confirmed||busy)&&styles.disabled]} onPress={()=>void post()}><ThemedText style={styles.white}>{busy?"Posting…":"Post "+(tab==="order"?"Purchase Order":tab==="grv"?"GRV":"Ownership Transfer")}</ThemedText></Pressable>
-   {!valid?<ThemedText style={styles.error}>Complete the required owner, supplier, contract/PO and product quantities before posting.</ThemedText>:null}
+   {!valid?<ThemedText style={styles.error}>Select different owners, available stock products and valid quantities before posting.</ThemedText>:null}
   </View>
  </ScrollView></ThemedView>;
 }
