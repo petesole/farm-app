@@ -149,8 +149,6 @@ export default function StockV2Workflow(){
    <JsplTable rows={balanceRows} rowKey={x=>x.item_code}
     columns={[
       {key:"item",title:"Product",width:240,value:x=>x.item_name},
-      {key:"type",title:"Input Type",width:135,value:x=>x.input_type||"—"},
-      {key:"cat",title:"Input Category",width:140,value:x=>x.input_category||"—"},
       {key:"ai",title:"Active Ingredient",width:210,value:x=>x.active_ingredient||"—"},
       {key:"qty",title:"On Hand",kind:"number",width:115,value:x=>x.quantity},
       {key:"unit",title:"Unit",width:75,value:x=>x.base_unit},
