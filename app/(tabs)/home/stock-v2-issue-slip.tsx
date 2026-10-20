@@ -27,7 +27,7 @@ export default function IssueSlip(){
  const rated=(slip?.lines??[]).filter(l=>Number(l.rate_per_ha)>0);
  const area=useMemo(()=>rated.length?Math.min(...rated.map(l=>Number(l.quantity)/Number(l.rate_per_ha))):0,[rated]);
  const ready=!!slip&&water>0&&capacity>0&&Number.isFinite(capacity)&&rated.length===slip.lines.length&&area>0;
- const totalWater=area*water,full=Math.floor(totalWater/(capacity||Infinity)),part=Math.max(0,totalWater-full*capacity);
+ const totalWater=area*water,full=ready?Math.floor((totalWater+1e-7)/capacity):0,part=ready?Math.max(0,Number((totalWater-full*capacity).toFixed(6))):0;
  const fullHa=water>0?capacity/water:0,partHa=water>0?part/water:0;
  const esc=(value:unknown)=>String(value??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]||ch));
  const print=()=>{if(!slip||Platform.OS!=="web"||typeof window==="undefined")return;
@@ -50,7 +50,7 @@ export default function IssueSlip(){
   <div class="meta"><div><b>Issue No:</b> ${esc(h.document_id)}</div><div><b>Date:</b> ${esc(date)}</div></div>
   <div class="trace">${esc(h.tracecode_name||"NO TRACECODE")}</div>
   <div class="areaWater">Area: ${ready?fmt(area,2)+" ha":"—"} &nbsp; Water: ${water?fmt(water,0)+" L/ha":"—"}</div><div class="rule"></div>
-  <table><colgroup><col style="width:36%"><col style="width:16%"><col style="width:16%"><col style="width:16%"><col style="width:16%"></colgroup><thead><tr class="tankHeader"><th colspan="3"></th><th>Qty ${ready?full:"—"}</th><th>${ready&&part>0?"Qty 1":"Qty 0"}</th></tr><tr class="tankHeader"><th colspan="3"></th><th>${fmt(capacity,0)} L</th><th>${ready?fmt(part,0)+" L":"—"}</th></tr><tr><th>Product</th><th>Issue</th><th>Rate/ha</th><th>Full</th><th>Part</th></tr></thead><tbody>${rows}</tbody></table>
+  <table><colgroup><col style="width:36%"><col style="width:16%"><col style="width:16%"><col style="width:16%"><col style="width:16%"></colgroup><thead><tr class="tankHeader"><th colspan="3"></th><th>Qty: ${ready?full:"—"}</th><th>${ready?(part>0?1:0):"—"}</th></tr><tr class="tankHeader"><th colspan="3"></th><th>${fmt(capacity,0)} L</th><th>${ready?fmt(part,0)+" L":"—"}</th></tr><tr><th>Product</th><th>Issue</th><th>Rate/ha</th><th>Full</th><th>Part</th></tr></thead><tbody>${rows}</tbody></table>
   <div class="help">Full and Part show product quantity per tank.</div>
   <div class="rule"></div><div class="sign">Issued by: ___________________<br>Received by: _________________</div></main></body></html>`;
   popup.document.open();popup.document.write(html);popup.document.close();popup.focus();
@@ -67,7 +67,7 @@ export default function IssueSlip(){
    <ThemedText style={styles.trace}>{slip.header.tracecode_name||"NO TRACECODE"}</ThemedText>
    <ThemedText style={styles.areaWater}>Area: {ready?fmt(area)+" ha":"—"} · Water: {water?fmt(water,0)+" L/ha":"—"}</ThemedText>
    <View style={styles.rule}/>
-   <View style={styles.tableRow}><View style={styles.productHead}/><View style={styles.numHead}/><View style={styles.numHead}/><ThemedText style={styles.numHead}>Qty {ready?full:"—"}</ThemedText><ThemedText style={styles.numHead}>Qty {ready&&part>0?1:0}</ThemedText></View>
+   <View style={styles.tableRow}><View style={styles.productHead}/><View style={styles.numHead}/><View style={styles.numHead}/><ThemedText style={styles.numHead}>Qty: {ready?full:"—"}</ThemedText><ThemedText style={styles.numHead}>{ready?(part>0?1:0):"—"}</ThemedText></View>
    <View style={styles.tableRow}><View style={styles.productHead}/><View style={styles.numHead}/><View style={styles.numHead}/><ThemedText style={styles.numHead}>{fmt(capacity,0)} L</ThemedText><ThemedText style={styles.numHead}>{ready?fmt(part,0)+" L":"—"}</ThemedText></View>
    <View style={styles.tableRow}><ThemedText style={styles.productHead}>Product</ThemedText><ThemedText style={styles.numHead}>Issue</ThemedText><ThemedText style={styles.numHead}>Rate/ha</ThemedText><ThemedText style={styles.numHead}>Full</ThemedText><ThemedText style={styles.numHead}>Part</ThemedText></View>
    {slip.lines.map(l=><View key={l.item_code} style={styles.tableRow}>
