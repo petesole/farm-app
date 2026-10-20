@@ -36,7 +36,31 @@ export default function ApplicationSheet(){
  const fullHa=validTank?capacity/water:0;
  const partHa=water>0?rest/water:0;
  const canPrint=rows.length>0&&validTank;
- const print=()=>{if(!canPrint)return;if(Platform.OS==="web"&&typeof window!=="undefined")window.print()};
+ const print=()=>{
+  if(!canPrint||!first||Platform.OS!=="web"||typeof window==="undefined")return;
+  const popup=window.open("","_blank","width=1100,height=800");
+  if(!popup){setError("Allow pop-ups for this site to print the application sheet.");return;}
+  const esc=(value:unknown)=>String(value??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]||ch));
+  const lineHtml=rows.map(line=>`<tr><td>${esc(line.item_name)}</td><td class="num">${fmt(Number(line.rate_per_ha),3)}</td><td class="num">${fmt(area*Number(line.rate_per_ha),3)} ${esc(line.base_unit)}</td><td class="num">${fmt(fullHa*Number(line.rate_per_ha),3)} ${esc(line.base_unit)}</td><td class="num">${fmt(partHa*Number(line.rate_per_ha),3)} ${esc(line.base_unit)}</td></tr>`).join("");
+  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Application - Spray ${id}</title><style>
+   @page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}html,body{margin:0;padding:0;background:#fff;color:#111;font-family:Arial,sans-serif;font-size:10pt}
+   main{width:100%;padding:5mm}.heading{background:#dce4ec;padding:8px 10px;margin-bottom:8px}h1{font-size:19pt;margin:0 0 9px}
+   .meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px 16px;margin-bottom:9px}
+   .tanks{display:flex;gap:26px;align-items:center;border-top:1px solid #abb5be;padding-top:7px}
+   table{width:100%;border-collapse:collapse;table-layout:fixed}th{background:#e7ebf0;text-align:left;font-size:10pt}th,td{padding:5px 7px;border-bottom:1px solid #dedede;vertical-align:top}
+   tbody tr:nth-child(even){background:#f3f3f3}.num{text-align:right;white-space:nowrap}th:first-child{width:28%}
+   .foot{font-size:8.5pt;margin-top:12px;line-height:1.3}.toolbar{padding:10px;background:#e5e9ee;display:flex;gap:12px}
+   .toolbar button{font-size:12pt;padding:6px 16px;cursor:pointer}
+   @media print{.toolbar{display:none!important}main{padding:0}thead{display:table-header-group}tr{break-inside:avoid}}
+   </style></head><body><div class="toolbar"><button onclick="window.print()">Print</button><button onclick="window.close()">Close</button></div><main>
+   <div class="heading"><h1>APPLICATION · Spray #${id}</h1>
+   <div class="meta"><div><b>Week:</b> ${esc(heading)}</div><div><b>Trace Code:</b> ${esc(first.tracecode_name)}</div><div><b>Spray Type:</b> ${esc(first.spray_type)}</div><div><b>Sprayer:</b> ${esc(first.sprayer_asset_code||"—")}</div>
+   <div><b>Application Ha:</b> ${fmt(area)}</div><div><b>Water Rate:</b> ${fmt(water,0)} L/ha</div><div><b>Total Water:</b> ${fmt(totalWater,0)} L</div><div><b>Tank capacity:</b> ${fmt(capacity,0)} L</div></div>
+   <div class="tanks"><div><b>Full Tanks</b> ${full} × ${fmt(capacity,0)} L</div><div><b>Part Tank</b> ${fmt(rest,1)} L</div></div></div>
+   <table><thead><tr><th>Input Name</th><th class="num">Rate/ha</th><th class="num">Total</th><th class="num">Full Tank Mix</th><th class="num">Part Tank Mix</th></tr></thead><tbody>${lineHtml}</tbody></table>
+   <p class="foot">Full Tank Mix amounts are per full tank. Part Tank Mix amounts are for the remaining water. Confirm tank capacity and sprayer calibration before applying.</p></main></body></html>`;
+  popup.document.open();popup.document.write(html);popup.document.close();popup.focus();
+ };
  const heading=useMemo(()=>first?isoWeek(first.planned_week_start):"",[first]);
  return <ThemedView style={styles.root}><ScrollView contentContainerStyle={styles.page}>
   <View testID="application-actions" style={styles.actions}>
