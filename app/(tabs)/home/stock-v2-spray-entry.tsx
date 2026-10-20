@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "expo-router";
+import { useRouter,useLocalSearchParams } from "expo-router";
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from "react-native";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -31,6 +31,9 @@ const fmt = (n: number) => Number.isFinite(n)?n.toLocaleString("en-GB",{maximumF
 let nextKey=1;
 export default function StockV2SprayPlanningPreview() {
   const router=useRouter();
+  const params=useLocalSearchParams<{editJobId?:string}>();
+  const editJobId=Number(params.editJobId||0);
+  const editing=Number.isSafeInteger(editJobId)&&editJobId>0;
   const { width, height }=useWindowDimensions();
   const wide=width>=760;
   const watermarkSize=Math.min(650,Math.max(240,width-jsplSpacing.xl*2),Math.max(240,height-jsplSpacing.xl*2));
@@ -78,13 +81,22 @@ export default function StockV2SprayPlanningPreview() {
         try{const response=await fetch(workflowEndpoint,{headers:{authorization:"Bearer "+inputResult.data.session.access_token}});const data=await response.json();if(!response.ok)throw Error(data.error||"Unable to load Stock V2");
         setCatalog((data.items??[]).map((p:{item_code:string;item_name:string},i:number)=>({input_id:i+1,inputs_name:p.item_name,item_code:p.item_code})));
         setSpraySetups(data.sprayers??[]);
+        if(editing){
+          const matching=(data.sprays??[]).filter((j:{job_id:number})=>j.job_id===editJobId);
+          if(matching.length===0)throw Error("Spray job not found for editing");
+          const a=matching[0];if(a.status!=="planned"||matching.some((l:{issued_quantity:number})=>l.issued_quantity>0))throw Error("Cannot edit a spray after any stock has been issued");
+          setTraceId(a.external_tracecode_id);setSprayType(a.spray_type);setWaterRate(String(a.water_litres_per_ha??""));
+          setPart(a.part_label?.startsWith("Part ")?a.part_label.slice(5).replace(/ ha$/,""):"");
+          setSprayer(a.sprayer_asset_code??"");
+          setLines(matching.map((j:{item_name:string;rate_per_ha:number},i:number)=>({key:i+1,input:j.item_name,rate:String(j.rate_per_ha)})));
+        }
         const first=data.sprayers?.[0];if(first){setSprayType(first.setup_name);setWaterRate(String(first.water_litres_per_ha));}
         }catch(e){setError(e instanceof Error?e.message:String(e))}
       }
     }
     setLoading(false);
-  })();return()=>{mounted=false};},[]);
-  useEffect(()=>{setArea(selected?.tracecode_size?.toString()??"");setBudgetOffset(0);setLines([])},[traceId]);
+  })();return()=>{mounted=false};},[editing,editJobId]);
+  useEffect(()=>{setArea(selected?.tracecode_size?.toString()??"");setBudgetOffset(0);if(!editing)setLines([])},[traceId,editing]);
   const addLine=(input="")=>setLines(old=>[...old,{key:nextKey++,input,rate:""}]);
   const copyBudgetInput=(input:string,rate:number)=>setLines(old=>{
     const existing=old.find(x=>x.input===input);
@@ -105,8 +117,8 @@ export default function StockV2SprayPlanningPreview() {
     setSaving(true);
     try{
       const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Supabase sign-in required");
-      const payload={tracecode_id:traceId,area_ha:sprayArea,part_label:part.trim()?"Part "+part.trim()+" ha":"Whole field",spray_type:sprayType,water_rate:Number(waterRate),planned_week_start:operationalWeek.toISOString().slice(0,10),sprayer_asset_code:sprayer,job_tracking_code:jobCode,lines:lines.map(l=>({item_code:catalog.find(p=>p.inputs_name===l.input)!.item_code,rate_per_ha:Number(l.rate)}))};
-      const response=await fetch(workflowEndpoint,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.access_token},body:JSON.stringify({action:"spray",request_id:newRequestId(),payload})});
+      const payload={...(editing?{job_id:editJobId}:{}),tracecode_id:traceId,area_ha:sprayArea,part_label:part.trim()?"Part "+part.trim()+" ha":"Whole field",spray_type:sprayType,water_rate:Number(waterRate),planned_week_start:operationalWeek.toISOString().slice(0,10),sprayer_asset_code:sprayer,job_tracking_code:jobCode,lines:lines.map(l=>({item_code:catalog.find(p=>p.inputs_name===l.input)!.item_code,rate_per_ha:Number(l.rate)}))};
+      const response=await fetch(workflowEndpoint,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.access_token},body:JSON.stringify({action:editing?"spray_edit":"spray",request_id:newRequestId(),payload})});
       const data=await response.json();if(!response.ok)throw Error(data.error||"Unable to save spray plan");
       if(!data.result?.job_id||!Array.isArray(data.result?.lines)||data.result.lines.length!==lines.length)throw Error("Spray job was not fully confirmed by the server");
       router.replace("/stock-v2-spray-planning");
@@ -121,11 +133,11 @@ export default function StockV2SprayPlanningPreview() {
     <View style={styles.header}>
       <View style={styles.headerText}>
         <ThemedText style={styles.brand}>JOHN SOLE (PVT) LTD</ThemedText>
-        <ThemedText type="title" style={styles.title}>Stock V2 · Weekly Spray Planning</ThemedText>
+        <ThemedText type="title" style={styles.title}>{editing?"Edit Spray Mix":"New Spray Plan"}</ThemedText>
       </View>
       <Image source={require("../../../assets/images/jspl_farm_logo.png")} accessibilityLabel="John Sole (Pvt) Ltd" resizeMode="contain" style={styles.logo}/>
     </View>
-    <ThemedText style={styles.muted}>Stock V2 private test workflow • Saving creates a planned job for Planned Issue, without moving stock.</ThemedText>
+    <ThemedText style={styles.muted}>Stock V2 private test workflow • Saving a spray does not move stock. Transfer from the weekly register to issue inputs.</ThemedText>
     {loading?<ActivityIndicator/>:error?<ThemedText style={styles.error}>{error}</ThemedText>:<View style={styles.traces}>
       <JsplSearchCombo label="Filter by crop" selector="crop"
         options={visibleCrops.map(c=>({id:c.crop_id,label:c.crop_name,active:true}))}
@@ -158,7 +170,7 @@ export default function StockV2SprayPlanningPreview() {
           </View>:null}</View><View style={{flex:1}}><ThemedText style={styles.label}>Rate/ha</ThemedText><TextInput style={styles.input} keyboardType="decimal-pad" value={x.rate} onChangeText={v=>changeLine(x.key,"rate",v)}/></View><View style={{flex:1}}><ThemedText style={styles.label}>Required</ThemedText><ThemedText>{fmt(sprayArea*Number(x.rate))}</ThemedText></View><Pressable onPress={()=>setLines(v=>v.filter(y=>y.key!==x.key))}><ThemedText style={styles.error}>Remove</ThemedText></Pressable></View>)}
         <Pressable style={styles.action} onPress={()=>addLine()}><ThemedText>+ Add input</ThemedText></Pressable>
         {saveError?<ThemedText style={styles.error}>NOT SAVED: {saveError}</ThemedText>:null}
-        <Pressable disabled={saving||loading||!!error} style={[styles.saveButton,(saving||loading||!!error)&&{opacity:0.5}]} onPress={savePlan}><ThemedText style={styles.saveText}>{saving?"Saving…":"Save Spray Plan to Planned Issue"}</ThemedText></Pressable>
+        <Pressable disabled={saving||loading||!!error} style={[styles.saveButton,(saving||loading||!!error)&&{opacity:0.5}]} onPress={savePlan}><ThemedText style={styles.saveText}>{saving?"Saving…":editing?"Save Mix Changes":"Save New Spray"}</ThemedText></Pressable>
         <ThemedText style={styles.muted}>Only private Stock V2 test products are available until live product/owner mapping is approved.</ThemedText>
       </View>
       <View style={styles.panel}>
