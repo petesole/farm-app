@@ -11,7 +11,7 @@ import { supabase } from "../../../supabase";
 
 const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
 type Item={item_code:string;item_name:string;base_unit:string;quantity:number;input_type:string|null;input_category:string|null;active_ingredient:string|null;last_purchase_price:number|null;weighted_average_price:number|null;last_purchase_supplier:string|null};
-type OrderLine={order_id:number;order_number:string;supplier_name:string;item_code:string;item_name:string;base_unit:string;ordered_quantity:number;received_quantity:number;ordered_unit_price:number|null;status:string};
+type OrderLine={owner_code:string;contract_id:number|null;order_id:number;order_number:string;supplier_name:string;item_code:string;item_name:string;base_unit:string;ordered_quantity:number;received_quantity:number;ordered_unit_price:number|null;status:string};
 type SprayLine={job_id:number;external_tracecode_id:number;tracecode_name:string;item_code:string;item_name:string;area_ha:number;rate_per_ha:number;planned_quantity:number;issued_quantity:number;status:string};
 type Doc={document_id:number;document_type:string;document_number:string;item_name:string;quantity:number;tracecode_name:string|null};
 type Snapshot={items:Item[];orders:OrderLine[];sprays:SprayLine[];documents:Doc[];sprayers?:{setup_name:string;water_litres_per_ha:number}[]};
@@ -33,6 +33,9 @@ export default function StockV2Workflow(){
  const watermarkSize=Math.min(650,Math.max(240,width-48),Math.max(240,height-48));
  const [tab,setTab]=useState<Tab|null>(null),[snapshot,setSnapshot]=useState<Snapshot|null>(null);
  const [traces,setTraces]=useState<Trace[]>([]),[crops,setCrops]=useState<Crop[]>([]);
+ const [owners,setOwners]=useState<{owner_code:string;owner_name:string;active:boolean;po_requires_contract:boolean;allow_direct_grv:boolean;po_required_for_grv:boolean;default_contract_id:number|null}[]>([]);
+ const [contracts,setContracts]=useState<{contract_id:number;contract_code:string;active:boolean}[]>([]);
+ const [ownerCode,setOwnerCode]=useState(""),[contractId,setContractId]=useState<number|null>(null);
  const [busy,setBusy]=useState(false),[status,setStatus]=useState(""),[confirmed,setConfirmed]=useState(false);
  const [latestIssueDocument,setLatestIssueDocument]=useState<number|null>(null);
  const [lines,setLines]=useState<Line[]>([emptyLine(1)]),[nextLine,setNextLine]=useState(2);
@@ -45,6 +48,9 @@ export default function StockV2Workflow(){
  const [request,setRequest]=useState<{action:string;payload:any;id:string}|null>(null);
  const token=async()=>{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Supabase sign-in required");return session.access_token};
  const refresh=async(show=true)=>{if(show)setBusy(true);try{
+  const setup=await fetch(endpoint+"?stock_setup=1",{headers:{authorization:"Bearer "+await token()}});
+  const config=await setup.json();if(!setup.ok)throw Error(config.error||"Unable to load owners and contracts");
+  setOwners(config.owners??[]);setContracts(config.contracts??[]);
   const r=await fetch(endpoint,{headers:{authorization:"Bearer "+await token()}});
   const d=await r.json();if(!r.ok)throw Error(d.error||"Unable to read Stock V2");setSnapshot(d);
  }catch(e){setStatus(e instanceof Error?e.message:String(e))}finally{if(show)setBusy(false)}};
@@ -56,6 +62,12 @@ export default function StockV2Workflow(){
   setTraces((t.data??[]) as Trace[]);setCrops((c.data??[]) as Crop[]);
  })()},[]);
  const resetEdit=()=>{setConfirmed(false);setRequest(null)};
+ const owner=owners.find(o=>o.owner_code===ownerCode);
+ const effectiveContract=owner?.default_contract_id??contractId;
+ const directGrv=tab==="GRV"&&!!owner?.allow_direct_grv&&!owner.po_required_for_grv;
+ const ownerReady=!!owner?.active;
+ const contractReady=!!effectiveContract&&contracts.some(c=>c.contract_id===effectiveContract&&(c.active||tab==="GRV"));
+ const selectOwner=(code:string)=>{setOwnerCode(code);setContractId(null);setOrderId(null);setSupplier("");setLines([emptyLine(nextLine)]);setNextLine(x=>x+1);resetEdit()};
  const changeLine=(id:number,key:keyof Line,value:string)=>{setLines(old=>old.map(l=>l.id===id?{...l,[key]:value}:l));resetEdit()};
  const addLine=()=>{setLines(old=>[...old,emptyLine(nextLine)]);setNextLine(n=>n+1);resetEdit()};
  const removeLine=(id:number)=>{setLines(old=>old.filter(l=>l.id!==id));resetEdit()};
@@ -66,7 +78,7 @@ export default function StockV2Workflow(){
  const balanceRows=products.filter(p=>(!typeFilter||p.input_type===typeFilter)&&(!categoryFilter||p.input_category===categoryFilter));
  const orders=useMemo(()=>{
   const map=new Map<number,OrderLine[]>();
-  for(const o of snapshot?.orders??[]){if(!map.has(o.order_id))map.set(o.order_id,[]);map.get(o.order_id)!.push(o)}
+  for(const o of snapshot?.orders??[]){if(o.owner_code!==ownerCode)continue;if(!map.has(o.order_id))map.set(o.order_id,[]);map.get(o.order_id)!.push(o)}
   return [...map.entries()].map(([id,lines])=>({id,lines,supplier:lines[0].supplier_name,number:lines[0].order_number,remaining:lines.reduce((s,x)=>s+Math.max(0,x.ordered_quantity-x.received_quantity),0)})).filter(x=>x.remaining>0);
  },[snapshot]);
  const selectedPO=orders.find(x=>x.id===orderId);
@@ -86,14 +98,14 @@ export default function StockV2Workflow(){
  </View>;
  const lineCells=(l:Line,locked=false)=>{
   const product=products.find(p=>p.item_code===l.item_code);
-  const reference=tab==="GRV"?selectedPO?.lines.find(x=>x.item_code===l.item_code):tab==="Planned Issue"?selectedJob?.lines.find(x=>x.item_code===l.item_code):null;
-  const max=tab==="GRV"&&reference?(reference as OrderLine).ordered_quantity-(reference as OrderLine).received_quantity:tab==="Planned Issue"&&reference?(reference as SprayLine).planned_quantity-(reference as SprayLine).issued_quantity:null;
+  const reference=tab==="GRV"&&!directGrv?selectedPO?.lines.find(x=>x.item_code===l.item_code):tab==="Planned Issue"?selectedJob?.lines.find(x=>x.item_code===l.item_code):null;
+  const max=tab==="GRV"&&!directGrv&&reference?(reference as OrderLine).ordered_quantity-(reference as OrderLine).received_quantity:tab==="Planned Issue"&&reference?(reference as SprayLine).planned_quantity-(reference as SprayLine).issued_quantity:null;
   return <View key={l.id} style={styles.line}>
    <View style={styles.productColumn}>
     {locked?<ThemedText>{product?.item_name??l.item_code}</ThemedText>:<Pressable style={styles.selector} onPress={()=>{setPickerLine(l.id);setPickerSearch("")}}><ThemedText numberOfLines={2}>{product?.item_name??"Select product"} ▾</ThemedText></Pressable>}
     <ThemedText style={styles.muted}>{product?.base_unit??""}</ThemedText>
    </View>
-   {tab==="GRV"?<><View style={styles.numberColumn}><ThemedText>{(reference as OrderLine)?.ordered_quantity??"—"}</ThemedText></View><View style={styles.numberColumn}><ThemedText>{(reference as OrderLine)?.received_quantity??"—"}</ThemedText></View><View style={styles.numberColumn}><ThemedText>{currency((reference as OrderLine)?.ordered_unit_price??NaN)}</ThemedText></View></>:null}
+   {tab==="GRV"&&!directGrv?<><View style={styles.numberColumn}><ThemedText>{(reference as OrderLine)?.ordered_quantity??"—"}</ThemedText></View><View style={styles.numberColumn}><ThemedText>{(reference as OrderLine)?.received_quantity??"—"}</ThemedText></View><View style={styles.numberColumn}><ThemedText>{currency((reference as OrderLine)?.ordered_unit_price??NaN)}</ThemedText></View></>:null}
    {tab==="Planned Issue"?<View style={styles.numberColumn}><ThemedText>{max?.toFixed(2)??"—"}</ThemedText></View>:null}
    <View style={styles.numberColumn}><TextInput style={[styles.tableInput,{textAlign:"right",fontVariant:["tabular-nums"]}]} keyboardType="decimal-pad" value={l.quantity} onChangeText={v=>changeLine(l.id,"quantity",v)} placeholder="Quantity" placeholderTextColor="#777"/></View>
    {tab==="Purchase Orders"||tab==="GRV"?<><View style={styles.numberColumn}><TextInput style={styles.tableInput} keyboardType="decimal-pad" value={l.unit_price} onChangeText={v=>changeLine(l.id,"unit_price",v)} placeholder="Unit price" placeholderTextColor="#777"/></View><View style={styles.numberColumn}><ThemedText>{currency(number(l.quantity)*number(l.unit_price))}</ThemedText></View></>:null}
@@ -102,19 +114,21 @@ export default function StockV2Workflow(){
    {!locked?<Pressable style={[styles.remove,styles.removeColumn]} onPress={()=>removeLine(l.id)}><ThemedText style={styles.alert}>×</ThemedText></Pressable>:null}
   </View>;
  };
- const action=tab==="Purchase Orders"?"order":tab==="GRV"?"grv":tab==="Planned Issue"?"planned_issue":"direct_issue";
+ const action=tab==="Purchase Orders"?"order":tab==="GRV"?(directGrv?"direct_grv":"grv"):tab==="Planned Issue"?"planned_issue":"direct_issue";
  const normalizedLines=lines.map(l=>({item_code:l.item_code,quantity:number(l.quantity),...(["Purchase Orders","GRV"].includes(tab ?? "")?{unit_price:l.unit_price.trim()?number(l.unit_price):null}:{}),...(tab==="Direct Issue"?{mix_instruction:l.mix_instruction.trim()||null}:{})}));
- const payload={supplier,order_date:parseJsplDateInput(orderDate),order_id:orderId,job_id:jobId,tracecode_id:traceId,area_ha:part.trim()?number(part):number(area),part_label:part.trim()?"Part "+part.trim()+" ha":"Whole tracecode",spray_type:sprayType,water_rate:number(water),delivery_note:deliveryNote,lines:normalizedLines};
- const valid=!!snapshot&&(tab!=="Purchase Orders"||!!parseJsplDateInput(orderDate))&&lines.length>0&&lines.length<=30&&new Set(lines.map(l=>l.item_code)).size===lines.length&&lines.every(l=>{
+ const payload={owner_code:ownerCode,contract_id:effectiveContract,supplier,order_date:parseJsplDateInput(orderDate),order_id:orderId,job_id:jobId,tracecode_id:traceId,area_ha:part.trim()?number(part):number(area),part_label:part.trim()?"Part "+part.trim()+" ha":"Whole tracecode",spray_type:sprayType,water_rate:number(water),delivery_note:deliveryNote,lines:normalizedLines};
+ const valid=!!snapshot&&(tab!=="Purchase Orders"&&tab!=="GRV"||ownerReady)&&
+ (tab!=="Purchase Orders"||(contractReady&&!!supplier.trim()))&&
+ (tab!=="GRV"||!directGrv||contractReady)&&(tab!=="Purchase Orders"||!!parseJsplDateInput(orderDate))&&lines.length>0&&lines.length<=30&&new Set(lines.map(l=>l.item_code)).size===lines.length&&lines.every(l=>{
   if(!products.some(p=>p.item_code===l.item_code))return false;
   const n=number(l.quantity);
   if(!Number.isFinite(n)||n<=0)return false;
   if(["Purchase Orders","GRV"].includes(tab ?? "")&&l.unit_price.trim()!==""&&(!Number.isFinite(number(l.unit_price))||number(l.unit_price)<0))return false;
   const ref=tab==="GRV"?selectedPO?.lines.find(x=>x.item_code===l.item_code):tab==="Planned Issue"?selectedJob?.lines.find(x=>x.item_code===l.item_code):null;
-  if(tab==="GRV"&&(!ref||n>(ref as OrderLine).ordered_quantity-(ref as OrderLine).received_quantity))return false;
+  if(tab==="GRV"&&!directGrv&&(!ref||n>(ref as OrderLine).ordered_quantity-(ref as OrderLine).received_quantity))return false;
   if(tab==="Planned Issue"&&(!ref||n>(ref as SprayLine).planned_quantity-(ref as SprayLine).issued_quantity))return false;
   return true;
- })&&(tab!=="GRV"||!!selectedPO)&&(tab!=="Planned Issue"||!!selectedJob)&&(tab!=="Direct Issue"||!!traceId);
+ })&&(tab!=="GRV"||directGrv||!!selectedPO)&&(tab!=="Planned Issue"||!!selectedJob)&&(tab!=="Direct Issue"||!!traceId);
  const submit=async()=>{if(!valid||!confirmed||busy)return;setBusy(true);setStatus("");
   const req=request&&request.action===action&&JSON.stringify(request.payload)===JSON.stringify(payload)?request:{action,payload,id:uuid()};setRequest(req);
   try{
@@ -143,7 +157,7 @@ export default function StockV2Workflow(){
     <ThemedText style={styles.homeTitle}>Stock Home</ThemedText>
     <ThemedText style={styles.muted}>Choose a stock operation</ThemedText>
     <View style={styles.navActions}>
-     <Pressable style={styles.back} onPress={()=>router.push("/stock-v2-owner-transactions")}><ThemedText style={styles.backText}>Multi-owner POs, GRVs & Transfers</ThemedText></Pressable>
+     <Pressable style={styles.back} onPress={()=>router.push("/stock-v2-owner-transactions")}><ThemedText style={styles.backText}>Ownership Transfers</ThemedText></Pressable>
      <Pressable style={styles.back} onPress={()=>router.push("/stock-v2-setup")}><ThemedText style={styles.backText}>Manage Stock Owners & Contracts</ThemedText></Pressable>
     </View>
     <View style={styles.homeGrid}>{tabs.map(x=><View key={x} style={styles.dashboardCard}>
@@ -179,16 +193,26 @@ export default function StockV2Workflow(){
    <ThemedText style={styles.muted}>* Weighted receipt price is a provisional indicator, not a verified perpetual inventory cost. Missing opening stock costs and issue valuations are shown as unavailable.</ThemedText>
   </View>:<View style={styles.sheet}>
    {header(tab.toUpperCase(),["Owner: TEST_JS","Warehouse: TEST_WH","Date: "+new Date().toLocaleDateString("en-GB")])}
-   {tab==="Purchase Orders"?<View style={styles.poHeaderFields}>
+   {(tab==="Purchase Orders"||tab==="GRV")?<View style={{gap:10,paddingBottom:14}}>
+     <ThemedText style={styles.label}>1. Stock Owner</ThemedText>
+     {menu("owner",owner?owner.owner_name:"Choose Stock Owner",owners.filter(o=>o.active).map(o=>({label:o.owner_name,value:o.owner_code,onSelect:()=>selectOwner(o.owner_code)})))}
+     {ownerReady?<><ThemedText style={styles.label}>2. Contract</ThemedText>
+     {owner?.default_contract_id?<ThemedText style={styles.readOnly}>{contracts.find(c=>c.contract_id===owner.default_contract_id)?.contract_code||"Owner Default"}</ThemedText>:
+       tab==="GRV"&&!directGrv?<ThemedText style={styles.muted}>Contract inherited from the selected PO</ThemedText>:
+       menu("contract",contracts.find(c=>c.contract_id===effectiveContract)?.contract_code||"Choose Contract",contracts.filter(c=>c.active).map(c=>({label:c.contract_code,value:String(c.contract_id),onSelect:()=>{setContractId(c.contract_id);resetEdit()}})))}
+     </>:null}
+    </View>:null}
+   {tab==="Purchase Orders"&&ownerReady&&contractReady?<View style={styles.poHeaderFields}>
      <View style={styles.poSupplier}><Field label="Supplier" value={supplier} onChange={v=>{setSupplier(v);resetEdit()}}/></View>
      <View style={styles.poDate}><Field label="Purchase Order Date (DD/MM/YYYY)" value={orderDate} onChange={v=>{setOrderDate(v);resetEdit()}}/>
        {!parseJsplDateInput(orderDate)?<ThemedText style={styles.alert}>Enter a valid date, e.g. 19/10/2026</ThemedText>:null}
      </View>
    </View>:null}
-   {tab==="GRV"?<>
+   {tab==="GRV"&&ownerReady&& (directGrv?contractReady:true)?<>
     <Pressable style={styles.refresh} onPress={()=>refresh()}><ThemedText>↻ Reload outstanding purchase orders</ThemedText></Pressable>
-    {orders.length===0?<ThemedText style={styles.alert}>No outstanding DEMO POs returned. Only successfully posted and unreceived orders are listed.</ThemedText>:null}
-    {menu("orders",selectedPO?"PO #"+selectedPO.id+" — "+selectedPO.supplier:"Choose outstanding purchase order",orders.map(o=>({label:"PO #"+o.id+" · "+o.supplier+" · "+o.lines.length+" products",value:String(o.id),onSelect:()=>choosePO(o)})),true)}
+    {!directGrv&&orders.length===0?<ThemedText style={styles.alert}>No outstanding DEMO POs returned. Only successfully posted and unreceived orders are listed.</ThemedText>:null}
+    {!directGrv?menu("orders",selectedPO?"PO #"+selectedPO.id+" — "+selectedPO.supplier:"Choose outstanding purchase order",orders.map(o=>({label:"PO #"+o.id+" · "+o.supplier+" · "+o.lines.length+" products",value:String(o.id),onSelect:()=>choosePO(o)})),true):null}
+    {directGrv?<View style={styles.poHeaderFields}><Field label="3. Supplier / Source" value={supplier} onChange={v=>{setSupplier(v);resetEdit()}}/></View>:null}
     {selectedPO?<><ThemedText>Original PO: {selectedPO.number}</ThemedText><ThemedText>Supplier: {selectedPO.supplier}</ThemedText><Field label="Supplier delivery note" value={deliveryNote} onChange={v=>{setDeliveryNote(v);resetEdit()}}/></>:dropdown==="orders"?null:<View style={styles.grvHelp}><ThemedText style={styles.muted}>Choose a purchase order above to load its outstanding lines.</ThemedText></View>}
    </>:null}
    {tab==="Planned Issue"?<>{menu("jobs",selectedJob?"Spray job #"+selectedJob.id+" — "+selectedJob.trace:"Choose outstanding spray programme",jobs.map(j=>({label:"Job #"+j.id+" · "+j.trace+" · "+j.lines.length+" products",value:String(j.id),onSelect:()=>chooseJob(j)})),true)}</>:null}
@@ -196,14 +220,14 @@ export default function StockV2Workflow(){
     {menu("crops",crops.find(c=>c.crop_id===cropId)?.crop_name??"All crops",[{label:"All crops",value:"all",onSelect:()=>{setCropId(null);setTraceId(null)}},...crops.map(c=>({label:c.crop_name,value:String(c.crop_id),onSelect:()=>{setCropId(c.crop_id);setTraceId(null)}}))])}
     {menu("traces",currentTrace?.tracecode_name??"Choose active tracecode",activeTraces.map(t=>({label:t.tracecode_name,value:String(t.tracecode_id),onSelect:()=>{setTraceId(t.tracecode_id);setArea(String(t.tracecode_size??""));setPart("");}})),true)}
    </View>:null}
-   <View style={styles.productSectionHeading}><ThemedText style={styles.section}>Product lines</ThemedText></View>
+   {((tab!=="Purchase Orders"&&tab!=="GRV")||(ownerReady&&contractReady&&(tab!=="GRV"||directGrv||!!selectedPO)))?<><View style={styles.productSectionHeading}><ThemedText style={styles.section}>Product lines</ThemedText></View>
    <ScrollView horizontal nestedScrollEnabled contentContainerStyle={{minWidth:tab==="GRV"?1130:tab==="Purchase Orders"?790:tab==="Planned Issue"?710:650}}>
     <View style={{flex:1}}>
      <View style={styles.lineHeader}>
-      {(tab==="GRV"?["Product","Ordered","Prev. rec.","PO price","Qty received","Actual price","Line total"]:tab==="Planned Issue"?["Product","Outstanding","Qty issue"]:tab==="Purchase Orders"?["Product","Qty ordered","Unit price","Line total"]:["Product","Qty issue","Mix Rate (optional)"]).map((x,i)=><View key={i} style={i===0?styles.productColumn:styles.numberColumn}><ThemedText style={styles.gridHeading}>{x}</ThemedText></View>)}
+      {(tab==="GRV"&&!directGrv?["Product","Ordered","Prev. rec.","PO price","Qty received","Actual price","Line total"]:tab==="Planned Issue"?["Product","Outstanding","Qty issue"]:tab==="Purchase Orders"?["Product","Qty ordered","Unit price","Line total"]:["Product","Qty issue","Mix Rate (optional)"]).map((x,i)=><View key={i} style={i===0?styles.productColumn:styles.numberColumn}><ThemedText style={styles.gridHeading}>{x}</ThemedText></View>)}
       {!["GRV","Planned Issue"].includes(tab ?? "")?<View style={styles.removeColumn}/>:null}
      </View>
-     {lines.map(l=>lineCells(l,tab==="GRV"||tab==="Planned Issue"))}
+     {lines.map(l=>lineCells(l,(tab==="GRV"&&!directGrv)||tab==="Planned Issue"))}
     </View>
    </ScrollView>
    {pickerLine!==null?<View style={styles.pickerPanel}>
@@ -211,12 +235,12 @@ export default function StockV2Workflow(){
     <TextInput style={styles.input} placeholder="Find product" value={pickerSearch} onChangeText={setPickerSearch}/>
     {products.filter(p=>p.item_name.toLowerCase().startsWith(pickerSearch.trim().toLowerCase())&&!lines.some(x=>x.id!==pickerLine&&x.item_code===p.item_code)).map(p=><Pressable key={p.item_code} style={styles.choice} onPress={()=>{changeLine(pickerLine,"item_code",p.item_code);setPickerLine(null)}}><ThemedText>{p.item_name} ({p.base_unit})</ThemedText></Pressable>)}
    </View>:null}
-   {!["GRV","Planned Issue"].includes(tab ?? "")?<Pressable style={styles.add} onPress={addLine}><ThemedText>＋ Add product line</ThemedText></Pressable>:null}
+   {(directGrv||!["GRV","Planned Issue"].includes(tab ?? ""))?<Pressable style={styles.add} onPress={addLine}><ThemedText>＋ Add product line</ThemedText></Pressable>:null}
    {["Purchase Orders","GRV"].includes(tab ?? "")?<ThemedText style={styles.total}>Document total: {currency(lines.reduce((s,l)=>s+number(l.quantity)*number(l.unit_price||"0"),0))}</ThemedText>:null}
    <ThemedText style={styles.label}>Products on this document: {lines.filter(l=>products.some(p=>p.item_code===l.item_code)&&Number(l.quantity)>0).length} / {lines.length}</ThemedText>
    {status.startsWith("NOT POSTED")?<View style={styles.errorPanel}><ThemedText style={styles.errorText}>{status}</ThemedText></View>:null}
   <View style={styles.footer}><Pressable onPress={()=>setConfirmed(x=>!x)} style={styles.confirm}><ThemedText>{confirmed?"☑":"☐"} Confirm TEST transaction</ThemedText></Pressable><Pressable disabled={!valid||!confirmed||busy} onPress={submit} style={[styles.submit,(!valid||!confirmed||busy)&&styles.off]}><ThemedText style={styles.submitText}>{busy?"Posting…":"Post "+tab}</ThemedText></Pressable></View>
-   {!valid?<ThemedText style={styles.alert}>Select a product on every line and enter a positive quantity (or spray rate). Empty documents cannot be posted.</ThemedText>:null}
+   {!valid?<ThemedText style={styles.alert}>Complete the required fields, product and positive quantities before posting.</ThemedText>:null}</>:<ThemedText style={styles.muted}>Select Stock Owner and Contract first, then supplier or outstanding PO.</ThemedText>}
   </View>}
  </ScrollView></ThemedView>
 }
