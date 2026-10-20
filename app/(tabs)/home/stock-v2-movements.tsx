@@ -12,21 +12,22 @@ type Result={item:{item_name:string;base_unit:string}|null;movements:Movement[]}
 const fmt=(n:number)=>n.toLocaleString("en-GB",{minimumFractionDigits:2,maximumFractionDigits:3});
 export default function StockV2MovementReport(){
  const router=useRouter();
- const params=useLocalSearchParams<{item_code?:string}>();
+ const params=useLocalSearchParams<{item_code?:string;owner?:string}>();
  const itemCode=typeof params.item_code==="string"?params.item_code:"";
+ const owner=params.owner==="AO"?"AO":"JS";
  const [result,setResult]=useState<Result|null>(null),[loading,setLoading]=useState(true),[error,setError]=useState("");
  const scroll=useRef<ScrollView>(null);
  useEffect(()=>{let active=true;async function load(){
   setLoading(true);setError("");try{
    const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Supabase sign-in required");
-   const res=await fetch(endpoint+"?movement_item="+encodeURIComponent(itemCode),{headers:{authorization:"Bearer "+session.access_token}});
+   const res=await fetch(endpoint+"?movement_item="+encodeURIComponent(itemCode)+"&owner="+encodeURIComponent(owner),{headers:{authorization:"Bearer "+session.access_token}});
    const data=await res.json();if(!res.ok)throw Error(data.error||"Unable to load movements");
    if(active)setResult(data);
   }catch(e){if(active)setError(e instanceof Error?e.message:String(e))}finally{if(active)setLoading(false)}
- }void load();return()=>{active=false}},[itemCode]);
+ }void load();return()=>{active=false}},[itemCode,owner]);
  const rows=result?.movements??[];
  return <ThemedView style={styles.root}>
-  <View style={styles.header}><Pressable style={styles.back} onPress={()=>router.back()}><ThemedText>← Stock Balances</ThemedText></Pressable><ThemedText style={styles.heading}>Stock Movement Report</ThemedText><ThemedText style={styles.sub}>{result?.item?.item_name??itemCode} · {result?.item?.base_unit??""} · TEST_JS / TEST_WH</ThemedText></View>
+  <View style={styles.header}><Pressable style={styles.back} onPress={()=>router.back()}><ThemedText>← Stock Balances</ThemedText></Pressable><ThemedText style={styles.heading}>Stock Movement Report</ThemedText><ThemedText style={styles.sub}>{result?.item?.item_name??itemCode} · {result?.item?.base_unit??""} · {owner} / TEST_WH</ThemedText></View>
   {loading?<ActivityIndicator/>:error?<ThemedText style={styles.error}>{error}</ThemedText>:<ScrollView horizontal contentContainerStyle={{flexGrow:1}}>
    <ScrollView ref={scroll} style={styles.list} onContentSizeChange={()=>scroll.current?.scrollToEnd({animated:false})}>
     <View style={styles.table}>
