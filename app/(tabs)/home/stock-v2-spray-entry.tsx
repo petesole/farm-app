@@ -82,7 +82,7 @@ export default function StockV2SprayPlanningPreview() {
         setCatalog((data.items??[]).map((p:{item_code:string;item_name:string;quantity:number;base_unit:string},i:number)=>({input_id:i+1,inputs_name:p.item_name,item_code:p.item_code,quantity:Number(p.quantity??0),base_unit:p.base_unit})));
         setSpraySetups(data.sprayers??[]);
         if(editing){
-          const matching=(data.sprays??[]).filter((j:{job_id:number})=>j.job_id===editJobId);
+          const matching=(data.sprays??[]).filter((j:{job_id:number|string})=>Number(j.job_id)===editJobId);
           if(matching.length===0)throw Error("Spray job not found for editing");
           const a=matching[0];if(a.status!=="planned"||matching.some((l:{issued_quantity:number})=>l.issued_quantity>0))throw Error("Cannot edit a spray after any stock has been issued");
           setTraceId(a.external_tracecode_id);setSprayType(a.spray_type);setWaterRate(String(a.water_litres_per_ha??""));
