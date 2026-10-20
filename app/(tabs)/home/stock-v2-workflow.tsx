@@ -79,7 +79,7 @@ export default function StockV2Workflow(){
  const orders=useMemo(()=>{
   const map=new Map<number,OrderLine[]>();
   for(const o of snapshot?.orders??[]){if(o.owner_code!==ownerCode)continue;if(!map.has(o.order_id))map.set(o.order_id,[]);map.get(o.order_id)!.push(o)}
-  return [...map.entries()].map(([id,lines])=>({id,lines,supplier:lines[0].supplier_name,number:lines[0].order_number,remaining:lines.reduce((s,x)=>s+Math.max(0,x.ordered_quantity-x.received_quantity),0)})).filter(x=>x.remaining>0);
+  return [...map.entries()].map(([id,lines])=>({id,lines,supplier:lines[0].supplier_name,number:lines[0].order_number,contract_id:lines[0].contract_id,remaining:lines.reduce((s,x)=>s+Math.max(0,x.ordered_quantity-x.received_quantity),0)})).filter(x=>x.remaining>0);
  },[snapshot]);
  const selectedPO=orders.find(x=>x.id===orderId);
  const jobs=useMemo(()=>{
@@ -88,7 +88,7 @@ export default function StockV2Workflow(){
  },[snapshot]);
  const selectedJob=jobs.find(x=>x.id===jobId);
  const activeTraces=traces.filter(t=>(cropId===null||t.crop_id===cropId)&&crops.some(c=>c.crop_id===t.crop_id)&&t.tracecode_name.toLowerCase().startsWith(search.trim().toLowerCase()));
- const choosePO=(po:typeof orders[number])=>{setOrderId(po.id);setSupplier(po.supplier);setLines(po.lines.filter(x=>x.received_quantity<x.ordered_quantity).map((x,i)=>({...emptyLine(nextLine+i,x.item_code),quantity:String(x.ordered_quantity-x.received_quantity),unit_price:String(x.ordered_unit_price??"")})));setNextLine(n=>n+po.lines.length);setDropdown(null);resetEdit()};
+ const choosePO=(po:typeof orders[number])=>{setOrderId(po.id);setContractId(po.contract_id);setSupplier(po.supplier);setLines(po.lines.filter(x=>x.received_quantity<x.ordered_quantity).map((x,i)=>({...emptyLine(nextLine+i,x.item_code),quantity:String(x.ordered_quantity-x.received_quantity),unit_price:String(x.ordered_unit_price??"")})));setNextLine(n=>n+po.lines.length);setDropdown(null);resetEdit()};
  const chooseJob=(job:typeof jobs[number])=>{setJobId(job.id);setTraceId(job.lines[0].external_tracecode_id);setLines(job.lines.filter(x=>x.planned_quantity>x.issued_quantity).map((x,i)=>({...emptyLine(nextLine+i,x.item_code),quantity:String(Number((x.planned_quantity-x.issued_quantity).toFixed(4))),rate_per_ha:String(x.rate_per_ha)})));setNextLine(n=>n+job.lines.length);setDropdown(null);resetEdit()};
  const menu=(id:string,title:string,choices:{label:string;value:string;onSelect:()=>void}[],searchable=false)=> <View style={styles.dropdown}>
   <Pressable style={styles.selector} onPress={()=>{setDropdown(dropdown===id?null:id);setSearch("")}}><ThemedText>{title}  ▾</ThemedText></Pressable>
@@ -119,7 +119,7 @@ export default function StockV2Workflow(){
  const payload={owner_code:ownerCode,contract_id:effectiveContract,supplier,order_date:parseJsplDateInput(orderDate),order_id:orderId,job_id:jobId,tracecode_id:traceId,area_ha:part.trim()?number(part):number(area),part_label:part.trim()?"Part "+part.trim()+" ha":"Whole tracecode",spray_type:sprayType,water_rate:number(water),delivery_note:deliveryNote,lines:normalizedLines};
  const valid=!!snapshot&&(tab!=="Purchase Orders"&&tab!=="GRV"||ownerReady)&&
  (tab!=="Purchase Orders"||(contractReady&&!!supplier.trim()))&&
- (tab!=="GRV"||!directGrv||contractReady)&&(tab!=="Purchase Orders"||!!parseJsplDateInput(orderDate))&&lines.length>0&&lines.length<=30&&new Set(lines.map(l=>l.item_code)).size===lines.length&&lines.every(l=>{
+ (tab!=="GRV"||!directGrv||(contractReady&&!!supplier.trim()))&&(tab!=="Purchase Orders"||!!parseJsplDateInput(orderDate))&&lines.length>0&&lines.length<=30&&new Set(lines.map(l=>l.item_code)).size===lines.length&&lines.every(l=>{
   if(!products.some(p=>p.item_code===l.item_code))return false;
   const n=number(l.quantity);
   if(!Number.isFinite(n)||n<=0)return false;
@@ -209,11 +209,11 @@ export default function StockV2Workflow(){
      </View>
    </View>:null}
    {tab==="GRV"&&ownerReady&& (directGrv?contractReady:true)?<>
-    <Pressable style={styles.refresh} onPress={()=>refresh()}><ThemedText>↻ Reload outstanding purchase orders</ThemedText></Pressable>
+    {!directGrv?<Pressable style={styles.refresh} onPress={()=>refresh()}><ThemedText>↻ Reload outstanding purchase orders</ThemedText></Pressable>:null}
     {!directGrv&&orders.length===0?<ThemedText style={styles.alert}>No outstanding DEMO POs returned. Only successfully posted and unreceived orders are listed.</ThemedText>:null}
     {!directGrv?menu("orders",selectedPO?"PO #"+selectedPO.id+" — "+selectedPO.supplier:"Choose outstanding purchase order",orders.map(o=>({label:"PO #"+o.id+" · "+o.supplier+" · "+o.lines.length+" products",value:String(o.id),onSelect:()=>choosePO(o)})),true):null}
     {directGrv?<View style={styles.poHeaderFields}><Field label="3. Supplier / Source" value={supplier} onChange={v=>{setSupplier(v);resetEdit()}}/></View>:null}
-    {selectedPO?<><ThemedText>Original PO: {selectedPO.number}</ThemedText><ThemedText>Supplier: {selectedPO.supplier}</ThemedText><Field label="Supplier delivery note" value={deliveryNote} onChange={v=>{setDeliveryNote(v);resetEdit()}}/></>:dropdown==="orders"?null:<View style={styles.grvHelp}><ThemedText style={styles.muted}>Choose a purchase order above to load its outstanding lines.</ThemedText></View>}
+    {!directGrv&&selectedPO?<><ThemedText>Original PO: {selectedPO.number}</ThemedText><ThemedText>Supplier: {selectedPO.supplier}</ThemedText><Field label="Supplier delivery note" value={deliveryNote} onChange={v=>{setDeliveryNote(v);resetEdit()}}/></>:directGrv||dropdown==="orders"?null:<View style={styles.grvHelp}><ThemedText style={styles.muted}>Choose a purchase order above to load its outstanding lines.</ThemedText></View>}
    </>:null}
    {tab==="Planned Issue"?<>{menu("jobs",selectedJob?"Spray job #"+selectedJob.id+" — "+selectedJob.trace:"Choose outstanding spray programme",jobs.map(j=>({label:"Job #"+j.id+" · "+j.trace+" · "+j.lines.length+" products",value:String(j.id),onSelect:()=>chooseJob(j)})),true)}</>:null}
    {tab==="Direct Issue"?<View style={styles.filters}>
@@ -221,11 +221,11 @@ export default function StockV2Workflow(){
     {menu("traces",currentTrace?.tracecode_name??"Choose active tracecode",activeTraces.map(t=>({label:t.tracecode_name,value:String(t.tracecode_id),onSelect:()=>{setTraceId(t.tracecode_id);setArea(String(t.tracecode_size??""));setPart("");}})),true)}
    </View>:null}
    {((tab!=="Purchase Orders"&&tab!=="GRV")||(ownerReady&&contractReady&&(tab!=="GRV"||directGrv||!!selectedPO)))?<><View style={styles.productSectionHeading}><ThemedText style={styles.section}>Product lines</ThemedText></View>
-   <ScrollView horizontal nestedScrollEnabled contentContainerStyle={{minWidth:tab==="GRV"?1130:tab==="Purchase Orders"?790:tab==="Planned Issue"?710:650}}>
+   <ScrollView horizontal nestedScrollEnabled contentContainerStyle={{minWidth:tab==="GRV"&&!directGrv?1130:tab==="Purchase Orders"?790:tab==="Planned Issue"?710:650}}>
     <View style={{flex:1}}>
      <View style={styles.lineHeader}>
-      {(tab==="GRV"&&!directGrv?["Product","Ordered","Prev. rec.","PO price","Qty received","Actual price","Line total"]:tab==="Planned Issue"?["Product","Outstanding","Qty issue"]:tab==="Purchase Orders"?["Product","Qty ordered","Unit price","Line total"]:["Product","Qty issue","Mix Rate (optional)"]).map((x,i)=><View key={i} style={i===0?styles.productColumn:styles.numberColumn}><ThemedText style={styles.gridHeading}>{x}</ThemedText></View>)}
-      {!["GRV","Planned Issue"].includes(tab ?? "")?<View style={styles.removeColumn}/>:null}
+      {(tab==="GRV"&&!directGrv?["Product","Ordered","Prev. rec.","PO price","Qty received","Actual price","Line total"]:tab==="Planned Issue"?["Product","Outstanding","Qty issue"]:tab==="Purchase Orders"?["Product","Qty ordered","Unit price","Line total"]:directGrv?["Product","Qty received","Actual price","Line total"]:["Product","Qty issue","Mix Rate (optional)"]).map((x,i)=><View key={i} style={i===0?styles.productColumn:styles.numberColumn}><ThemedText style={styles.gridHeading}>{x}</ThemedText></View>)}
+      {(directGrv||!["GRV","Planned Issue"].includes(tab ?? ""))?<View style={styles.removeColumn}/>:null}
      </View>
      {lines.map(l=>lineCells(l,(tab==="GRV"&&!directGrv)||tab==="Planned Issue"))}
     </View>
