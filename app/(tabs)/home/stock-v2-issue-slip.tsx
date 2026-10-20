@@ -37,23 +37,21 @@ export default function IssueSlip(){
   const date=h.document_date?.slice(8,10)+"/"+h.document_date?.slice(5,7)+"/"+h.document_date?.slice(0,4);
   const rows=slip.lines.map(l=>`<tr><td class="prod">${esc(l.item_name)}${l.mix_instruction?`<div class="mix">${esc(l.mix_instruction)}</div>`:""}</td><td>${fmt(Number(l.quantity),2)}</td><td>${l.rate_per_ha==null?"—":fmt(Number(l.rate_per_ha),2)}</td><td>${ready?fmt(fullHa*Number(l.rate_per_ha),2):"—"}</td><td>${ready&&part>0?fmt(partHa*Number(l.rate_per_ha),2):"—"}</td></tr>`).join("");
   const html=`<!doctype html><html><head><meta charset="utf-8"><title>Issue ${esc(h.document_number)}</title><style>
-  @page{size:80mm auto;margin:3mm 3mm 4mm}*{box-sizing:border-box}body{margin:0;color:#000;background:white;font-family:Arial,sans-serif;font-size:9px}
-  main{width:72mm;margin:0 auto}.company,.heading{text-align:center;font-weight:800}.company{font-size:12px}.heading{font-size:10px;margin-top:3px}
+  @page{size:80mm auto;margin:3mm 3mm 4mm}*{box-sizing:border-box}body{margin:0;color:#000;background:white;font-family:Arial,sans-serif;font-size:11px}
+  main{width:72mm;margin:0 auto}.company,.heading{text-align:center;font-weight:800}.company{font-size:14px}.heading{font-size:12px;margin-top:3px}
   .rule{border-top:1px dashed #000;margin:6px 0}.trace{text-align:center;font-size:17px;font-weight:900;margin:7px 0;overflow-wrap:anywhere}
-  .meta{line-height:1.6}.row{display:flex;justify-content:space-between;gap:4px}.label{font-weight:700}
-  table{table-layout:fixed;border-collapse:collapse;width:100%;font-size:8px}th{font-weight:800;border-bottom:1px solid #000;text-align:right;white-space:nowrap}
-  th:first-child{text-align:left;width:36%}td{padding:4px 2px;border-bottom:1px dotted #aaa;text-align:right;vertical-align:top;overflow-wrap:anywhere}
-  td.prod{text-align:left;font-weight:600}.sign{margin-top:17px;line-height:2.4}.help{font-size:8px;margin-top:7px}.mix{font-size:8px;font-weight:700;margin-top:2px}
+  .meta{line-height:1.7;font-size:11px}.areaWater{font-size:13px;font-weight:800;margin:6px 0}.label{font-weight:700}
+  table{table-layout:fixed;border-collapse:collapse;width:100%;font-size:11px}th{font-weight:800;border-bottom:1px solid #000;text-align:right;white-space:nowrap;font-size:10px}thead .tankHeader th{border:1px solid #888;text-align:center;font-size:11px;padding:4px 0}
+  th:first-child{text-align:left;width:36%}td{font-size:11px;padding:7px 2px;border-bottom:1px dotted #aaa;text-align:right;vertical-align:top;overflow-wrap:anywhere}
+  td.prod{text-align:left;font-weight:700}.sign{margin-top:17px;line-height:2.4}.help{font-size:8px;margin-top:7px}.mix{font-size:8px;font-weight:700;margin-top:2px}
   .toolbar{padding:10px;background:#eee;display:flex;gap:8px}.toolbar button{padding:5px 12px} @media print{.toolbar{display:none!important}main{width:72mm}body{margin:0}}
   </style></head><body><div class="toolbar"><button onclick="window.print()">Print Slip</button><button onclick="window.close()">Close</button></div><main>
   <div class="company">JOHN SOLE (PVT) LTD</div><div class="heading">STOCK ISSUE &amp; TANK MIX</div><div class="rule"></div>
   <div class="meta"><div><b>Issue No:</b> ${esc(h.document_id)}</div><div><b>Date:</b> ${esc(date)}</div></div>
   <div class="trace">${esc(h.tracecode_name||"NO TRACECODE")}</div>
-  <div class="row"><span>Area: ${ready?fmt(area,2)+" ha":"—"}</span><span>Tank: ${fmt(capacity,0)} L</span></div>
-  <div class="row"><span>Water: ${water?fmt(water,0)+" L/ha":"—"}</span><span>Full tanks: ${ready?full:"—"}</span></div>
-  <div>Part tank: ${ready?fmt(part,1)+" L":"—"}</div><div class="rule"></div>
-  <table><thead><tr><th>Product</th><th>Issue</th><th>Rate/ha</th><th>Full</th><th>Part</th></tr></thead><tbody>${rows}</tbody></table>
-  <div class="help">Quantities in product units. Full = per full tank; Part = final partial tank.</div>
+  <div class="areaWater">Area: ${ready?fmt(area,2)+" ha":"—"} &nbsp; Water: ${water?fmt(water,0)+" L/ha":"—"}</div><div class="rule"></div>
+  <table><colgroup><col style="width:36%"><col style="width:16%"><col style="width:16%"><col style="width:16%"><col style="width:16%"></colgroup><thead><tr class="tankHeader"><th colspan="3"></th><th>Qty ${ready?full:"—"}</th><th>${ready&&part>0?"Qty 1":"Qty 0"}</th></tr><tr class="tankHeader"><th colspan="3"></th><th>${fmt(capacity,0)} L</th><th>${ready?fmt(part,0)+" L":"—"}</th></tr><tr><th>Product</th><th>Issue</th><th>Rate/ha</th><th>Full</th><th>Part</th></tr></thead><tbody>${rows}</tbody></table>
+  <div class="help">Full and Part show product quantity per tank.</div>
   <div class="rule"></div><div class="sign">Issued by: ___________________<br>Received by: _________________</div></main></body></html>`;
   popup.document.open();popup.document.write(html);popup.document.close();popup.focus();
  };
@@ -67,10 +65,10 @@ export default function IssueSlip(){
    <ThemedText style={styles.small}>Issue No: {issueNumber}</ThemedText>
    <ThemedText style={styles.small}>Date: {displayDate}</ThemedText>
    <ThemedText style={styles.trace}>{slip.header.tracecode_name||"NO TRACECODE"}</ThemedText>
-   <View style={styles.two}><ThemedText style={styles.small}>Area: {ready?fmt(area)+" ha":"—"}</ThemedText><ThemedText style={styles.small}>Tank: {fmt(capacity,0)} L</ThemedText></View>
-   <View style={styles.two}><ThemedText style={styles.small}>Water: {water?fmt(water,0)+" L/ha":"—"}</ThemedText><ThemedText style={styles.small}>Full tanks: {ready?full:"—"}</ThemedText></View>
-   <ThemedText style={styles.small}>Part tank: {ready?fmt(part,1)+" L":"—"}</ThemedText>
+   <ThemedText style={styles.areaWater}>Area: {ready?fmt(area)+" ha":"—"} · Water: {water?fmt(water,0)+" L/ha":"—"}</ThemedText>
    <View style={styles.rule}/>
+   <View style={styles.tableRow}><View style={styles.productHead}/><View style={styles.numHead}/><View style={styles.numHead}/><ThemedText style={styles.numHead}>Qty {ready?full:"—"}</ThemedText><ThemedText style={styles.numHead}>Qty {ready&&part>0?1:0}</ThemedText></View>
+   <View style={styles.tableRow}><View style={styles.productHead}/><View style={styles.numHead}/><View style={styles.numHead}/><ThemedText style={styles.numHead}>{fmt(capacity,0)} L</ThemedText><ThemedText style={styles.numHead}>{ready?fmt(part,0)+" L":"—"}</ThemedText></View>
    <View style={styles.tableRow}><ThemedText style={styles.productHead}>Product</ThemedText><ThemedText style={styles.numHead}>Issue</ThemedText><ThemedText style={styles.numHead}>Rate/ha</ThemedText><ThemedText style={styles.numHead}>Full</ThemedText><ThemedText style={styles.numHead}>Part</ThemedText></View>
    {slip.lines.map(l=><View key={l.item_code} style={styles.tableRow}>
      <View style={styles.productCell}><ThemedText style={styles.smallBold}>{l.item_name}</ThemedText>{l.mix_instruction?<ThemedText style={styles.small}>{l.mix_instruction}</ThemedText>:null}</View>
@@ -79,7 +77,7 @@ export default function IssueSlip(){
      <ThemedText style={styles.numCell}>{ready?fmt(fullHa*Number(l.rate_per_ha)):"—"}</ThemedText>
      <ThemedText style={styles.numCell}>{ready&&part>0?fmt(partHa*Number(l.rate_per_ha)):"—"}</ThemedText>
     </View>)}
-   <ThemedText style={styles.note}>Quantities in product units. Full = per full tank; Part = final partial tank.</ThemedText>
+   <ThemedText style={styles.note}>Full and Part show product quantity per tank.</ThemedText>
    {!ready?<ThemedText style={styles.warning}>Tank calculations need recorded spray rates and water rate. Actual issued quantities still print.</ThemedText>:null}
    <View style={styles.rule}/>
    <ThemedText style={styles.small}>Issued by: ___________________</ThemedText>
@@ -100,15 +98,15 @@ const styles=StyleSheet.create({
  sheet:{backgroundColor:"#fff",width:302,borderWidth:1,borderColor:"#ddd",padding:10,gap:4},
  title:{fontSize:12,fontWeight:"900",textAlign:"center",color:"#000",marginVertical:2},
  trace:{fontSize:17,fontWeight:"900",textAlign:"center",color:"#000",marginVertical:6},
- small:{fontSize:10,color:"#000"},
- smallBold:{fontSize:9,fontWeight:"700",color:"#000"},
+ small:{fontSize:11,color:"#000"},areaWater:{fontSize:13,fontWeight:"800",color:"#000",marginVertical:6},
+ smallBold:{fontSize:11,fontWeight:"700",color:"#000"},
  rule:{borderTopWidth:1,borderTopColor:"#000",borderStyle:"dashed",marginVertical:5},
  two:{flexDirection:"row",justifyContent:"space-between",gap:4},
- tableRow:{flexDirection:"row",borderBottomWidth:1,borderBottomColor:"#ddd",paddingVertical:4,alignItems:"flex-start"},
- productHead:{width:"36%",fontSize:9,fontWeight:"800",color:"#000"},
- numHead:{width:"16%",fontSize:8,fontWeight:"800",textAlign:"right",color:"#000"},
+ tableRow:{flexDirection:"row",borderBottomWidth:1,borderBottomColor:"#ddd",paddingVertical:6,alignItems:"flex-start"},
+ productHead:{width:"36%",fontSize:11,fontWeight:"800",color:"#000"},
+ numHead:{width:"16%",fontSize:10,fontWeight:"800",textAlign:"right",color:"#000"},
  productCell:{width:"36%"},
- numCell:{width:"16%",fontSize:8,textAlign:"right",color:"#000"},
+ numCell:{width:"16%",fontSize:11,textAlign:"right",color:"#000"},
  note:{fontSize:8,color:"#000",marginVertical:5},
  controls:{gap:8,backgroundColor:"#fff",padding:14,borderRadius:jsplRadii.sm,borderWidth:1,borderColor:jsplColors.border},
  input:{width:140,borderWidth:1,borderColor:jsplColors.border,padding:10},
