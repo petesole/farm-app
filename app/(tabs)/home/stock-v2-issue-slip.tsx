@@ -7,7 +7,7 @@ import {supabase} from "../../../supabase";
 import {jsplColors,jsplSpacing,jsplRadii} from "@/constants/jspl-design";
 
 const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
-type Line={item_code:string;item_name:string;base_unit:string;quantity:number;rate_per_ha:number|null};
+type Line={item_code:string;item_name:string;base_unit:string;quantity:number;rate_per_ha:number|null;mix_instruction:string|null};
 type Slip={header:{document_id:number;document_number:string;document_date:string;tracecode_name:string|null;job_id:string|null;water_rate:number|null;sprayer:string|null;spray_type:string|null};lines:Line[]};
 const fmt=(v:number,dp=2)=>Number.isFinite(v)?v.toLocaleString("en-GB",{maximumFractionDigits:dp,minimumFractionDigits:dp}):"—";
 export default function IssueSlip(){
@@ -33,7 +33,7 @@ export default function IssueSlip(){
   if(!popup){setError("Please allow pop-ups to print the Epson issue slip.");return;}
   const h=slip.header;
   const date=h.document_date?.slice(8,10)+"/"+h.document_date?.slice(5,7)+"/"+h.document_date?.slice(0,4);
-  const rows=slip.lines.map(l=>`<tr><td class="prod">${esc(l.item_name)}</td><td>${fmt(Number(l.quantity),2)}</td><td>${l.rate_per_ha==null?"—":fmt(Number(l.rate_per_ha),2)}</td><td>${ready?fmt(fullHa*Number(l.rate_per_ha),2):"—"}</td><td>${ready&&part>0?fmt(partHa*Number(l.rate_per_ha),2):"—"}</td></tr>`).join("");
+  const rows=slip.lines.map(l=>`<tr><td class="prod">${esc(l.item_name)}${l.mix_instruction?`<div class="mix">${esc(l.mix_instruction)}</div>`:""}</td><td>${fmt(Number(l.quantity),2)}</td><td>${l.rate_per_ha==null?"—":fmt(Number(l.rate_per_ha),2)}</td><td>${ready?fmt(fullHa*Number(l.rate_per_ha),2):"—"}</td><td>${ready&&part>0?fmt(partHa*Number(l.rate_per_ha),2):"—"}</td></tr>`).join("");
   const html=`<!doctype html><html><head><meta charset="utf-8"><title>Issue ${esc(h.document_number)}</title><style>
   @page{size:80mm auto;margin:3mm 3mm 4mm}*{box-sizing:border-box}body{margin:0;color:#000;background:white;font-family:Arial,sans-serif;font-size:9px}
   main{width:72mm;margin:0 auto}.company,.heading{text-align:center;font-weight:800}.company{font-size:12px}.heading{font-size:10px;margin-top:3px}
@@ -41,7 +41,7 @@ export default function IssueSlip(){
   .meta{line-height:1.6}.row{display:flex;justify-content:space-between;gap:4px}.label{font-weight:700}
   table{table-layout:fixed;border-collapse:collapse;width:100%;font-size:8px}th{font-weight:800;border-bottom:1px solid #000;text-align:right;white-space:nowrap}
   th:first-child{text-align:left;width:36%}td{padding:4px 2px;border-bottom:1px dotted #aaa;text-align:right;vertical-align:top;overflow-wrap:anywhere}
-  td.prod{text-align:left;font-weight:600}.sign{margin-top:17px;line-height:2.4}.help{font-size:8px;margin-top:7px}
+  td.prod{text-align:left;font-weight:600}.sign{margin-top:17px;line-height:2.4}.help{font-size:8px;margin-top:7px}.mix{font-size:8px;font-weight:700;margin-top:2px}
   .toolbar{padding:10px;background:#eee;display:flex;gap:8px}.toolbar button{padding:5px 12px} @media print{.toolbar{display:none!important}main{width:72mm}body{margin:0}}
   </style></head><body><div class="toolbar"><button onclick="window.print()">Print Slip</button><button onclick="window.close()">Close</button></div><main>
   <div class="company">JOHN SOLE (PVT) LTD</div><div class="heading">STOCK ISSUE &amp; TANK MIX</div><div class="rule"></div>
@@ -68,7 +68,7 @@ export default function IssueSlip(){
    <ThemedText>Tank capacity (L)</ThemedText>
    <TextInput keyboardType="decimal-pad" style={styles.input} value={tankSize} onChangeText={setTankSize}/>
    {!ready?<ThemedText style={styles.warning}>Tank mix quantities are unavailable for an issue without matching spray rates and a water rate. The posted issue quantities will still print.</ThemedText>:<ThemedText>Area {fmt(area)} ha · Full tanks {full} · Part tank {fmt(part,1)} L</ThemedText>}
-   {slip.lines.map(l=><ThemedText key={l.item_code}>{l.item_name}: {fmt(Number(l.quantity))} {l.base_unit} · Rate/ha {l.rate_per_ha==null?"—":fmt(Number(l.rate_per_ha))}</ThemedText>)}
+   {slip.lines.map(l=><ThemedText key={l.item_code}>{l.item_name}: {fmt(Number(l.quantity))} {l.base_unit} · Rate/ha {l.rate_per_ha==null?"—":fmt(Number(l.rate_per_ha))}{l.mix_instruction?" · "+l.mix_instruction:""}</ThemedText>)}
    <Pressable style={styles.primary} onPress={print}><ThemedText style={{color:"#fff",fontWeight:"700"}}>Print 80 mm Issue Slip</ThemedText></Pressable>
   </View>:null}
  </ScrollView></ThemedView>
