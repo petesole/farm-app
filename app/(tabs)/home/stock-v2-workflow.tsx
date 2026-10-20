@@ -140,7 +140,11 @@ export default function StockV2Workflow(){
    if(!Array.isArray(req.payload.lines)||req.payload.lines.length===0)throw Error("Cannot post an order without products");
    const r=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+await token()},body:JSON.stringify({action,request_id:req.id,payload:req.payload})});const d=await r.json();if(!r.ok)throw Error(d.error||("Posting failed (HTTP "+r.status+")"));if(action==="order"&&(!d.result?.order_id||!Array.isArray(d.result.lines)||d.result.lines.length!==req.payload.lines.length))throw Error("Order not confirmed with all product lines");
    if((action==="direct_issue"||action==="planned_issue")&&d.result?.document_id)setLatestIssueDocument(Number(d.result.document_id));
-   setStatus("Posted "+tab+" successfully. "+(d.result?.order_id?"PO #"+d.result.order_id:d.result?.document_id?"Document #"+d.result.document_id:d.result?.job_id?"Job #"+d.result.job_id:"")+" — returned to Stock Home.");setConfirmed(false);setRequest(null);await refresh(false);setTab(null);
+   const recostPending=Array.isArray(d.result?.cost_pending)?d.result.cost_pending:[];
+    const recostDone=Array.isArray(d.result?.cost_runs)?d.result.cost_runs.length:0;
+    setStatus("Posted "+tab+" successfully. "+(d.result?.order_id?"PO #"+d.result.order_id:d.result?.document_id?"Document #"+d.result.document_id:d.result?.job_id?"Job #"+d.result.job_id:"")+
+      (action==="grv"||action==="direct_grv"?receiptMode==="dnote"?" — awaiting invoice and valuation.":recostPending.length?" — WA costing pending: "+recostPending.map((x:{reason:string})=>x.reason).join("; "):" — historical WA recalculated for "+recostDone+" product(s).":"")+
+      " — returned to Stock Home.");setConfirmed(false);setRequest(null);await refresh(false);setTab(null);
    if(tab==="POs Outstanding")setOrderId(null);if(tab==="Planned Issue")setJobId(null);
    setLines([emptyLine(nextLine)]);setNextLine(n=>n+1);
   }catch(e){setStatus("NOT POSTED: "+(e instanceof Error?e.message:String(e)))}finally{setBusy(false)}
