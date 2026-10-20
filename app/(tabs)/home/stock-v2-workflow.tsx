@@ -10,7 +10,7 @@ import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, TextInput,
 import { supabase } from "../../../supabase";
 
 const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
-type Item={item_code:string;item_name:string;base_unit:string;quantity:number;input_type:string|null;input_category:string|null;active_ingredient:string|null;last_purchase_price:number|null;weighted_average_price:number|null;last_purchase_supplier:string|null};
+type Item={item_code:string;item_name:string;base_unit:string;quantity:number;ao_quantity:number;input_type:string|null;input_category:string|null;active_ingredient:string|null;last_purchase_price:number|null;weighted_average_price:number|null;last_purchase_supplier:string|null};
 type OrderLine={owner_code:string;contract_id:number|null;order_id:number;order_number:string;supplier_name:string;item_code:string;item_name:string;base_unit:string;ordered_quantity:number;received_quantity:number;ordered_unit_price:number|null;status:string};
 type SprayLine={job_id:number;external_tracecode_id:number;tracecode_name:string;item_code:string;item_name:string;area_ha:number;rate_per_ha:number;planned_quantity:number;issued_quantity:number;status:string};
 type Doc={document_id:number;document_type:string;document_number:string;item_name:string;quantity:number;tracecode_name:string|null};
@@ -180,21 +180,24 @@ export default function StockV2Workflow(){
   {status?<View style={styles.notice}><ThemedText>{status}</ThemedText></View>:null}
   {latestIssueDocument&&tab===null?<Pressable style={styles.submit} onPress={()=>router.push({pathname:"/stock-v2-issue-slip",params:{documentId:String(latestIssueDocument)}})}><ThemedText style={styles.submitText}>Print Issue Slip #{latestIssueDocument}</ThemedText></Pressable>:null}
   {tab===null?null:tab==="Stock Balances"?<View style={styles.sheet}>
-   {header("STOCK BALANCES",["Owner: TEST_JS","Warehouse: TEST_WH"])}
+   {header("STOCK BALANCES",["Stock Owners: JS / AO","Warehouse: TEST_WH"])}
    <View style={styles.filters}>
     {menu("balanceType",typeFilter||"All input types",[{label:"All input types",value:"all",onSelect:()=>setTypeFilter("")},...inputTypes.map(t=>({label:t,value:t,onSelect:()=>setTypeFilter(t)}))],true)}
     {menu("balanceCategory",categoryFilter||"All input categories",[{label:"All input categories",value:"all",onSelect:()=>setCategoryFilter("")},...inputCategories.map(x=>({label:x,value:x,onSelect:()=>setCategoryFilter(x)}))],true)}
    </View>
    <ThemedText style={styles.muted}>{balanceRows.length} products · Prices are shown only where actual receipt pricing is available.</ThemedText>
-   <JsplTable rows={balanceRows} rowKey={x=>x.item_code} rowAction={{label:"Movements",onPress:(item)=>router.push({pathname:"/stock-v2-movements",params:{item_code:item.item_code}})}}
+   <JsplTable rows={balanceRows} rowKey={x=>x.item_code}
     columns={[
       {key:"item",title:"Product",width:240,value:x=>x.item_name},
       {key:"ai",title:"Active Ingredient",width:210,value:x=>x.active_ingredient||"—"},
-      {key:"qty",title:"On Hand",kind:"number",width:115,value:x=>x.quantity},
+      {key:"js_qty",title:"JS On Hand",kind:"number",width:110,value:x=>x.quantity},
+      {key:"js_mov",title:"JS Movements",width:116,value:()=>"Movements",onPress:x=>router.push({pathname:"/stock-v2-movements",params:{item_code:x.item_code,owner:"JS"}})},
+      {key:"ao_qty",title:"AO On Hand",kind:"number",width:110,value:x=>x.ao_quantity},
+      {key:"ao_mov",title:"AO Movements",width:116,value:()=>"Movements",onPress:x=>router.push({pathname:"/stock-v2-movements",params:{item_code:x.item_code,owner:"AO"}})},
       {key:"unit",title:"Unit",width:75,value:x=>x.base_unit},
-      {key:"last",title:"Last Purchase Price",kind:"number",width:155,value:x=>x.last_purchase_price},
-      {key:"supplier",title:"Last Purchase Supplier",width:210,value:x=>x.last_purchase_supplier||"—"},
-      {key:"avg",title:"Weighted Avg Price*",kind:"number",width:155,value:x=>x.weighted_average_price}
+      {key:"last",title:"JS Last Purchase Price",kind:"number",width:160,value:x=>x.last_purchase_price},
+      {key:"supplier",title:"JS Last Purchase Supplier",width:210,value:x=>x.last_purchase_supplier||"—"},
+      {key:"avg",title:"JS Weighted Avg Price*",kind:"number",width:170,value:x=>x.weighted_average_price}
      ]}/>
    <ThemedText style={styles.muted}>* Weighted receipt price is a provisional indicator, not a verified perpetual inventory cost. Missing opening stock costs and issue valuations are shown as unavailable.</ThemedText>
   </View>:<View style={styles.sheet}>

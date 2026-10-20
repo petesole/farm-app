@@ -13,6 +13,7 @@ export type JsplColumn<Row> = {
   decimals?: number;
   unit?: string;
   render?: (row: Row) => string | number | null | undefined;
+  onPress?: (row: Row) => void;
   value?: (row: Row) => string | number | null | undefined;
 };
 
@@ -46,7 +47,11 @@ export function JsplTable<Row>({
                 const display = kind === 'number' && typeof raw === 'number'
                   ? formatJsplNumber(raw, column.decimals ?? 2)
                   : raw == null ? '—' : String(raw);
-                return <Text key={column.key} numberOfLines={1} selectable
+                return column.onPress ? <Pressable key={column.key} accessibilityRole="button"
+                  style={[styles.actionButton,{width:column.width??112}]}
+                  onPress={()=>column.onPress?.(row)}>
+                  <Text style={styles.actionText}>{display}</Text>
+                </Pressable> : <Text key={column.key} numberOfLines={1} selectable
                   style={[styles.cell, {
                     width: column.width ?? 144,
                     textAlign: jsplCellAlignment(kind),
