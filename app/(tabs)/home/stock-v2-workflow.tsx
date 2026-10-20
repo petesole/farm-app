@@ -22,7 +22,7 @@ const emptyLine=(id:number,item_code=""):Line=>({id,item_code,quantity:"",unit_p
 const uuid=()=>"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const r=Math.floor(Math.random()*16);return(c==="x"?r:(r&3)|8).toString(16)});
 const number=(x:string)=>Number(x);
 const currency=(n:number)=>Number.isFinite(n)?n.toFixed(2):"—";
-const tabs=["Purchase Orders","GRV","Stock Balances","Spray Planning","Planned Issue","Direct Issue"] as const;
+const tabs=["Purchase Orders","GRV","Stock Balances","Spray Planning","Stock Transfer","Direct Issue"] as const;
 type Tab=typeof tabs[number];
 function Field({label,value,onChange,numeric=false}:{label:string;value:string;onChange:(v:string)=>void;numeric?:boolean}){
  return <View style={styles.field}><ThemedText style={styles.label}>{label}</ThemedText><TextInput style={styles.input} value={value} onChangeText={onChange} keyboardType={numeric?"decimal-pad":"default"}/></View>;
@@ -35,12 +35,13 @@ export default function StockV2Workflow(){
  const [traces,setTraces]=useState<Trace[]>([]),[crops,setCrops]=useState<Crop[]>([]);
  const [owners,setOwners]=useState<{owner_code:string;owner_name:string;active:boolean;po_requires_contract:boolean;allow_direct_grv:boolean;po_required_for_grv:boolean;default_contract_id:number|null}[]>([]);
  const [contracts,setContracts]=useState<{contract_id:number;contract_code:string;active:boolean}[]>([]);
+ const [suppliers,setSuppliers]=useState<{supplier_id:number;supplier_name:string;active:boolean}[]>([]);
  const [ownerCode,setOwnerCode]=useState(""),[contractId,setContractId]=useState<number|null>(null);
  const [busy,setBusy]=useState(false),[status,setStatus]=useState(""),[confirmed,setConfirmed]=useState(false);
  const [latestIssueDocument,setLatestIssueDocument]=useState<number|null>(null);
  const [lines,setLines]=useState<Line[]>([emptyLine(1)]),[nextLine,setNextLine]=useState(2);
  const [typeFilter,setTypeFilter]=useState(""),[categoryFilter,setCategoryFilter]=useState("");
- const [supplier,setSupplier]=useState("DEMO Supplier"),[orderDate,setOrderDate]=useState(()=>new Date().toLocaleDateString("en-GB")),[orderId,setOrderId]=useState<number|null>(null);
+ const [supplier,setSupplier]=useState(""),[orderDate,setOrderDate]=useState(()=>new Date().toLocaleDateString("en-GB")),[orderId,setOrderId]=useState<number|null>(null);
  const [jobId,setJobId]=useState<number|null>(null),[traceId,setTraceId]=useState<number|null>(null),[cropId,setCropId]=useState<number|null>(null);
  const [area,setArea]=useState(""),[water,setWater]=useState(""),[part,setPart]=useState(""),[sprayType,setSprayType]=useState(""),[deliveryNote,setDeliveryNote]=useState("");
  const [dropdown,setDropdown]=useState<string|null>(null),[search,setSearch]=useState("");
@@ -48,6 +49,9 @@ export default function StockV2Workflow(){
  const [request,setRequest]=useState<{action:string;payload:any;id:string}|null>(null);
  const token=async()=>{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Supabase sign-in required");return session.access_token};
  const refresh=async(show=true)=>{if(show)setBusy(true);try{
+  const supplierResult=await fetch(endpoint+"?supplier_list=1",{headers:{authorization:"Bearer "+await token()}});
+  const supplierData=await supplierResult.json();if(!supplierResult.ok)throw Error(supplierData.error||"Unable to load suppliers");
+  setSuppliers(supplierData.suppliers??[]);
   const setup=await fetch(endpoint+"?stock_setup=1",{headers:{authorization:"Bearer "+await token()}});
   const config=await setup.json();if(!setup.ok)throw Error(config.error||"Unable to load owners and contracts");
   setOwners(config.owners??[]);setContracts(config.contracts??[]);
@@ -71,7 +75,7 @@ export default function StockV2Workflow(){
  const changeLine=(id:number,key:keyof Line,value:string)=>{setLines(old=>old.map(l=>l.id===id?{...l,[key]:value}:l));resetEdit()};
  const addLine=()=>{setLines(old=>[...old,emptyLine(nextLine)]);setNextLine(n=>n+1);resetEdit()};
  const removeLine=(id:number)=>{setLines(old=>old.filter(l=>l.id!==id));resetEdit()};
- const switchTab=(v:Tab|null)=>{setTab(v);if(v==="GRV"||v==="Planned Issue")void refresh(false);setLines([emptyLine(nextLine)]);setNextLine(n=>n+1);setOrderId(null);setJobId(null);setDropdown(null);setStatus("");resetEdit()};
+ const switchTab=(v:Tab|null)=>{if(v==="Stock Transfer"){router.push("/stock-v2-owner-transactions");return;}setTab(v);if(v==="GRV"||v==="Planned Issue")void refresh(false);setLines([emptyLine(nextLine)]);setNextLine(n=>n+1);setOrderId(null);setJobId(null);setDropdown(null);setStatus("");resetEdit()};
  const products=snapshot?.items??[];
  const inputTypes=[...new Set(products.map(x=>x.input_type).filter((x):x is string=>!!x))].sort();
  const inputCategories=[...new Set(products.map(x=>x.input_category).filter((x):x is string=>!!x))].sort();
@@ -157,12 +161,13 @@ export default function StockV2Workflow(){
     <ThemedText style={styles.homeTitle}>Stock Home</ThemedText>
     <ThemedText style={styles.muted}>Choose a stock operation</ThemedText>
     <View style={styles.navActions}>
-     <Pressable style={styles.back} onPress={()=>router.push("/stock-v2-owner-transactions")}><ThemedText style={styles.backText}>Ownership Transfers</ThemedText></Pressable>
-     <Pressable style={styles.back} onPress={()=>router.push("/stock-v2-setup")}><ThemedText style={styles.backText}>Manage Stock Owners & Contracts</ThemedText></Pressable>
+
+     <Pressable style={styles.back} onPress={()=>router.push("/stock-v2-setup")}><ThemedText style={styles.backText}>Manage Owners & Contracts</ThemedText></Pressable>
+     <Pressable style={styles.back} onPress={()=>router.push("/stock-v2-suppliers")}><ThemedText style={styles.backText}>Manage Suppliers</ThemedText></Pressable>
     </View>
     <View style={styles.homeGrid}>{tabs.map(x=><View key={x} style={styles.dashboardCard}>
       <JsplDashboardButton title={x}
-       count={x==="GRV"?orders.length:x==="Planned Issue"?jobs.length:undefined}
+       count={x==="GRV"?orders.length:undefined}
        onPress={()=>x==="Spray Planning"?router.push("/stock-v2-spray-planning"):switchTab(x)}/>
      </View>)}</View>
    </View>:null}
@@ -203,7 +208,10 @@ export default function StockV2Workflow(){
      </>:null}
     </View>:null}
    {tab==="Purchase Orders"&&ownerReady&&contractReady?<View style={styles.poHeaderFields}>
-     <View style={styles.poSupplier}><Field label="Supplier" value={supplier} onChange={v=>{setSupplier(v);resetEdit()}}/></View>
+     <View style={styles.poSupplier}>
+      <ThemedText style={styles.label}>3. Supplier</ThemedText>
+      {menu("supplier",supplier||"Choose Supplier",suppliers.filter(x=>x.active).map(x=>({label:x.supplier_name,value:String(x.supplier_id),onSelect:()=>{setSupplier(x.supplier_name);resetEdit()}})),true)}
+     </View>
      <View style={styles.poDate}><Field label="Purchase Order Date (DD/MM/YYYY)" value={orderDate} onChange={v=>{setOrderDate(v);resetEdit()}}/>
        {!parseJsplDateInput(orderDate)?<ThemedText style={styles.alert}>Enter a valid date, e.g. 19/10/2026</ThemedText>:null}
      </View>
@@ -212,7 +220,10 @@ export default function StockV2Workflow(){
     {!directGrv?<Pressable style={styles.refresh} onPress={()=>refresh()}><ThemedText>↻ Reload outstanding purchase orders</ThemedText></Pressable>:null}
     {!directGrv&&orders.length===0?<ThemedText style={styles.alert}>No outstanding DEMO POs returned. Only successfully posted and unreceived orders are listed.</ThemedText>:null}
     {!directGrv?menu("orders",selectedPO?"PO #"+selectedPO.id+" — "+selectedPO.supplier:"Choose outstanding purchase order",orders.map(o=>({label:"PO #"+o.id+" · "+o.supplier+" · "+o.lines.length+" products",value:String(o.id),onSelect:()=>choosePO(o)})),true):null}
-    {directGrv?<View style={styles.poHeaderFields}><Field label="3. Supplier / Source" value={supplier} onChange={v=>{setSupplier(v);resetEdit()}}/></View>:null}
+    {directGrv?<View style={styles.poHeaderFields}>
+      <View style={styles.poSupplier}><ThemedText style={styles.label}>3. Supplier / Source</ThemedText>
+      {menu("supplier",supplier||"Choose Supplier",suppliers.filter(x=>x.active).map(x=>({label:x.supplier_name,value:String(x.supplier_id),onSelect:()=>{setSupplier(x.supplier_name);resetEdit()}})),true)}</View>
+    </View>:null}
     {!directGrv&&selectedPO?<><ThemedText>Original PO: {selectedPO.number}</ThemedText><ThemedText>Supplier: {selectedPO.supplier}</ThemedText><Field label="Supplier delivery note" value={deliveryNote} onChange={v=>{setDeliveryNote(v);resetEdit()}}/></>:directGrv||dropdown==="orders"?null:<View style={styles.grvHelp}><ThemedText style={styles.muted}>Choose a purchase order above to load its outstanding lines.</ThemedText></View>}
    </>:null}
    {tab==="Planned Issue"?<>{menu("jobs",selectedJob?"Spray job #"+selectedJob.id+" — "+selectedJob.trace:"Choose outstanding spray programme",jobs.map(j=>({label:"Job #"+j.id+" · "+j.trace+" · "+j.lines.length+" products",value:String(j.id),onSelect:()=>chooseJob(j)})),true)}</>:null}
