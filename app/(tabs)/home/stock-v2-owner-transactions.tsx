@@ -78,7 +78,7 @@ export default function OwnerTransactions(){
    </>:null}
    {tab==="grv"?<>{label("Delivery note")}<TextInput style={styles.input} value={deliveryNote} onChangeText={v=>{setDeliveryNote(v);reset()}} placeholder="Supplier delivery note"/></>:null}
    {label("Product Lines")}{lines.map(l=>{const item=data?.items.find(i=>i.item_code===l.item_code);return <View key={l.id} style={styles.line}>
-    <View style={{minWidth:200,flex:2}}>{label("Product")}<View style={styles.options}>{<Pressable style={styles.button} onPress={()=>{setPickerId(pickerId===l.id?null:l.id);setPickerSearch("")}}><ThemedText>{item?.item_name||"Choose available product"} ▾</ThemedText></Pressable>
+    <View style={{minWidth:200,flex:2}}>{label("Product")}<View style={styles.options}><Pressable style={styles.button} onPress={()=>{setPickerId(pickerId===l.id?null:l.id);setPickerSearch("")}}><ThemedText>{item?.item_name||"Choose available product"} ▾</ThemedText></Pressable>
     {pickerId===l.id?<View style={{width:260,backgroundColor:"#fff",borderWidth:1,borderColor:"#b7c8bc",padding:6}}>
       <TextInput style={styles.input} placeholder="Search product" value={pickerSearch} onChangeText={setPickerSearch}/>
       <ScrollView style={{maxHeight:190}} nestedScrollEnabled>
@@ -87,7 +87,7 @@ export default function OwnerTransactions(){
          <ThemedText>{b.item_name} · {Number(b.quantity).toLocaleString("en-GB")} {b.base_unit}</ThemedText>
         </Pressable>)}
       </ScrollView>
-     </View>:null}}</View></View>
+     </View>:null}</View></View>
     <View style={styles.quantity}>{label("Quantity")}<TextInput style={styles.input} keyboardType="decimal-pad" value={l.quantity} onChangeText={v=>changeLine(l.id,"quantity",v)} placeholder="0"/></View>
     {tab!=="transfer"?<View style={styles.quantity}>{label("Unit Price (optional)")}<TextInput style={styles.input} keyboardType="decimal-pad" value={l.unit_price} onChangeText={v=>changeLine(l.id,"unit_price",v)} placeholder="Pending"/></View>:null}
     {tab==="transfer"&&item?<ThemedText>Available: {data?.balances.find(b=>b.owner_code===ownerCode&&b.item_code===l.item_code)?.quantity??0} {item.base_unit}</ThemedText>:null}

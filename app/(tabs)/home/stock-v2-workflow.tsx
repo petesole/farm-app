@@ -23,7 +23,8 @@ const uuid=()=>"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const 
 const number=(x:string)=>Number(x);
 const currency=(n:number)=>Number.isFinite(n)?n.toFixed(2):"—";
 const tabs=["Purchase Orders","GRV","Stock Balances","Spray Planning","Stock Transfer","Direct Issue"] as const;
-type Tab=typeof tabs[number];
+// Screen states also include the retained Planned Issue flow, beyond the dashboard buttons.
+type Tab=typeof tabs[number]|"Planned Issue";
 function Field({label,value,onChange,numeric=false}:{label:string;value:string;onChange:(v:string)=>void;numeric?:boolean}){
  return <View style={styles.field}><ThemedText style={styles.label}>{label}</ThemedText><TextInput style={styles.input} value={value} onChangeText={onChange} keyboardType={numeric?"decimal-pad":"default"}/></View>;
 }
