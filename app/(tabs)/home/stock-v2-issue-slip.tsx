@@ -22,6 +22,8 @@ export default function IssueSlip(){
   if(alive)setSlip(d);
  }catch(e){if(alive)setError(e instanceof Error?e.message:String(e))}finally{if(alive)setLoading(false)}})();return()=>{alive=false}},[docId]);
  const water=Number(slip?.header.water_rate||0),capacity=Number(tankSize);
+ const displayDate=slip?.header.document_date?`${slip.header.document_date.slice(8,10)}/${slip.header.document_date.slice(5,7)}/${slip.header.document_date.slice(0,4)}`:"—";
+ const issueNumber=slip?.header.document_id?String(slip.header.document_id):"—";
  const rated=(slip?.lines??[]).filter(l=>Number(l.rate_per_ha)>0);
  const area=useMemo(()=>rated.length?Math.min(...rated.map(l=>Number(l.quantity)/Number(l.rate_per_ha))):0,[rated]);
  const ready=!!slip&&water>0&&capacity>0&&Number.isFinite(capacity)&&rated.length===slip.lines.length&&area>0;
@@ -45,7 +47,7 @@ export default function IssueSlip(){
   .toolbar{padding:10px;background:#eee;display:flex;gap:8px}.toolbar button{padding:5px 12px} @media print{.toolbar{display:none!important}main{width:72mm}body{margin:0}}
   </style></head><body><div class="toolbar"><button onclick="window.print()">Print Slip</button><button onclick="window.close()">Close</button></div><main>
   <div class="company">JOHN SOLE (PVT) LTD</div><div class="heading">STOCK ISSUE &amp; TANK MIX</div><div class="rule"></div>
-  <div class="meta"><div><b>Issue No:</b> ${esc(h.document_number)}</div><div><b>Date:</b> ${esc(date)}</div></div>
+  <div class="meta"><div><b>Issue No:</b> ${esc(h.document_id)}</div><div><b>Date:</b> ${esc(date)}</div></div>
   <div class="trace">${esc(h.tracecode_name||"NO TRACECODE")}</div>
   <div class="row"><span>Area: ${ready?fmt(area,2)+" ha":"—"}</span><span>Tank: ${fmt(capacity,0)} L</span></div>
   <div class="row"><span>Water: ${water?fmt(water,0)+" L/ha":"—"}</span><span>Full tanks: ${ready?full:"—"}</span></div>
@@ -58,19 +60,58 @@ export default function IssueSlip(){
  return <ThemedView style={styles.root}><ScrollView contentContainerStyle={styles.page}>
   <Pressable style={styles.button} onPress={()=>router.back()}><ThemedText>← Back</ThemedText></Pressable>
   <ThemedText style={styles.heading}>Epson TM-T20H · Stock Issue Slip</ThemedText>
-  {loading?<ActivityIndicator/>:error?<ThemedText style={styles.error}>{error}</ThemedText>:slip?<View style={styles.sheet}>
+  {loading?<ActivityIndicator/>:error?<ThemedText style={styles.error}>{error}</ThemedText>:slip?<View style={styles.slipWrap}><View style={styles.sheet}>
    <ThemedText style={styles.title}>JOHN SOLE (PVT) LTD</ThemedText>
    <ThemedText style={styles.title}>STOCK ISSUE & TANK MIX</ThemedText>
-   <ThemedText>Issue No: {slip.header.document_number}</ThemedText>
-   <ThemedText>Date: {slip.header.document_date}</ThemedText>
-   <ThemedText style={styles.trace}>{slip.header.tracecode_name||"No tracecode"}</ThemedText>
-   <ThemedText>Issued products: {slip.lines.length}</ThemedText>
-   <ThemedText>Tank capacity (L)</ThemedText>
-   <TextInput keyboardType="decimal-pad" style={styles.input} value={tankSize} onChangeText={setTankSize}/>
-   {!ready?<ThemedText style={styles.warning}>Tank mix quantities are unavailable for an issue without matching spray rates and a water rate. The posted issue quantities will still print.</ThemedText>:<ThemedText>Area {fmt(area)} ha · Full tanks {full} · Part tank {fmt(part,1)} L</ThemedText>}
-   {slip.lines.map(l=><ThemedText key={l.item_code}>{l.item_name}: {fmt(Number(l.quantity))} {l.base_unit} · Rate/ha {l.rate_per_ha==null?"—":fmt(Number(l.rate_per_ha))}{l.mix_instruction?" · "+l.mix_instruction:""}</ThemedText>)}
-   <Pressable style={styles.primary} onPress={print}><ThemedText style={{color:"#fff",fontWeight:"700"}}>Print 80 mm Issue Slip</ThemedText></Pressable>
-  </View>:null}
+   <View style={styles.rule}/>
+   <ThemedText style={styles.small}>Issue No: {issueNumber}</ThemedText>
+   <ThemedText style={styles.small}>Date: {displayDate}</ThemedText>
+   <ThemedText style={styles.trace}>{slip.header.tracecode_name||"NO TRACECODE"}</ThemedText>
+   <View style={styles.two}><ThemedText style={styles.small}>Area: {ready?fmt(area)+" ha":"—"}</ThemedText><ThemedText style={styles.small}>Tank: {fmt(capacity,0)} L</ThemedText></View>
+   <View style={styles.two}><ThemedText style={styles.small}>Water: {water?fmt(water,0)+" L/ha":"—"}</ThemedText><ThemedText style={styles.small}>Full tanks: {ready?full:"—"}</ThemedText></View>
+   <ThemedText style={styles.small}>Part tank: {ready?fmt(part,1)+" L":"—"}</ThemedText>
+   <View style={styles.rule}/>
+   <View style={styles.tableRow}><ThemedText style={styles.productHead}>Product</ThemedText><ThemedText style={styles.numHead}>Issue</ThemedText><ThemedText style={styles.numHead}>Rate/ha</ThemedText><ThemedText style={styles.numHead}>Full</ThemedText><ThemedText style={styles.numHead}>Part</ThemedText></View>
+   {slip.lines.map(l=><View key={l.item_code} style={styles.tableRow}>
+     <View style={styles.productCell}><ThemedText style={styles.smallBold}>{l.item_name}</ThemedText>{l.mix_instruction?<ThemedText style={styles.small}>{l.mix_instruction}</ThemedText>:null}</View>
+     <ThemedText style={styles.numCell}>{fmt(Number(l.quantity))}</ThemedText>
+     <ThemedText style={styles.numCell}>{l.rate_per_ha==null?"—":fmt(Number(l.rate_per_ha))}</ThemedText>
+     <ThemedText style={styles.numCell}>{ready?fmt(fullHa*Number(l.rate_per_ha)):"—"}</ThemedText>
+     <ThemedText style={styles.numCell}>{ready&&part>0?fmt(partHa*Number(l.rate_per_ha)):"—"}</ThemedText>
+    </View>)}
+   <ThemedText style={styles.note}>Quantities in product units. Full = per full tank; Part = final partial tank.</ThemedText>
+   {!ready?<ThemedText style={styles.warning}>Tank calculations need recorded spray rates and water rate. Actual issued quantities still print.</ThemedText>:null}
+   <View style={styles.rule}/>
+   <ThemedText style={styles.small}>Issued by: ___________________</ThemedText>
+   <ThemedText style={styles.small}>Received by: _________________</ThemedText>
+   </View>
+   <View style={styles.controls}>
+    <ThemedText>Tank capacity (L)</ThemedText>
+    <TextInput keyboardType="decimal-pad" style={styles.input} value={tankSize} onChangeText={setTankSize}/>
+    <Pressable style={styles.primary} onPress={print}><ThemedText style={{color:"#fff",fontWeight:"700"}}>Print 80 mm Issue Slip</ThemedText></Pressable>
+   </View></View>:null}
  </ScrollView></ThemedView>
 }
-const styles=StyleSheet.create({root:{flex:1,backgroundColor:jsplColors.background},page:{padding:jsplSpacing.lg,gap:12},button:{alignSelf:"flex-start",padding:10,borderRadius:jsplRadii.sm,borderWidth:1,borderColor:jsplColors.border},heading:{fontSize:20,fontWeight:"700",color:jsplColors.primaryDark},sheet:{backgroundColor:"#fff",borderRadius:jsplRadii.md,borderWidth:1,borderColor:jsplColors.border,padding:16,gap:9,maxWidth:480},title:{fontWeight:"700",textAlign:"center"},trace:{fontSize:22,fontWeight:"900",textAlign:"center"},input:{width:140,borderWidth:1,borderColor:jsplColors.border,padding:10},primary:{backgroundColor:jsplColors.primary,padding:12,alignSelf:"flex-start",borderRadius:jsplRadii.sm},warning:{color:jsplColors.danger},error:{color:jsplColors.danger}});
+const styles=StyleSheet.create({
+ root:{flex:1,backgroundColor:jsplColors.background},page:{padding:jsplSpacing.lg,gap:12},
+ button:{alignSelf:"flex-start",padding:10,borderRadius:jsplRadii.sm,borderWidth:1,borderColor:jsplColors.border},
+ heading:{fontSize:20,fontWeight:"700",color:jsplColors.primaryDark},
+ slipWrap:{gap:14,alignItems:"flex-start"},
+ sheet:{backgroundColor:"#fff",width:302,borderWidth:1,borderColor:"#ddd",padding:10,gap:4},
+ title:{fontSize:12,fontWeight:"900",textAlign:"center",color:"#000",marginVertical:2},
+ trace:{fontSize:17,fontWeight:"900",textAlign:"center",color:"#000",marginVertical:6},
+ small:{fontSize:10,color:"#000"},
+ smallBold:{fontSize:9,fontWeight:"700",color:"#000"},
+ rule:{borderTopWidth:1,borderTopColor:"#000",borderStyle:"dashed",marginVertical:5},
+ two:{flexDirection:"row",justifyContent:"space-between",gap:4},
+ tableRow:{flexDirection:"row",borderBottomWidth:1,borderBottomColor:"#ddd",paddingVertical:4,alignItems:"flex-start"},
+ productHead:{width:"36%",fontSize:9,fontWeight:"800",color:"#000"},
+ numHead:{width:"16%",fontSize:8,fontWeight:"800",textAlign:"right",color:"#000"},
+ productCell:{width:"36%"},
+ numCell:{width:"16%",fontSize:8,textAlign:"right",color:"#000"},
+ note:{fontSize:8,color:"#000",marginVertical:5},
+ controls:{gap:8,backgroundColor:"#fff",padding:14,borderRadius:jsplRadii.sm,borderWidth:1,borderColor:jsplColors.border},
+ input:{width:140,borderWidth:1,borderColor:jsplColors.border,padding:10},
+ primary:{backgroundColor:jsplColors.primary,padding:12,alignSelf:"flex-start",borderRadius:jsplRadii.sm},
+ warning:{color:jsplColors.danger,fontSize:9},error:{color:jsplColors.danger}
+});
