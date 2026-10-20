@@ -78,7 +78,8 @@ export default function WeeklySprayPlanning(){
  <View style={styles.tableHeader}><ThemedText style={{flex:2,fontWeight:"700"}}>Input</ThemedText><ThemedText style={{flex:1,textAlign:"right",fontWeight:"700"}}>Rate/ha</ThemedText><ThemedText style={{flex:1,textAlign:"right",fontWeight:"700"}}>Required</ThemedText><ThemedText style={{flex:1,textAlign:"right",fontWeight:"700"}}>Issued</ThemedText></View>
  {job.lines.map(l=><View style={styles.line} key={l.item_code}><ThemedText style={{flex:2}}>{l.item_name}</ThemedText><ThemedText style={styles.num}>{fmt(l.rate_per_ha)} {l.base_unit}</ThemedText><ThemedText style={styles.num}>{fmt(l.planned_quantity)}</ThemedText><ThemedText style={styles.num}>{fmt(l.issued_quantity)}</ThemedText></View>)}
  <View style={styles.actions}>
-  <Pressable style={styles.secondary} onPress={()=>setIssueId(issueId===job.id?null:job.id)}><ThemedText>Application / Tank Mix</ThemedText></Pressable>
+  <Pressable style={styles.secondary} onPress={()=>{setIssueId(issueId===job.id?null:job.id);setIssueHa(String(Number(job.remainingArea.toFixed(3))));setConfirm(false)}}><ThemedText>Application / Tank Mix</ThemedText></Pressable>
+  {job.status==="planned"&&job.lines.every(l=>l.issued_quantity===0)?<Pressable style={styles.secondary} onPress={()=>router.push({pathname:"/stock-v2-spray-entry",params:{editJobId:String(job.id)}})}><ThemedText>Edit Mix</ThemedText></Pressable>:null}
   {job.status==="planned"&&job.remainingArea>0?<Pressable style={styles.primary} onPress={()=>{setIssueId(job.id);setIssueHa(String(Number(job.remainingArea.toFixed(3))));setConfirm(false)}}><ThemedText style={styles.white}>Transfer / Issue</ThemedText></Pressable>:null}
  </View>
  {issueId===job.id?<View style={styles.issue}>
