@@ -37,7 +37,7 @@ export default function StockSetup(){
   <View style={styles.bar}>{button("← Stock Home",()=>router.replace("/(tabs)/stock-test"))}{button("↻ Refresh",()=>void reload())}</View>
   <ThemedText style={styles.title}>Stock V2 · Configuration</ThemedText>
   <ThemedText>Test owners and contracts only. Existing Access records are unchanged.</ThemedText>
-  <View style={styles.bar}>{button("Stock Owners",()=>setMode("owners"),mode==="owners")}{button("Contracts",()=>setMode("contracts"),mode==="contracts")}{button("TraceCode Contracts",()=>setMode("traces"),mode==="traces")}</View>
+  <View style={styles.bar}>{button("Stock Owners",()=>setMode("owners"),mode==="owners")}{button("Contracts",()=>setMode("contracts"),mode==="contracts")}</View>
   {loading?<ActivityIndicator/>:null}{error?<ThemedText style={styles.error}>{error}</ThemedText>:null}{notice?<ThemedText style={styles.success}>{notice}</ThemedText>:null}
   {mode==="contracts"?<View style={styles.section}>
    <View style={styles.bar}><ThemedText style={styles.heading}>Contracts</ThemedText>{button("＋ New Contract",()=>setSelectedContract({...blankContract}),true)}</View>
