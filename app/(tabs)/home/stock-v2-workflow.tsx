@@ -1,12 +1,13 @@
-import {useEffect,useMemo,useState} from "react";
-import {ActivityIndicator,Image,Pressable,ScrollView,StyleSheet,TextInput,View,useWindowDimensions} from "react-native";
-import {ThemedText} from "@/components/themed-text";
-import {ThemedView} from "@/components/themed-view";
-import {supabase} from "../../../supabase";
-import {parseJsplDateInput,displayJsplDate} from "@/utils/jspl-input";
-import {JsplDashboardButton} from "@/components/jspl/JsplDashboardButton";
-import {JsplTable} from "@/components/jspl/JsplTable";
-import {jsplColors,jsplSpacing,jsplRadii,jsplDashboardTheme,formatJsplNumber} from "@/constants/jspl-design";
+import { JsplDashboardButton } from "@/components/jspl/JsplDashboardButton";
+import { JsplTable } from "@/components/jspl/JsplTable";
+import { ThemedText } from "@/components/themed-text";
+import { ThemedView } from "@/components/themed-view";
+import { jsplColors, jsplDashboardTheme, jsplRadii, jsplSpacing } from "@/constants/jspl-design";
+import { parseJsplDateInput } from "@/utils/jspl-input";
+import { useRouter } from "expo-router";
+import { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from "react-native";
+import { supabase } from "../../../supabase";
 
 const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
 type Item={item_code:string;item_name:string;base_unit:string;quantity:number;input_type:string|null;input_category:string|null;active_ingredient:string|null;last_purchase_price:number|null;weighted_average_price:number|null;last_purchase_supplier:string|null};
@@ -21,12 +22,13 @@ const emptyLine=(id:number,item_code=""):Line=>({id,item_code,quantity:"",unit_p
 const uuid=()=>"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const r=Math.floor(Math.random()*16);return(c==="x"?r:(r&3)|8).toString(16)});
 const number=(x:string)=>Number(x);
 const currency=(n:number)=>Number.isFinite(n)?n.toFixed(2):"—";
-const tabs=["Purchase Orders","GRV","Stock Balances","Spray Programme","Planned Issue","Direct Issue"] as const;
+const tabs=["Purchase Orders","GRV","Stock Balances","Spray Planning","Planned Issue","Direct Issue"] as const;
 type Tab=typeof tabs[number];
 function Field({label,value,onChange,numeric=false}:{label:string;value:string;onChange:(v:string)=>void;numeric?:boolean}){
  return <View style={styles.field}><ThemedText style={styles.label}>{label}</ThemedText><TextInput style={styles.input} value={value} onChangeText={onChange} keyboardType={numeric?"decimal-pad":"default"}/></View>;
 }
 export default function StockV2Workflow(){
+ const router=useRouter();
  const {width,height}=useWindowDimensions();
  const watermarkSize=Math.min(650,Math.max(240,width-48),Math.max(240,height-48));
  const [tab,setTab]=useState<Tab|null>(null),[snapshot,setSnapshot]=useState<Snapshot|null>(null);
@@ -92,26 +94,25 @@ export default function StockV2Workflow(){
    </View>
    {tab==="GRV"?<><View style={styles.numberColumn}><ThemedText>{(reference as OrderLine)?.ordered_quantity??"—"}</ThemedText></View><View style={styles.numberColumn}><ThemedText>{(reference as OrderLine)?.received_quantity??"—"}</ThemedText></View><View style={styles.numberColumn}><ThemedText>{currency((reference as OrderLine)?.ordered_unit_price??NaN)}</ThemedText></View></>:null}
    {tab==="Planned Issue"?<View style={styles.numberColumn}><ThemedText>{max?.toFixed(2)??"—"}</ThemedText></View>:null}
-   <View style={styles.numberColumn}><TextInput style={[styles.tableInput,{textAlign:"right",fontVariant:["tabular-nums"]}]} keyboardType="decimal-pad" value={tab==="Spray Programme"?l.rate_per_ha:l.quantity} onChangeText={v=>changeLine(l.id,tab==="Spray Programme"?"rate_per_ha":"quantity",v)} placeholder={tab==="Spray Programme"?"Rate/ha":"Quantity"} placeholderTextColor="#777"/></View>
+   <View style={styles.numberColumn}><TextInput style={[styles.tableInput,{textAlign:"right",fontVariant:["tabular-nums"]}]} keyboardType="decimal-pad" value={l.quantity} onChangeText={v=>changeLine(l.id,"quantity",v)} placeholder="Quantity" placeholderTextColor="#777"/></View>
    {tab==="Purchase Orders"||tab==="GRV"?<><View style={styles.numberColumn}><TextInput style={styles.tableInput} keyboardType="decimal-pad" value={l.unit_price} onChangeText={v=>changeLine(l.id,"unit_price",v)} placeholder="Unit price" placeholderTextColor="#777"/></View><View style={styles.numberColumn}><ThemedText>{currency(number(l.quantity)*number(l.unit_price))}</ThemedText></View></>:null}
-   {tab==="Spray Programme"?<View style={styles.numberColumn}><ThemedText>{currency(number(l.rate_per_ha)*(part.trim()?number(part):number(area)))} {product?.base_unit??""}</ThemedText></View>:null}
    {max!==null&&max!==undefined&&number(l.quantity)>max?<ThemedText style={styles.alert}>Over outstanding</ThemedText>:null}
    {!locked?<Pressable style={[styles.remove,styles.removeColumn]} onPress={()=>removeLine(l.id)}><ThemedText style={styles.alert}>×</ThemedText></Pressable>:null}
   </View>;
  };
- const action=tab==="Purchase Orders"?"order":tab==="GRV"?"grv":tab==="Spray Programme"?"spray":tab==="Planned Issue"?"planned_issue":"direct_issue";
- const normalizedLines=lines.map(l=>tab==="Spray Programme"?{item_code:l.item_code,rate_per_ha:number(l.rate_per_ha)}:{item_code:l.item_code,quantity:number(l.quantity),...(["Purchase Orders","GRV"].includes(tab)?{unit_price:l.unit_price.trim()?number(l.unit_price):null}:{})});
+ const action=tab==="Purchase Orders"?"order":tab==="GRV"?"grv":tab==="Planned Issue"?"planned_issue":"direct_issue";
+ const normalizedLines=lines.map(l=>({item_code:l.item_code,quantity:number(l.quantity),...(["Purchase Orders","GRV"].includes(tab ?? "")?{unit_price:l.unit_price.trim()?number(l.unit_price):null}:{})}));
  const payload={supplier,order_date:parseJsplDateInput(orderDate),order_id:orderId,job_id:jobId,tracecode_id:traceId,area_ha:part.trim()?number(part):number(area),part_label:part.trim()?"Part "+part.trim()+" ha":"Whole tracecode",spray_type:sprayType,water_rate:number(water),delivery_note:deliveryNote,lines:normalizedLines};
  const valid=!!snapshot&&(tab!=="Purchase Orders"||!!parseJsplDateInput(orderDate))&&lines.length>0&&lines.length<=30&&new Set(lines.map(l=>l.item_code)).size===lines.length&&lines.every(l=>{
   if(!products.some(p=>p.item_code===l.item_code))return false;
-  const n=number(tab==="Spray Programme"?l.rate_per_ha:l.quantity);
+  const n=number(l.quantity);
   if(!Number.isFinite(n)||n<=0)return false;
-  if(["Purchase Orders","GRV"].includes(tab)&&l.unit_price.trim()!==""&&(!Number.isFinite(number(l.unit_price))||number(l.unit_price)<0))return false;
+  if(["Purchase Orders","GRV"].includes(tab ?? "")&&l.unit_price.trim()!==""&&(!Number.isFinite(number(l.unit_price))||number(l.unit_price)<0))return false;
   const ref=tab==="GRV"?selectedPO?.lines.find(x=>x.item_code===l.item_code):tab==="Planned Issue"?selectedJob?.lines.find(x=>x.item_code===l.item_code):null;
   if(tab==="GRV"&&(!ref||n>(ref as OrderLine).ordered_quantity-(ref as OrderLine).received_quantity))return false;
   if(tab==="Planned Issue"&&(!ref||n>(ref as SprayLine).planned_quantity-(ref as SprayLine).issued_quantity))return false;
   return true;
- })&&(tab!=="GRV"||!!selectedPO)&&(tab!=="Planned Issue"||!!selectedJob)&&(!["Spray Programme","Direct Issue"].includes(tab)||!!traceId)&&(tab!=="Spray Programme"||(number(area)>0&&(!part.trim()||(number(part)>0&&number(part)<=number(area)))&&!!sprayType&&Number.isFinite(number(water))&&number(water)>0));
+ })&&(tab!=="GRV"||!!selectedPO)&&(tab!=="Planned Issue"||!!selectedJob)&&(tab!=="Direct Issue"||!!traceId);
  const submit=async()=>{if(!valid||!confirmed||busy)return;setBusy(true);setStatus("");
   const req=request&&request.action===action&&JSON.stringify(request.payload)===JSON.stringify(payload)?request:{action,payload,id:uuid()};setRequest(req);
   try{
@@ -141,7 +142,7 @@ export default function StockV2Workflow(){
     <View style={styles.homeGrid}>{tabs.map(x=><View key={x} style={styles.dashboardCard}>
       <JsplDashboardButton title={x}
        count={x==="GRV"?orders.length:x==="Planned Issue"?jobs.length:undefined}
-       onPress={()=>switchTab(x)}/>
+       onPress={()=>x==="Spray Planning"?router.push("/stock-v2-spray-planning"):switchTab(x)}/>
      </View>)}</View>
    </View>:<Pressable style={styles.back} onPress={()=>switchTab(null)}><ThemedText style={styles.backText}>← Back to Stock Home</ThemedText></Pressable>}
   <Pressable style={styles.refresh} onPress={()=>refresh()}><ThemedText>↻ Refresh records</ThemedText></Pressable>
@@ -182,23 +183,16 @@ export default function StockV2Workflow(){
     {selectedPO?<><ThemedText>Original PO: {selectedPO.number}</ThemedText><ThemedText>Supplier: {selectedPO.supplier}</ThemedText><Field label="Supplier delivery note" value={deliveryNote} onChange={v=>{setDeliveryNote(v);resetEdit()}}/></>:dropdown==="orders"?null:<View style={styles.grvHelp}><ThemedText style={styles.muted}>Choose a purchase order above to load its outstanding lines.</ThemedText></View>}
    </>:null}
    {tab==="Planned Issue"?<>{menu("jobs",selectedJob?"Spray job #"+selectedJob.id+" — "+selectedJob.trace:"Choose outstanding spray programme",jobs.map(j=>({label:"Job #"+j.id+" · "+j.trace+" · "+j.lines.length+" products",value:String(j.id),onSelect:()=>chooseJob(j)})),true)}</>:null}
-   {["Spray Programme","Direct Issue"].includes(tab)?<View style={styles.filters}>
+   {tab==="Direct Issue"?<View style={styles.filters}>
     {menu("crops",crops.find(c=>c.crop_id===cropId)?.crop_name??"All crops",[{label:"All crops",value:"all",onSelect:()=>{setCropId(null);setTraceId(null)}},...crops.map(c=>({label:c.crop_name,value:String(c.crop_id),onSelect:()=>{setCropId(c.crop_id);setTraceId(null)}}))])}
     {menu("traces",currentTrace?.tracecode_name??"Choose active tracecode",activeTraces.map(t=>({label:t.tracecode_name,value:String(t.tracecode_id),onSelect:()=>{setTraceId(t.tracecode_id);setArea(String(t.tracecode_size??""));setPart("");}})),true)}
    </View>:null}
-   {tab==="Spray Programme"?<View style={styles.sprayFields}>
-     <View style={styles.field}><ThemedText style={styles.label}>Tracecode Area (ha) — fixed</ThemedText><View style={styles.readOnly}><ThemedText>{currentTrace?String(currentTrace.tracecode_size):"Select a tracecode"}</ThemedText></View></View>
-     <Field label="Part (ha) — blank = entire field" value={part} numeric onChange={v=>{setPart(v);resetEdit()}}/>
-     <View style={styles.field}><ThemedText style={styles.label}>Spray Type</ThemedText>{menu("spraytypes",sprayType||"Choose spray type",(snapshot?.sprayers??[]).map(x=>({label:x.setup_name,value:x.setup_name,onSelect:()=>{setSprayType(x.setup_name);setWater(String(x.water_litres_per_ha));}})))}</View>
-     <Field label="Water (L/ha) — editable" value={water} numeric onChange={v=>{setWater(v);resetEdit()}}/>
-     <ThemedText style={styles.label}>Area to spray: {part.trim()?part:(area||"—")} ha</ThemedText>
-   </View>:null}
    <View style={styles.productSectionHeading}><ThemedText style={styles.section}>Product lines</ThemedText></View>
-   <ScrollView horizontal nestedScrollEnabled contentContainerStyle={{minWidth:tab==="GRV"?1130:tab==="Purchase Orders"?790:tab==="Spray Programme"?710:tab==="Planned Issue"?710:650}}>
+   <ScrollView horizontal nestedScrollEnabled contentContainerStyle={{minWidth:tab==="GRV"?1130:tab==="Purchase Orders"?790:tab==="Planned Issue"?710:650}}>
     <View style={{flex:1}}>
      <View style={styles.lineHeader}>
-      {(tab==="GRV"?["Product","Ordered","Prev. rec.","PO price","Qty received","Actual price","Line total"]:tab==="Planned Issue"?["Product","Outstanding","Qty issue"]:tab==="Purchase Orders"?["Product","Qty ordered","Unit price","Line total"]:tab==="Spray Programme"?["Product","Rate/ha","Total input"]:["Product","Qty issue"]).map((x,i)=><View key={i} style={i===0?styles.productColumn:styles.numberColumn}><ThemedText style={styles.gridHeading}>{x}</ThemedText></View>)}
-      {!["GRV","Planned Issue"].includes(tab)?<View style={styles.removeColumn}/>:null}
+      {(tab==="GRV"?["Product","Ordered","Prev. rec.","PO price","Qty received","Actual price","Line total"]:tab==="Planned Issue"?["Product","Outstanding","Qty issue"]:tab==="Purchase Orders"?["Product","Qty ordered","Unit price","Line total"]:["Product","Qty issue"]).map((x,i)=><View key={i} style={i===0?styles.productColumn:styles.numberColumn}><ThemedText style={styles.gridHeading}>{x}</ThemedText></View>)}
+      {!["GRV","Planned Issue"].includes(tab ?? "")?<View style={styles.removeColumn}/>:null}
      </View>
      {lines.map(l=>lineCells(l,tab==="GRV"||tab==="Planned Issue"))}
     </View>
@@ -208,9 +202,9 @@ export default function StockV2Workflow(){
     <TextInput style={styles.input} placeholder="Find product" value={pickerSearch} onChangeText={setPickerSearch}/>
     {products.filter(p=>p.item_name.toLowerCase().startsWith(pickerSearch.trim().toLowerCase())&&!lines.some(x=>x.id!==pickerLine&&x.item_code===p.item_code)).map(p=><Pressable key={p.item_code} style={styles.choice} onPress={()=>{changeLine(pickerLine,"item_code",p.item_code);setPickerLine(null)}}><ThemedText>{p.item_name} ({p.base_unit})</ThemedText></Pressable>)}
    </View>:null}
-   {!["GRV","Planned Issue"].includes(tab)?<Pressable style={styles.add} onPress={addLine}><ThemedText>＋ Add product line</ThemedText></Pressable>:null}
-   {["Purchase Orders","GRV"].includes(tab)?<ThemedText style={styles.total}>Document total: {currency(lines.reduce((s,l)=>s+number(l.quantity)*number(l.unit_price||"0"),0))}</ThemedText>:null}
-   <ThemedText style={styles.label}>Products on this document: {lines.filter(l=>products.some(p=>p.item_code===l.item_code)&&Number(tab==="Spray Programme"?l.rate_per_ha:l.quantity)>0).length} / {lines.length}</ThemedText>
+   {!["GRV","Planned Issue"].includes(tab ?? "")?<Pressable style={styles.add} onPress={addLine}><ThemedText>＋ Add product line</ThemedText></Pressable>:null}
+   {["Purchase Orders","GRV"].includes(tab ?? "")?<ThemedText style={styles.total}>Document total: {currency(lines.reduce((s,l)=>s+number(l.quantity)*number(l.unit_price||"0"),0))}</ThemedText>:null}
+   <ThemedText style={styles.label}>Products on this document: {lines.filter(l=>products.some(p=>p.item_code===l.item_code)&&Number(l.quantity)>0).length} / {lines.length}</ThemedText>
    {status.startsWith("NOT POSTED")?<View style={styles.errorPanel}><ThemedText style={styles.errorText}>{status}</ThemedText></View>:null}
   <View style={styles.footer}><Pressable onPress={()=>setConfirmed(x=>!x)} style={styles.confirm}><ThemedText>{confirmed?"☑":"☐"} Confirm TEST transaction</ThemedText></Pressable><Pressable disabled={!valid||!confirmed||busy} onPress={submit} style={[styles.submit,(!valid||!confirmed||busy)&&styles.off]}><ThemedText style={styles.submitText}>{busy?"Posting…":"Post "+tab}</ThemedText></Pressable></View>
    {!valid?<ThemedText style={styles.alert}>Select a product on every line and enter a positive quantity (or spray rate). Empty documents cannot be posted.</ThemedText>:null}
