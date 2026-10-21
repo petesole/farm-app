@@ -6,7 +6,7 @@ import {supabase} from "../supabase";
 import {jsplColors as C,jsplSpacing as S,jsplRadii as R} from "../constants/jspl-design";
 import {JsplDashboardButton} from "../components/jspl/JsplDashboardButton";
 
-type Dispatch={source_type:string;source_id:string;slip_number:string;dnote_number:string|null;weigh_date:string;net_kg:number;registration_text:string|null;receiving_wb_number:string|null;grv_number:string|null};
+type Dispatch={linked_manual_slips?:string;source_type:string;source_id:string;slip_number:string;dnote_number:string|null;weigh_date:string;net_kg:number;registration_text:string|null;receiving_wb_number:string|null;grv_number:string|null};
 const tonnes=(kg:number)=>(Number(kg)/1000).toFixed(3)+" t";
 const routes=[
  {title:"Manual WB Entry",description:"Create and allocate manual slips",path:"/weighbridge-manual"},
@@ -20,7 +20,7 @@ const routes=[
 ];
 export default function WeighbridgeAdmin(){
  const [allowed,setAllowed]=useState<boolean|null>(null),[rows,setRows]=useState<Dispatch[]>([]),[error,setError]=useState(""),[busy,setBusy]=useState(false),[filter,setFilter]=useState("");
- async function load(){setBusy(true);const r=await supabase.from("wb_unified_dispatch_v").select("source_type,source_id,slip_number,dnote_number,weigh_date,net_kg,registration_text,receiving_wb_number,grv_number").order("weigh_date",{ascending:false}).limit(5000);setBusy(false);if(r.error){setError(r.error.message);return;}setRows((r.data||[]) as Dispatch[]);setError("");}
+ async function load(){setBusy(true);const r=await supabase.from("wb_customer_dispatch_v").select("source_type,source_id,slip_number,dnote_number,weigh_date,net_kg,registration_text,receiving_wb_number,grv_number").order("weigh_date",{ascending:false}).limit(5000);setBusy(false);if(r.error){setError(r.error.message);return;}setRows((r.data||[]) as Dispatch[]);setError("");}
  useEffect(()=>{if(Platform.OS!=="web"){setAllowed(false);return;}let live=true;(async()=>{const u=await supabase.auth.getUser();if(!live)return;if(!u.data.user){setAllowed(false);setError("Sign in first");return;}const p=await supabase.rpc("wb_admin_allowed");if(live){setAllowed(p.data===true&&!p.error);if(p.error)setError(p.error.message)}})();return()=>{live=false}},[]);
  useEffect(()=>{if(allowed)load()},[allowed]);
  const visible=useMemo(()=>rows.filter(x=>[x.dnote_number,x.slip_number,x.registration_text,x.weigh_date].join(" ").toLowerCase().includes(filter.toLowerCase())),[rows,filter]);
