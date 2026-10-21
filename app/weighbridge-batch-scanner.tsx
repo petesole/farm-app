@@ -122,9 +122,13 @@ export default function BatchScanner(){
  }
  async function reopen(b:Batch,open:boolean){setBusy(true);setError("");const x=await supabase.from("wb_scan_batch").update({keep_open:open}).eq("batch_id",b.batch_id);setBusy(false);if(x.error){setError(x.error.message);return;}setMessage(open?"Batch reopened in Active.":"Batch returned to automatic workflow.");await refresh();}
  async function resolveNotice(d:SplitDoc){if(d.document_type!=="rejection_notice")return;setBusy(true);setError("");const x=await supabase.from("wb_scan_document").update({archive_resolved:!d.archive_resolved}).eq("scan_document_id",d.scan_document_id);setBusy(false);if(x.error){setError(x.error.message);return;}await refresh();}
- const visibleBatches=useMemo(()=>batches.filter(b=>{const state=progress.find(p=>p.batch_id===b.batch_id)?.workflow_state||"active";const docsInBatch=splitDocs.filter(d=>d.batch_id===b.batch_id);const hasReady=docsInBatch.some(d=>d.extraction_status==="reviewed"&&(d.document_type==="customer_wb"||d.document_type==="grv")&&!receipts.some(r=>r.scan_document_id===d.scan_document_id&&r.source_id));if(tab==="awaiting_match"?!hasReady||b.is_test:state!==tab)return false;const s=search.trim().toLowerCase();if(!s)return true;const docs=splitDocs.filter(d=>d.batch_id===b.batch_id);
- const docIds=new Set(docs.map(d=>d.scan_document_id));const joined=[b.label,b.created_at,...files.filter(f=>f.batch_id===b.batch_id).map(f=>f.original_filename),...docs.flatMap(d=>[d.document_type,JSON.stringify(d.extracted_data||{})]),...receipts.filter(r=>docIds.has(r.scan_document_id)).flatMap(r=>[r.document_number,r.delivery_note,r.document_date,r.customer])].join(" ").toLowerCase();
- return joined.includes(s)}),[batches,progress,tab,search,splitDocs,files,receipts]);
+ const isLive=(d:SplitDoc)=>batches.some(b=>b.batch_id===d.batch_id&&!b.is_test);
+ const isMatched=(d:SplitDoc)=>receipts.some(r=>r.scan_document_id===d.scan_document_id&&r.source_id);
+ const readyDocs=splitDocs.filter(d=>isLive(d)&&d.extraction_status==="reviewed"&&["customer_wb","grv"].includes(d.document_type)&&!isMatched(d));
+ const activeDocs=splitDocs.filter(d=>isLive(d)&&!isMatched(d)&&!(d.extraction_status==="reviewed"&&["customer_wb","grv"].includes(d.document_type)));
+ const completedOriginal=(b:Batch)=>{const fs=files.filter(f=>f.batch_id===b.batch_id);return fs.length>0&&fs.every(f=>f.page_count!=null&&f.page_count>0&&splitDocs.filter(d=>d.file_id===f.file_id).reduce((n,d)=>n+d.page_end-d.page_start+1,0)>=f.page_count);};
+ const visibleBatches=batches.filter(b=>tab==="test"?b.is_test:tab==="archived"?!b.is_test&&completedOriginal(b):tab==="active"?!b.is_test&&!completedOriginal(b):false).filter(b=>[b.label,b.created_at,...files.filter(f=>f.batch_id===b.batch_id).map(f=>f.original_filename)].join(" ").toLowerCase().includes(search.toLowerCase()));
+ const visibleDocs=(tab==="active"?activeDocs:tab==="awaiting_match"?readyDocs:[]).filter(d=>[d.document_type,JSON.stringify(d.extracted_data||{}),d.page_start].join(" ").toLowerCase().includes(search.toLowerCase()));
  async function openSplit(path:string){const result=await supabase.storage.from("wb-customer-documents").createSignedUrl(path,120);if(result.error){setError(result.error.message);return;}if(typeof window!=="undefined"&&result.data?.signedUrl)window.open(result.data.signedUrl,"_blank");}
  if(Platform.OS!=="web")return <Text>Desktop web only.</Text>;
  if(allowed===null)return <Text style={{padding:20}}>Checking Admin access…</Text>;
@@ -140,9 +144,9 @@ export default function BatchScanner(){
  {message?<Text style={{color:"#166534",marginTop:8}}>{message}</Text>:null}
  {error?<Text style={{color:"#b42318",marginTop:8}}>{error}</Text>:null}
  </View>
- <View style={{flexDirection:"row",flexWrap:"wrap",marginBottom:10}}>{([["active","Active"],["awaiting_match","Awaiting Match"],["archived","History / Archive"],["test","Samples"]] as const).map(([id,label])=><Pressable key={id} onPress={()=>setTab(id)} style={{padding:10,marginRight:8,marginBottom:8,borderRadius:6,backgroundColor:tab===id?C.primaryDark:"white",borderWidth:1,borderColor:C.border}}><Text style={{color:tab===id?"white":C.primaryDark,fontWeight:"bold"}}>{label} ({id==="awaiting_match"?splitDocs.filter(d=>d.extraction_status==="reviewed"&&["customer_wb","grv"].includes(d.document_type)&&batches.some(b=>b.batch_id===d.batch_id&&!b.is_test)&&!receipts.some(r=>r.scan_document_id===d.scan_document_id&&r.source_id)).length:progress.filter(p=>p.workflow_state===id).length})</Text></Pressable>)}</View>
+ <View style={{flexDirection:"row",flexWrap:"wrap",marginBottom:10}}>{([["active","Active"],["awaiting_match","Awaiting Match"],["archived","History / Archive"],["test","Samples"]] as const).map(([id,label])=><Pressable key={id} onPress={()=>setTab(id)} style={{padding:10,marginRight:8,marginBottom:8,borderRadius:6,backgroundColor:tab===id?C.primaryDark:"white",borderWidth:1,borderColor:C.border}}><Text style={{color:tab===id?"white":C.primaryDark,fontWeight:"bold"}}>{label} ({id==="awaiting_match"?readyDocs.length:id==="active"?activeDocs.length+ batches.filter(b=>!b.is_test&&!completedOriginal(b)).length :id==="archived"?batches.filter(b=>!b.is_test&&completedOriginal(b)).length:batches.filter(b=>b.is_test).length})</Text></Pressable>)}</View>
  <TextInput value={search} onChangeText={setSearch} placeholder="Search DNote, WB / GRV number, customer, filename or date" style={{backgroundColor:"white",borderWidth:1,borderColor:C.border,borderRadius:6,padding:11,marginBottom:14}}/>
- <View style={{flexDirection:"row",alignItems:"center",marginBottom:9}}><Text style={{fontSize:19,fontWeight:"bold",flex:1}}>{tab==="archived"?"Archived batches":tab==="test"?"Sample batches":tab==="awaiting_match"?"Ready for dispatch matching":"Active batches"}</Text>{tab==="awaiting_match"?<><Btn name="Receiving Documents — approve readings" go={()=>router.push("/weighbridge-receiving-inbox")}/><Btn name="Match saved documents" go={()=>router.push("/weighbridge-live-matching")}/></>:null}</View>
+ <View style={{flexDirection:"row",alignItems:"center",marginBottom:9}}><Text style={{fontSize:19,fontWeight:"bold",flex:1}}>{tab==="archived"?"Archived originals":tab==="test"?"Sample batches":tab==="awaiting_match"?"Reviewed documents awaiting match":"Original PDFs to split and active documents"}</Text>{tab==="awaiting_match"?<><Btn name="Confirm farm dispatch matches" go={()=>router.push("/weighbridge-unmatched")}/></>:null}</View>
  {visibleBatches.map(b=><View key={b.batch_id} style={{backgroundColor:"white",borderRadius:6,padding:14,marginBottom:9}}>
  <Text style={{fontWeight:"bold"}}>{b.is_test?"[SAMPLE — excluded from live receiving] ":"[LIVE] "}{b.label||"Scanned batch"} · {new Date(b.created_at).toLocaleString("en-GB",{timeZone:"Africa/Harare",day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})}</Text>
  <Text style={{color:"#64748b",marginVertical:5}}>Original documents remain stored unchanged. {progress.find(p=>p.batch_id===b.batch_id)?.matched_count||0} matched · {progress.find(p=>p.batch_id===b.batch_id)?.unmatched_count||0} awaiting match.</Text>
@@ -172,7 +176,7 @@ export default function BatchScanner(){
  </View><View style={{flexDirection:"row",marginTop:10}}><Btn name={busy?"Working…":splitDocs.some(d=>d.file_id===f.file_id&&Number(startPage)<=d.page_end&&Number(endPage)>=d.page_start)?"Pages already saved":"Save these pages as separate document"} go={splitPdf} disabled={busy||splitDocs.some(d=>d.file_id===f.file_id&&Number(startPage)<=d.page_end&&Number(endPage)>=d.page_start)}/></View>
  </View>:null}
  {splitDocs.some(d=>d.file_id===f.file_id)?<Text style={{fontWeight:"bold",marginTop:6}}>Individual documents saved from this batch:</Text>:null}
- {splitDocs.filter(d=>d.file_id===f.file_id&&(tab!=="active"||d.extraction_status!=="reviewed"||!["customer_wb","grv"].includes(d.document_type))&&(tab!=="awaiting_match"||d.extraction_status==="reviewed"&&["customer_wb","grv"].includes(d.document_type)&&!receipts.some(r=>r.scan_document_id===d.scan_document_id&&r.source_id))).sort((a,b)=>a.page_start-b.page_start).map(d=><View key={d.scan_document_id} style={{padding:10,marginTop:5,backgroundColor:"#edf7ed",borderRadius:5}}>
+ {splitDocs.filter(d=>tab==="test"&&d.file_id===f.file_id&&(tab!=="active"||d.extraction_status!=="reviewed"||!["customer_wb","grv"].includes(d.document_type))&&(tab!=="awaiting_match"||d.extraction_status==="reviewed"&&["customer_wb","grv"].includes(d.document_type)&&!receipts.some(r=>r.scan_document_id===d.scan_document_id&&r.source_id))).sort((a,b)=>a.page_start-b.page_start).map(d=><View key={d.scan_document_id} style={{padding:10,marginTop:5,backgroundColor:"#edf7ed",borderRadius:5}}>
  <Text style={{fontWeight:"bold"}}>Pages {d.page_start}–{d.page_end} · {d.document_type==="customer_wb"?"Customer WB":d.document_type==="grv"?"GRV":d.document_type==="rejection_notice"?"Rejection Notice":"Unclassified"}</Text>
  <View style={{flexDirection:"row",alignItems:"center",flexWrap:"wrap",marginTop:7}}>
  <Btn name="Open individual PDF" go={()=>openSplit(d.storage_path)}/>
@@ -198,6 +202,17 @@ export default function BatchScanner(){
  </View>)}
  </View>)}
  </View>)}
- {!visibleBatches.length?<Text style={{color:C.textSecondary}}>No batches in this view.</Text>:null}
+ {visibleDocs.map(d=><View key={d.scan_document_id} style={{padding:14,marginBottom:10,backgroundColor:"white",borderRadius:7}}>
+ <Text style={{fontWeight:"bold",fontSize:16}}>Page {d.page_start}{d.page_end!==d.page_start?"–"+d.page_end:""} · {d.document_type==="grv"?"GRV":d.document_type==="customer_wb"?"Customer WB":d.document_type}</Text>
+ <Text style={{color:C.textSecondary}}>Status: {d.extraction_status} · {String(d.extracted_data?.wb_number||d.extracted_data?.grv_number||"")}</Text>
+ <View style={{flexDirection:"row",flexWrap:"wrap"}}><Btn name="Open PDF" go={()=>openSplit(d.storage_path)}/>
+ {tab==="active"?<><Btn name="Read PDF with AI" go={()=>readDocument(d)} disabled={busy}/>{d.extracted_data?<Btn name="Review reading with PDF" go={()=>startReview(d)}/>:null}</>:<Btn name="Confirm matching farm DNote" go={()=>router.push("/weighbridge-unmatched")}/>}</View>
+ {reviewId===d.scan_document_id?<View style={{padding:10,backgroundColor:"#f4f7fa"}}>
+ <View style={{flexDirection:"row",alignItems:"flex-start",gap:16}}><View style={{width:420}}>
+ {Object.entries(reviewData).map(([k,v])=><View key={k} style={{marginBottom:7}}><Text>{k.replace(/_/g," ")}</Text><TextInput value={v} onChangeText={v=>setReviewData(x=>({...x,[k]:v}))} style={{backgroundColor:"white",padding:8,borderColor:C.border,borderWidth:1}}/></View>)}
+ <Btn name="Save review → Awaiting Match" go={()=>saveReview(d)} disabled={busy}/>
+ </View><View style={{flex:1,minWidth:390}}>{previewUrl?React.createElement("iframe" as any,{src:previewUrl,title:"Original customer scan",style:{width:"100%",height:660,border:"1px solid #ccc"}}):<Text>Loading PDF…</Text>}</View></View>
+ </View>:null}</View>)}
+ {tab==="active"&&visibleDocs.length===0&&visibleBatches.length===0?<Text>No active documents.</Text>:null}
  </ScrollView>;
 }
