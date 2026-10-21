@@ -5,7 +5,7 @@ import {useEffect,useState} from "react";
 import {router} from "expo-router";
 import {Platform,Pressable,ScrollView,Text,TextInput,View} from "react-native";
 import {supabase} from "../supabase";
-type Batch={batch_id:string;created_at:string;label:string|null;status:string};
+type Batch={batch_id:string;created_at:string;label:string|null;status:string;is_test:boolean};
 type FileRow={file_id:string;batch_id:string;original_filename:string;storage_path:string;extraction_status:string;page_count:number|null};
 type SplitDoc={scan_document_id:string;batch_id:string;file_id:string;page_start:number;page_end:number;document_type:string;storage_path:string;extraction_status:string;extracted_data:Record<string,unknown>|null};
 const blue=C.primary;
@@ -21,7 +21,7 @@ export default function BatchScanner(){
  const allowedTypes=["application/pdf","image/jpeg","image/png","image/webp"];if(chosen.some(f=>!allowedTypes.includes(f.type)||f.size>15*1024*1024)){setError("Only PDF/JPG/PNG/WebP files up to 15 MB each.");return;}
  setBusy(true);setMessage("");setError("");
  try{
- const batch=await supabase.from("wb_scan_batch").insert({label:name.trim()||"Scanned customer documents"}).select("batch_id").single();
+ const batch=await supabase.from("wb_scan_batch").insert({label:name.trim()||"Scanned customer documents",is_test:false}).select("batch_id").single();
  if(batch.error||!batch.data)throw new Error(batch.error?.message||"Could not create batch");
  let count=0;const failed:string[]=[];
  for(const f of chosen){
@@ -94,7 +94,7 @@ export default function BatchScanner(){
  </View>
  <Text style={{fontSize:19,fontWeight:"bold",marginBottom:9}}>Saved batches</Text>
  {batches.map(b=><View key={b.batch_id} style={{backgroundColor:"white",borderRadius:6,padding:14,marginBottom:9}}>
- <Text style={{fontWeight:"bold"}}>{b.label||"Scanned batch"} · {new Date(b.created_at).toLocaleString("en-GB",{timeZone:"Africa/Harare",day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})}</Text>
+ <Text style={{fontWeight:"bold"}}>{b.is_test?"[SAMPLE — excluded from live receiving] ":"[LIVE] "}{b.label||"Scanned batch"} · {new Date(b.created_at).toLocaleString("en-GB",{timeZone:"Africa/Harare",day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})}</Text>
  <Text style={{color:"#64748b",marginVertical:5}}>ORIGINAL BATCH (backup) is retained unchanged. Individual documents are listed below each file.</Text>
  {files.filter(f=>f.batch_id===b.batch_id).map(f=><View key={f.file_id} style={{paddingVertical:8,borderTopWidth:1,borderColor:"#edf1f5"}}>
  <Text style={{fontWeight:"bold",marginBottom:5}}>Original batch file: {f.original_filename}</Text><View style={{flexDirection:"row"}}><Btn name="View complete original PDF" go={()=>openOriginal(f)}/></View>
