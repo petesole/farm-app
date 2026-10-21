@@ -117,7 +117,7 @@ export default function BatchScanner(){
  try{
  const out=await supabase.from("wb_scan_document").update({extracted_data:reviewData,extraction_status:"reviewed"}).eq("scan_document_id",d.scan_document_id);
  if(out.error)throw out.error;
- setReviewId(null);setPreviewUrl("");await refresh();setMessage("Reading approved. Open Awaiting Match → Receiving Documents to save and match this delivery.");setTab("awaiting_match");
+ setReviewId(null);setPreviewUrl("");await refresh();setMessage("Reading approved. Go to Awaiting Match and confirm the correct farm dispatch.");setTab("awaiting_match");
  }catch(e:any){setError(e?.message||"Save failed");}finally{setBusy(false)}
  }
  async function reopen(b:Batch,open:boolean){setBusy(true);setError("");const x=await supabase.from("wb_scan_batch").update({keep_open:open}).eq("batch_id",b.batch_id);setBusy(false);if(x.error){setError(x.error.message);return;}setMessage(open?"Batch reopened in Active.":"Batch returned to automatic workflow.");await refresh();}
@@ -144,7 +144,7 @@ export default function BatchScanner(){
  {message?<Text style={{color:"#166534",marginTop:8}}>{message}</Text>:null}
  {error?<Text style={{color:"#b42318",marginTop:8}}>{error}</Text>:null}
  </View>
- <View style={{flexDirection:"row",flexWrap:"wrap",marginBottom:10}}>{([["active","Active"],["awaiting_match","Awaiting Match"],["archived","History / Archive"],["test","Samples"]] as const).map(([id,label])=><Pressable key={id} onPress={()=>setTab(id)} style={{padding:10,marginRight:8,marginBottom:8,borderRadius:6,backgroundColor:tab===id?C.primaryDark:"white",borderWidth:1,borderColor:C.border}}><Text style={{color:tab===id?"white":C.primaryDark,fontWeight:"bold"}}>{label} ({id==="awaiting_match"?readyDocs.length:id==="active"?activeDocs.length+ batches.filter(b=>!b.is_test&&!completedOriginal(b)).length :id==="archived"?batches.filter(b=>!b.is_test&&completedOriginal(b)).length:batches.filter(b=>b.is_test).length})</Text></Pressable>)}</View>
+ <View style={{flexDirection:"row",flexWrap:"wrap",marginBottom:10}}>{([["active","Active"],["awaiting_match","Awaiting Match"],["archived","History / Archive"],["test","Samples"]] as const).map(([id,label])=><Pressable key={id} onPress={()=>setTab(id)} style={{padding:10,marginRight:8,marginBottom:8,borderRadius:6,backgroundColor:tab===id?C.primaryDark:"white",borderWidth:1,borderColor:C.border}}><Text style={{color:tab===id?"white":C.primaryDark,fontWeight:"bold"}}>{label} ({id==="awaiting_match"?readyDocs.length:id==="active"?activeDocs.length :id==="archived"?batches.filter(b=>!b.is_test&&completedOriginal(b)).length:batches.filter(b=>b.is_test).length})</Text></Pressable>)}</View>
  <TextInput value={search} onChangeText={setSearch} placeholder="Search DNote, WB / GRV number, customer, filename or date" style={{backgroundColor:"white",borderWidth:1,borderColor:C.border,borderRadius:6,padding:11,marginBottom:14}}/>
  <View style={{flexDirection:"row",alignItems:"center",marginBottom:9}}><Text style={{fontSize:19,fontWeight:"bold",flex:1}}>{tab==="archived"?"Archived originals":tab==="test"?"Sample batches":tab==="awaiting_match"?"Reviewed documents awaiting match":"Original PDFs to split and active documents"}</Text>{tab==="awaiting_match"?<><Btn name="Confirm farm dispatch matches" go={()=>router.push("/weighbridge-unmatched")}/></>:null}</View>
  {visibleBatches.map(b=><View key={b.batch_id} style={{backgroundColor:"white",borderRadius:6,padding:14,marginBottom:9}}>
