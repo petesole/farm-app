@@ -1,20 +1,23 @@
 import {wbParseDate,wbFormatDate,wbToday} from "../utils/wb-date";
 import {WbModuleHeader} from "../components/jspl/WbModuleHeader";
 import {jsplColors as C} from "../constants/jspl-design";
-import {useEffect,useState} from "react";
+import {useEffect,useMemo,useState} from "react";
 import {router} from "expo-router";
 import {Platform,Pressable,ScrollView,Text,TextInput,View} from "react-native";
 import {supabase} from "../supabase";
 type Batch={batch_id:string;created_at:string;label:string|null;status:string;is_test:boolean};
 type FileRow={file_id:string;batch_id:string;original_filename:string;storage_path:string;extraction_status:string;page_count:number|null};
-type SplitDoc={scan_document_id:string;batch_id:string;file_id:string;page_start:number;page_end:number;document_type:string;storage_path:string;extraction_status:string;extracted_data:Record<string,unknown>|null};
+type Progress={batch_id:string;workflow_state:string;keep_open:boolean;file_count:number;complete_files:number;doc_count:number;matched_count:number;unmatched_count:number;pending_notices:number};
+type Receipt={scan_document_id:string;document_number:string;delivery_note:string|null;document_date:string;customer:string|null;source_id:string|null};
+type SplitDoc={archive_resolved:boolean;scan_document_id:string;batch_id:string;file_id:string;page_start:number;page_end:number;document_type:string;storage_path:string;extraction_status:string;extracted_data:Record<string,unknown>|null};
 const blue=C.primary;
 function Btn({name,go,disabled=false}:{name:string;go:()=>void;disabled?:boolean}){return <Pressable onPress={go} disabled={disabled} style={{backgroundColor:disabled?"#99a8b8":blue,padding:11,borderRadius:5,marginRight:9,marginBottom:8}}><Text style={{fontWeight:"bold",color:"white"}}>{name}</Text></Pressable>}
 export default function BatchScanner(){
+ const [tab,setTab]=useState<"active"|"awaiting_match"|"archived"|"test">("active"),[search,setSearch]=useState(""),[progress,setProgress]=useState<Progress[]>([]),[receipts,setReceipts]=useState<Receipt[]>([]);
  const [reviewId,setReviewId]=useState<string|null>(null),[reviewData,setReviewData]=useState<Record<string,string>>({});
  const [splitDocs,setSplitDocs]=useState<SplitDoc[]>([]),[activeFile,setActiveFile]=useState<string|null>(null),[startPage,setStartPage]=useState("1"),[endPage,setEndPage]=useState("1"),[kind,setKind]=useState("customer_wb");
  const [allowed,setAllowed]=useState<boolean|null>(null),[name,setName]=useState(""),[batches,setBatches]=useState<Batch[]>([]),[files,setFiles]=useState<FileRow[]>([]),[error,setError]=useState(""),[message,setMessage]=useState(""),[busy,setBusy]=useState(false);
- async function refresh(){const [a,b,d]=await Promise.all([supabase.from("wb_scan_batch").select("*").order("created_at",{ascending:false}).limit(100),supabase.from("wb_scan_batch_file").select("*").order("uploaded_at",{ascending:false}).limit(1000),supabase.from("wb_scan_document").select("*").order("created_at",{ascending:false}).limit(1000)]);if(a.error||b.error||d.error){setError(a.error?.message||b.error?.message||d.error?.message||"Unable to load batches");return;}setBatches((a.data||[]) as Batch[]);setFiles((b.data||[]) as FileRow[]);setSplitDocs((d.data||[]) as SplitDoc[]);}
+ async function refresh(){const [a,b,d,p,r]=await Promise.all([supabase.from("wb_scan_batch").select("*").order("created_at",{ascending:false}).limit(100),supabase.from("wb_scan_batch_file").select("*").order("uploaded_at",{ascending:false}).limit(1000),supabase.from("wb_scan_document").select("*").order("created_at",{ascending:false}).limit(1000),supabase.from("wb_scan_batch_progress_v").select("*").limit(1000),supabase.from("wb_received_document").select("scan_document_id,document_number,delivery_note,document_date,customer,source_id").limit(3000)]);if(a.error||b.error||d.error||p.error||r.error){setError(a.error?.message||b.error?.message||d.error?.message||p.error?.message||r.error?.message||"Unable to load batches");return;}setBatches((a.data||[]) as Batch[]);setFiles((b.data||[]) as FileRow[]);setSplitDocs((d.data||[]) as SplitDoc[]);setProgress((p.data||[]) as Progress[]);setReceipts((r.data||[]) as Receipt[]);}
  useEffect(()=>{if(Platform.OS!=="web"){setAllowed(false);return;}let active=true;(async()=>{const u=await supabase.auth.getUser();if(!active)return;if(!u.data.user){setAllowed(false);return;}const a=await supabase.rpc("wb_admin_allowed");if(!active)return;setAllowed(a.data===true&&!a.error);if(a.error)setError(a.error.message)})();return()=>{active=false}},[]);
  useEffect(()=>{if(allowed)refresh()},[allowed]);
  function selectFiles(){if(typeof document==="undefined"||busy)return;const input=document.createElement("input");input.type="file";input.multiple=true;input.accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*";input.onchange=async()=>{const chosen=Array.from(input.files||[]);if(!chosen.length)return;
@@ -77,6 +80,11 @@ export default function BatchScanner(){
  setReviewId(null);await refresh();setMessage("Reviewed extraction saved to the PDF only; not posted to WB or GRV records.");
  }catch(e:any){setError(e?.message||"Save failed");}finally{setBusy(false)}
  }
+ async function reopen(b:Batch,open:boolean){setBusy(true);setError("");const x=await supabase.from("wb_scan_batch").update({keep_open:open}).eq("batch_id",b.batch_id);setBusy(false);if(x.error){setError(x.error.message);return;}setMessage(open?"Batch reopened in Active.":"Batch returned to automatic workflow.");await refresh();}
+ async function resolveNotice(d:SplitDoc){if(d.document_type!=="rejection_notice")return;setBusy(true);setError("");const x=await supabase.from("wb_scan_document").update({archive_resolved:!d.archive_resolved}).eq("scan_document_id",d.scan_document_id);setBusy(false);if(x.error){setError(x.error.message);return;}await refresh();}
+ const visibleBatches=useMemo(()=>batches.filter(b=>{const state=progress.find(p=>p.batch_id===b.batch_id)?.workflow_state||"active";if(state!==tab)return false;const s=search.trim().toLowerCase();if(!s)return true;const docs=splitDocs.filter(d=>d.batch_id===b.batch_id);
+ const docIds=new Set(docs.map(d=>d.scan_document_id));const joined=[b.label,b.created_at,...files.filter(f=>f.batch_id===b.batch_id).map(f=>f.original_filename),...docs.flatMap(d=>[d.document_type,JSON.stringify(d.extracted_data||{})]),...receipts.filter(r=>docIds.has(r.scan_document_id)).flatMap(r=>[r.document_number,r.delivery_note,r.document_date,r.customer])].join(" ").toLowerCase();
+ return joined.includes(s)}),[batches,progress,tab,search,splitDocs,files,receipts]);
  async function openSplit(path:string){const result=await supabase.storage.from("wb-customer-documents").createSignedUrl(path,120);if(result.error){setError(result.error.message);return;}if(typeof window!=="undefined"&&result.data?.signedUrl)window.open(result.data.signedUrl,"_blank");}
  if(Platform.OS!=="web")return <Text>Desktop web only.</Text>;
  if(allowed===null)return <Text style={{padding:20}}>Checking Admin access…</Text>;
@@ -92,10 +100,13 @@ export default function BatchScanner(){
  {message?<Text style={{color:"#166534",marginTop:8}}>{message}</Text>:null}
  {error?<Text style={{color:"#b42318",marginTop:8}}>{error}</Text>:null}
  </View>
- <Text style={{fontSize:19,fontWeight:"bold",marginBottom:9}}>Saved batches</Text>
- {batches.map(b=><View key={b.batch_id} style={{backgroundColor:"white",borderRadius:6,padding:14,marginBottom:9}}>
+ <View style={{flexDirection:"row",flexWrap:"wrap",marginBottom:10}}>{([["active","Active"],["awaiting_match","Awaiting Match"],["archived","History / Archive"],["test","Samples"]] as const).map(([id,label])=><Pressable key={id} onPress={()=>setTab(id)} style={{padding:10,marginRight:8,marginBottom:8,borderRadius:6,backgroundColor:tab===id?C.primaryDark:"white",borderWidth:1,borderColor:C.border}}><Text style={{color:tab===id?"white":C.primaryDark,fontWeight:"bold"}}>{label} ({progress.filter(p=>p.workflow_state===id).length})</Text></Pressable>)}</View>
+ <TextInput value={search} onChangeText={setSearch} placeholder="Search DNote, WB / GRV number, customer, filename or date" style={{backgroundColor:"white",borderWidth:1,borderColor:C.border,borderRadius:6,padding:11,marginBottom:14}}/>
+ <View style={{flexDirection:"row",alignItems:"center",marginBottom:9}}><Text style={{fontSize:19,fontWeight:"bold",flex:1}}>{tab==="archived"?"Archived batches":tab==="test"?"Sample batches":tab==="awaiting_match"?"Ready for dispatch matching":"Active batches"}</Text>{tab==="awaiting_match"?<Btn name="Match live documents" go={()=>router.push("/weighbridge-live-matching")}/>:null}</View>
+ {visibleBatches.map(b=><View key={b.batch_id} style={{backgroundColor:"white",borderRadius:6,padding:14,marginBottom:9}}>
  <Text style={{fontWeight:"bold"}}>{b.is_test?"[SAMPLE — excluded from live receiving] ":"[LIVE] "}{b.label||"Scanned batch"} · {new Date(b.created_at).toLocaleString("en-GB",{timeZone:"Africa/Harare",day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})}</Text>
- <Text style={{color:"#64748b",marginVertical:5}}>ORIGINAL BATCH (backup) is retained unchanged. Individual documents are listed below each file.</Text>
+ <Text style={{color:"#64748b",marginVertical:5}}>Original documents remain stored unchanged. {progress.find(p=>p.batch_id===b.batch_id)?.matched_count||0} matched · {progress.find(p=>p.batch_id===b.batch_id)?.unmatched_count||0} awaiting match.</Text>
+ <View style={{flexDirection:"row",flexWrap:"wrap"}}>{tab==="archived"?<Btn name="Reopen batch" go={()=>reopen(b,true)} disabled={busy}/>:tab==="active"&&b.is_test===false&&progress.find(p=>p.batch_id===b.batch_id)?.keep_open?<Btn name="Resume automatic archiving" go={()=>reopen(b,false)} disabled={busy}/>:null}</View>
  {files.filter(f=>f.batch_id===b.batch_id).map(f=><View key={f.file_id} style={{paddingVertical:8,borderTopWidth:1,borderColor:"#edf1f5"}}>
  <Text style={{fontWeight:"bold",marginBottom:5}}>Original batch file: {f.original_filename}</Text><View style={{flexDirection:"row"}}><Btn name="View complete original PDF" go={()=>openOriginal(f)}/></View>
  {f.page_count!=null&&splitDocs.filter(d=>d.file_id===f.file_id).reduce((n,d)=>n+d.page_end-d.page_start+1,0)>=f.page_count?<Text style={{color:"#166534",fontWeight:"bold",marginVertical:8}}>All {f.page_count} pages separated</Text>:<View style={{flexDirection:"row",marginTop:7}}><Btn name={activeFile===f.file_id?"Hide split options":"Separate PDF pages"} go={()=>{setActiveFile(activeFile===f.file_id?null:f.file_id);setStartPage(String(Math.max(0,...splitDocs.filter(d=>d.file_id===f.file_id).map(d=>d.page_end))+1));setEndPage(String(Math.max(0,...splitDocs.filter(d=>d.file_id===f.file_id).map(d=>d.page_end))+1))}}/></View>}
@@ -115,6 +126,7 @@ export default function BatchScanner(){
  <Text style={{marginRight:8,marginBottom:8}}>Change type:</Text>
  {["customer_wb","grv","unknown"].map(t=><Pressable key={t} disabled={busy||d.document_type===t} onPress={()=>changeType(d,t)} style={{padding:9,marginRight:6,marginBottom:8,borderRadius:4,borderWidth:1,borderColor:d.document_type===t?"#15803d":"#9aabb8",backgroundColor:d.document_type===t?"#d4f4de":"white",opacity:busy?0.6:1}}><Text style={{fontWeight:d.document_type===t?"bold":"normal"}}>{t==="customer_wb"?"Customer WB":t==="grv"?"GRV":t==="rejection_notice"?"Rejection Notice":"Unclassified"}{d.document_type===t?" ✓":""}</Text></Pressable>)}
  </View>
+ {d.document_type==="rejection_notice"?<View style={{flexDirection:"row",alignItems:"center",marginTop:7}}><Btn name={d.archive_resolved?"Reopen rejection notice":"Mark rejection notice resolved"} go={()=>resolveNotice(d)} disabled={busy}/><Text style={{color:"#64748b"}}>Resolution does not count as returned stock.</Text></View>:null}
  <View style={{flexDirection:"row",marginTop:5}}>
  <Btn name={busy?"Working…":"Read PDF with AI"} go={()=>readDocument(d)} disabled={busy}/>
  {d.extracted_data?<Btn name="Review reading" go={()=>{setReviewId(d.scan_document_id);setReviewData(Object.fromEntries(Object.entries(d.extracted_data||{}).filter(([k])=>k!=="uncertain_fields").map(([k,v])=>[k,v==null?"":String(v)])))}}/>:null}
@@ -131,6 +143,6 @@ export default function BatchScanner(){
  </View>)}
  </View>)}
  </View>)}
- {!batches.length?<Text>No batches uploaded yet.</Text>:null}
+ {!visibleBatches.length?<Text style={{color:C.textSecondary}}>No batches in this view.</Text>:null}
  </ScrollView>;
 }
