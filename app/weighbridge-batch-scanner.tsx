@@ -156,7 +156,7 @@ export default function BatchScanner(){
  </View>)}
  <View style={{flexDirection:"row",alignItems:"center"}}><Btn name={busy?(splitting||"Processing…"):"Confirm & split all selected documents"} go={()=>splitConfirmed(f)} disabled={busy}/><Btn name="Cancel" go={()=>setPlans(old=>({...old,[f.file_id]:[]}))} disabled={busy}/></View>
  </View>:null}
- {activeFile===f.file_id?<View style={{padding:10,backgroundColor:"#f4f7fc"}}>
+ {activeFile===f.file_id&&!plans[f.file_id]?.length?<View style={{padding:10,backgroundColor:"#f4f7fc"}}>
  <Text style={{fontWeight:"bold",marginBottom:6}}>Pages in original PDF: {f.page_count??"not yet determined"}</Text><Text style={{marginBottom:8}}>For a five-page scan containing five one-page Customer WB slips, save pages 1, 2, 3, 4 and 5 individually. After each save, the next page is selected automatically. Already saved pages cannot be saved again.</Text>
  <View style={{flexDirection:"row",alignItems:"center",flexWrap:"wrap"}}>
  <Text style={{marginRight:6}}>From page</Text><TextInput value={startPage} onChangeText={setStartPage} style={{borderWidth:1,borderColor:"#bdc8d7",backgroundColor:"white",padding:8,width:60,marginRight:12}}/>
