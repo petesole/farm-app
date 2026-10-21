@@ -1,3 +1,5 @@
+import {WbModuleHeader} from "../components/jspl/WbModuleHeader";
+import {jsplColors as C} from "../constants/jspl-design";
 import {useEffect,useMemo,useState} from "react";
 import {Platform,Pressable,ScrollView,Text,TextInput,View} from "react-native";
 import {supabase} from "../supabase";
@@ -13,11 +15,12 @@ export default function DailyDnotes(){
  const loads=useMemo(()=>{const map=new Map<string,Load>();for(const r of data){const key=r.source+":"+r.source_id;let l=map.get(key);if(!l){l={key,source:r.source,dnote:r.dnote||"",wbSlip:r.wb_slip||"",crop:r.crop_name||"",movement:r.movement_kind||"",registration:r.registration_text||"",kg:Number(r.load_kg),alloc:[]};map.set(key,l)}if(r.tracecode_id!=null)l.alloc.push({name:r.tracecode_name||String(r.tracecode_id),kg:Number(r.allocation_kg||0)})}return [...map.values()].sort((a,b)=>{const chunks=(s:string)=>s.match(/\d+|\D+/g)||[];const x=chunks(a.dnote),y=chunks(b.dnote);for(let i=0;i<Math.max(x.length,y.length);i++){if(x[i]==null)return -1;if(y[i]==null)return 1;let diff=/^\d+$/.test(x[i])&&/^\d+$/.test(y[i])?Number(x[i])-Number(y[i]):x[i].localeCompare(y[i]);if(diff)return diff}return a.key.localeCompare(b.key)})},[data]);
  const total=loads.reduce((a,x)=>a+x.kg,0),allocated=loads.reduce((a,x)=>a+x.alloc.reduce((s,b)=>s+b.kg,0),0);
  function exportCsv(){if(typeof document==="undefined")return;const headings=["Date","DNote","WB Slip","Source","Crop","Movement","Truck","Nett kg","Nett t","TraceCode","Allocation kg","Allocation t"];const lines=[headings,...loads.flatMap(l=>(l.alloc.length?l.alloc:[{name:"",kg:0}]).map((a,i)=>[parseDate(day)||day,l.dnote,l.wbSlip,l.source,l.crop,l.movement,l.registration,i===0?l.kg:"",i===0?l.kg/1000:"",a.name,a.name?a.kg:"",a.name?a.kg/1000:""]))].map(row=>row.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(",")).join("\r\n");const url=URL.createObjectURL(new Blob(["\ufeff",lines],{type:"text/csv;charset=utf-8"}));const a=document.createElement("a");a.href=url;a.download="Daily_DNotes_"+(parseDate(day)||"date")+".csv";a.click();URL.revokeObjectURL(url)}
- const btn=(name:string,onPress:()=>void)=><Pressable onPress={onPress} style={{padding:10,backgroundColor:"#17609f",borderRadius:5,marginRight:9}}><Text style={{color:"white",fontWeight:"bold"}}>{name}</Text></Pressable>;
+ const btn=(name:string,onPress:()=>void)=><Pressable onPress={onPress} style={{padding:10,backgroundColor:C.primary,borderRadius:5,marginRight:9}}><Text style={{color:"white",fontWeight:"bold"}}>{name}</Text></Pressable>;
  if(Platform.OS!=="web")return <Text>Desktop web only.</Text>;
  if(allowed===null)return <Text style={{padding:24}}>Checking Admin access…</Text>;
  if(!allowed)return <Text style={{padding:24}}>Daily DNotes Report — Admin only.</Text>;
- return <ScrollView style={{flex:1,backgroundColor:"#f5f7fa"}} contentContainerStyle={{padding:22,minWidth:1020}}>
+ return <ScrollView style={{flex:1,backgroundColor:C.background}} contentContainerStyle={{padding:22,minWidth:1020}}>
+ <WbModuleHeader title="Daily DNotes"/>
  <Text style={{fontSize:26,fontWeight:"bold",marginBottom:6}}>Daily DNotes — Tonnage & Trace Allocations</Text>
  <Text style={{color:"#667085",marginBottom:14}}>Completed WB computer and manual slips · Ordered by DNote number · Zimbabwe local date</Text>
  <View style={{flexDirection:"row",alignItems:"center",marginBottom:14}}><Text style={{marginRight:10}}>Date:</Text><TextInput value={day} onChangeText={setDay} style={{borderWidth:1,borderColor:"#c9d3df",padding:10,backgroundColor:"white",width:170,marginRight:12}}/>{btn("Today",()=>setDay(localToday()))}{btn("Print",()=>{if(typeof window!=="undefined")window.print()})}{btn("Excel / CSV",exportCsv)}</View>
