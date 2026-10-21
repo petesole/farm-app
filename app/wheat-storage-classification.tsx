@@ -5,13 +5,13 @@ import {supabase} from "../supabase";
 import {jsplColors as C} from "../constants/jspl-design";
 type Season={season_id:number;season_name:string};
 type Entry={entry_id:number;season_id:number;entry_date:string;entry_type:string;source_class:string|null;destination_class:string;quantity_kg:number;reason:string;notes:string;created_at:string};
-const classes=[["SEED","Seed Wheat"],["COMMERCIAL","Commercial Wheat"],["MIXED","Mixed / Unclassified Wheat"]] as const;
+const classes=[["SEED","Seed Wheat"],["COMMERCIAL","Commercial Wheat"]] as const;
 const label=(v:string|null)=>classes.find(x=>x[0]===v)?.[1]||"—";
 const fmt=(n:number)=>(n/1000).toLocaleString("en-US",{minimumFractionDigits:3,maximumFractionDigits:3});
 function B({text,click,disabled=false}:{text:string;click:()=>void;disabled?:boolean}){return <Pressable onPress={click} disabled={disabled} style={{padding:10,backgroundColor:disabled?"#94a3a3":C.primary,marginRight:9,marginBottom:9,borderRadius:6}}><Text style={{color:"white",fontWeight:"bold"}}>{text}</Text></Pressable>}
 export default function WheatStorage(){
  const [ok,setOk]=useState<boolean|null>(null),[seasons,setSeasons]=useState<Season[]>([]),[entries,setEntries]=useState<Entry[]>([]);
- const [season,setSeason]=useState(""),[mode,setMode]=useState("TRANSFER"),[from,setFrom]=useState("MIXED"),[to,setTo]=useState("COMMERCIAL"),[kg,setKg]=useState(""),[day,setDay]=useState(new Date().toISOString().slice(0,10)),[reason,setReason]=useState(""),[notes,setNotes]=useState(""),[error,setError]=useState(""),[success,setSuccess]=useState(""),[busy,setBusy]=useState(false);
+ const [season,setSeason]=useState(""),[mode,setMode]=useState("OPENING"),[from,setFrom]=useState("SEED"),[to,setTo]=useState("COMMERCIAL"),[kg,setKg]=useState(""),[day,setDay]=useState(new Date().toISOString().slice(0,10)),[reason,setReason]=useState(""),[notes,setNotes]=useState(""),[error,setError]=useState(""),[success,setSuccess]=useState(""),[busy,setBusy]=useState(false);
  async function refresh(){const [s,e]=await Promise.all([supabase.from("season").select("season_id,season_name").order("season_id",{ascending:false}),supabase.from("wheat_storage_classification_entry").select("*").order("entry_date",{ascending:false}).order("entry_id",{ascending:false}).limit(2000)]);if(s.error||e.error){setError(s.error?.message||e.error?.message||"Unable to load");return;}setSeasons((s.data||[]) as Season[]);setEntries((e.data||[]) as Entry[]);}
  useEffect(()=>{let active=true;(async()=>{const u=await supabase.auth.getUser();if(!u.data.user){if(active)setOk(false);return;}const r=await supabase.rpc("wb_admin_allowed");if(active)setOk(r.data===true&&!r.error)})();return()=>{active=false}},[]);
  useEffect(()=>{if(ok)refresh()},[ok]);
@@ -23,9 +23,10 @@ export default function WheatStorage(){
  if(Platform.OS!=="web")return <Text>Desktop web only.</Text>;if(ok===null)return <Text>Checking access…</Text>;if(!ok)return <Text>Admin access required.</Text>;
  return <ScrollView style={{flex:1,backgroundColor:C.background}} contentContainerStyle={{padding:24,minWidth:860}}>
  <View style={{flexDirection:"row",alignItems:"center",marginBottom:12}}><Text style={{fontSize:23,fontWeight:"bold",flex:1,color:C.primaryDark}}>Wheat Storage Classification</Text><B text="Back to Dashboard" click={()=>router.push("/weighbridge")}/></View>
- <Text style={{color:C.textSecondary,marginBottom:14}}>Separate classification ledger only. No individual WB slip is needed. No changes to WB computer slips, field allocations or physical grain totals.</Text>
+ <Text style={{color:C.textSecondary,marginBottom:14}}>Standalone seed/commercial wheat classification. Enter opening classified stock quantities first, then transfer between the two. No WB slip is needed and no WB records are changed.</Text>
  <Text style={{fontWeight:"bold",marginBottom:6}}>Season</Text>
  <View style={{flexDirection:"row",flexWrap:"wrap",marginBottom:12}}>{seasons.filter(s=>s.season_name==="Winter26"||s.season_name==="Winter25"||history.some(e=>e.season_id===s.season_id)).map(s=><B key={s.season_id} text={s.season_name+(season===String(s.season_id)?" ✓":"")} click={()=>setSeason(String(s.season_id))}/>)}</View>
+ {!history.length?<Text style={{color:"#a16207",fontWeight:"bold",marginBottom:12}}>No classification entries yet. Balances start at zero until you enter the opening Seed Wheat and Commercial Wheat quantities for this season. These are separate from WB physical stock totals.</Text>:null}
  <View style={{flexDirection:"row",gap:12,marginBottom:18}}>{classes.map(([id,title])=><View key={id} style={{flex:1,backgroundColor:"white",padding:17,borderRadius:8}}><Text style={{fontWeight:"bold",marginBottom:8}}>{title}</Text><Text style={{fontSize:24,fontWeight:"bold",color:C.primaryDark}}>{fmt(balances[id]||0)} t</Text></View>)}</View>
  <View style={{backgroundColor:"white",padding:18,borderRadius:8,marginBottom:15}}>
  <Text style={{fontSize:18,fontWeight:"bold",marginBottom:9}}>New classification entry</Text>
