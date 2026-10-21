@@ -6,7 +6,7 @@ import {WbModuleHeader} from "../components/jspl/WbModuleHeader";
 import {jsplColors as C} from "../constants/jspl-design";
 import {wbFormatDate} from "../utils/wb-date";
 type Scan={scan_document_id:string;batch_id:string;document_type:string;extraction_status:string;extracted_data:Record<string,unknown>|null;storage_path:string;page_start:number;page_end:number};
-type Dispatch={source_type:string;source_id:string;slip_number:string;dnote_number:string|null;weigh_date:string;net_kg:number;registration_text:string|null;receiving_wb_number:string|null;grv_number:string|null};
+type Dispatch={source_type:string;source_id:string;slip_number:string;dnote_number:string|null;weigh_date:string;net_kg:number;registration_text:string|null;receiving_wb_number:string|null;grv_number:string|null;own_slip_kg:number;linked_field_kg:number;linked_manual_slips:string};
 type Receipt={scan_document_id:string;source_id:string|null};
 const n=(x:unknown)=>String(x??"").replace(/[^a-zA-Z0-9]/g,"").toUpperCase();
 const str=(x:unknown)=>String(x??"");
@@ -16,7 +16,7 @@ export default function UnmatchedDocuments(){
  const params=useLocalSearchParams<{scan?:string}>();
  const [preview,setPreview]=useState("");
  const [authorized,setAuthorized]=useState<boolean|null>(null),[scans,setScans]=useState<Scan[]>([]),[receipts,setReceipts]=useState<Receipt[]>([]),[loads,setLoads]=useState<Dispatch[]>([]),[samples,setSamples]=useState<string[]>([]),[selected,setSelected]=useState(""),[chosen,setChosen]=useState(""),[query,setQuery]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState(""),[info,setInfo]=useState("");
- async function refresh(){const [s,r,d,b]=await Promise.all([supabase.from("wb_scan_document").select("scan_document_id,batch_id,document_type,extraction_status,extracted_data,storage_path,page_start,page_end").eq("extraction_status","reviewed").limit(3000),supabase.from("wb_received_document").select("scan_document_id,source_id").limit(3000),supabase.from("wb_unified_dispatch_v").select("source_type,source_id,slip_number,dnote_number,weigh_date,net_kg,registration_text,receiving_wb_number,grv_number").order("weigh_date",{ascending:false}).limit(3000),supabase.from("wb_scan_batch").select("batch_id").eq("is_test",true)]);if(s.error||r.error||d.error||b.error){setError(s.error?.message||r.error?.message||d.error?.message||b.error?.message||"Load failed");return;}setScans((s.data||[]) as Scan[]);setReceipts((r.data||[]) as Receipt[]);setLoads(((d.data||[]) as Dispatch[]).filter(x=>x.source_type==="scale"||x.source_type==="manual"));setSamples((b.data||[]).map(x=>x.batch_id));}
+ async function refresh(){const [s,r,d,b]=await Promise.all([supabase.from("wb_scan_document").select("scan_document_id,batch_id,document_type,extraction_status,extracted_data,storage_path,page_start,page_end").eq("extraction_status","reviewed").limit(3000),supabase.from("wb_received_document").select("scan_document_id,source_id").limit(3000),supabase.from("wb_customer_dispatch_v").select("source_type,source_id,slip_number,dnote_number,weigh_date,net_kg,registration_text,receiving_wb_number,grv_number,own_slip_kg,linked_field_kg,linked_manual_slips").order("weigh_date",{ascending:false}).limit(3000),supabase.from("wb_scan_batch").select("batch_id").eq("is_test",true)]);if(s.error||r.error||d.error||b.error){setError(s.error?.message||r.error?.message||d.error?.message||b.error?.message||"Load failed");return;}setScans((s.data||[]) as Scan[]);setReceipts((r.data||[]) as Receipt[]);setLoads(((d.data||[]) as Dispatch[]).filter(x=>x.source_type==="scale"||x.source_type==="manual"));setSamples((b.data||[]).map(x=>x.batch_id));}
  useEffect(()=>{let live=true;(async()=>{const u=await supabase.auth.getUser();if(!u.data.user){if(live)setAuthorized(false);return;}const r=await supabase.rpc("wb_admin_allowed");if(live)setAuthorized(r.data===true&&!r.error)})();return()=>{live=false}},[]);
  useEffect(()=>{if(authorized)refresh()},[authorized]);
  useEffect(()=>{if(typeof params.scan==="string"&&params.scan)setSelected(params.scan)},[params.scan]);
@@ -61,7 +61,7 @@ export default function UnmatchedDocuments(){
  <ScrollView style={{maxHeight:580}}>
  {choices.map(d=><Pressable key={d.source_type+":"+d.source_id} onPress={()=>setChosen(d.source_type+":"+d.source_id)} style={{padding:11,marginBottom:7,borderWidth:1,borderRadius:6,borderColor:chosen===d.source_type+":"+d.source_id?C.primary:C.border,backgroundColor:chosen===d.source_type+":"+d.source_id?C.successTint:"white"}}>
  <Text style={{fontWeight:"bold"}}>{chosen===d.source_type+":"+d.source_id?"✓ ":""}DNote {d.dnote_number||"—"} · Slip {d.slip_number}</Text>
- <Text>{Number(d.net_kg).toLocaleString()} kg · {wbFormatDate(d.weigh_date)} · {d.registration_text||"No vehicle"}</Text>
+ <Text>{Number(d.net_kg).toLocaleString()} kg · {wbFormatDate(d.weigh_date)} · {d.registration_text||"No vehicle"}</Text>{Number(d.linked_field_kg)>0?<Text style={{color:C.primaryDark}}>Combined truck: WB {Number(d.own_slip_kg).toLocaleString()} kg + {d.linked_manual_slips} {Number(d.linked_field_kg).toLocaleString()} kg</Text>:null}
  <Text style={{color:C.textSecondary}}>{d.reason.join(", ")||"No matching indicators — verify manually"}</Text>
  </Pressable>)}
  {!choices.length?<Text>No available dispatches match the search. Clear the search to see all.</Text>:null}
