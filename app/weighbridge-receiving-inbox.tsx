@@ -1,10 +1,12 @@
+import {WbModuleHeader} from "../components/jspl/WbModuleHeader";
+import {jsplColors as C} from "../constants/jspl-design";
 import {useEffect,useState} from "react";
 import {router} from "expo-router";
 import {Platform,Pressable,ScrollView,Text,TextInput,View} from "react-native";
 import {supabase} from "../supabase";
 type Scan={scan_document_id:string;document_type:string;page_start:number;page_end:number;extraction_status:string;extracted_data:Record<string,unknown>|null;original_filename:string;storage_path:string};
 type Receipt={received_id:string;scan_document_id:string;document_type:string;document_number:string;document_date:string;net_kg:number;delivery_note:string|null;vehicle_reg:string|null;customer_wb_id:string|null;source_id:string|null};
-const blue="#155b9c";
+const blue=C.primary;
 function Button({label,onPress,disabled=false}:{label:string;onPress:()=>void;disabled?:boolean}){return <Pressable disabled={disabled} onPress={onPress} style={{padding:10,backgroundColor:disabled?"#a9b2bc":blue,borderRadius:5,marginRight:8,marginBottom:8}}><Text style={{color:"white",fontWeight:"bold"}}>{label}</Text></Pressable>}
 const val=(x:unknown)=>x===null||x===undefined?"":String(x);
 const date=(x:string)=>/^\d{4}-\d{2}-\d{2}$/.test(x)&&!isNaN(Date.parse(x))?x:null;
@@ -29,7 +31,8 @@ export default function ReceiptInbox(){
  catch(e:any){setError(e.message||"Could not save");}finally{setBusy(false)}
  }
  if(Platform.OS!=="web")return <Text>Desktop web only.</Text>;if(authorized===null)return <Text>Checking access…</Text>;if(!authorized)return <Text>WB Admin only.</Text>;
- return <ScrollView style={{backgroundColor:"#f4f6f9",flex:1}} contentContainerStyle={{padding:20,minWidth:900}}>
+ return <ScrollView style={{backgroundColor:C.background,flex:1}} contentContainerStyle={{padding:20,minWidth:900}}>
+ <WbModuleHeader title="Receiving Documents"/>
  <Text style={{fontSize:25,fontWeight:"bold",marginBottom:8}}>Customer Receiving Documents</Text>
  <Text style={{color:"#526173",marginBottom:12}}>Approve reviewed Customer WB and GRV scans independently of the John Sole weighbridge. Linking a GRV to a Customer WB does not automatically allocate a farm dispatch or change Out DNote / Out GRV totals.</Text>
  <View style={{flexDirection:"row"}}><Button label="Back to Batch Scanner" onPress={()=>router.push("/weighbridge-batch-scanner")}/><Button label="Delivery Report" onPress={()=>router.push("/weighbridge-delivery-report")}/><Button label="Refresh" onPress={refresh}/></View>
