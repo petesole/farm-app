@@ -1,3 +1,4 @@
+import {wbParseDate,wbFormatDate,wbToday} from "../utils/wb-date";
 import {WbModuleHeader} from "../components/jspl/WbModuleHeader";
 import {jsplColors as C} from "../constants/jspl-design";
 import {useEffect,useState} from "react";
@@ -93,7 +94,7 @@ export default function BatchScanner(){
  </View>
  <Text style={{fontSize:19,fontWeight:"bold",marginBottom:9}}>Saved batches</Text>
  {batches.map(b=><View key={b.batch_id} style={{backgroundColor:"white",borderRadius:6,padding:14,marginBottom:9}}>
- <Text style={{fontWeight:"bold"}}>{b.label||"Scanned batch"} · {new Date(b.created_at).toLocaleString("en-GB")}</Text>
+ <Text style={{fontWeight:"bold"}}>{b.label||"Scanned batch"} · {new Date(b.created_at).toLocaleString("en-GB",{timeZone:"Africa/Harare",day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})}</Text>
  <Text style={{color:"#64748b",marginVertical:5}}>ORIGINAL BATCH (backup) is retained unchanged. Individual documents are listed below each file.</Text>
  {files.filter(f=>f.batch_id===b.batch_id).map(f=><View key={f.file_id} style={{paddingVertical:8,borderTopWidth:1,borderColor:"#edf1f5"}}>
  <Text style={{fontWeight:"bold",marginBottom:5}}>Original batch file: {f.original_filename}</Text><View style={{flexDirection:"row"}}><Btn name="View complete original PDF" go={()=>openOriginal(f)}/></View>
