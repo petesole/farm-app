@@ -1,3 +1,5 @@
+import {WbModuleHeader} from "../components/jspl/WbModuleHeader";
+import {jsplColors as C} from "../constants/jspl-design";
 import { useEffect, useMemo, useState } from "react";
 import { Platform, ScrollView, Text, TextInput, Pressable, View } from "react-native";
 import { supabase } from "../supabase";
@@ -54,7 +56,8 @@ export default function ManualWeighbridge(){
  if(allowed===null)return <Text style={{padding:25}}>Checking Admin access…</Text>;
  if(!allowed)return <Text style={{padding:25}}>Manual Weighbridge — Admin only. {error}</Text>;
  const locked=selected?.status==="completed";
- return <ScrollView style={{backgroundColor:"#f4f6f9",flex:1}} contentContainerStyle={{padding:22,minWidth:1020}}>
+ return <ScrollView style={{backgroundColor:C.background,flex:1}} contentContainerStyle={{padding:22,minWidth:1020}}>
+ <WbModuleHeader title="Manual Weighbridge"/>
  <Text style={{fontWeight:"bold",fontSize:25,color:"#20304b"}}>John Sole P/L — Manual Weighbridge</Text>
  <Text style={{marginBottom:18,color:"#667085"}}>Desktop only · Manual date and nett kilograms · TraceCode allocations · Admin access</Text>
  {error?<Text style={{color:"#bb2525",marginBottom:10}}>{error}</Text>:null}
