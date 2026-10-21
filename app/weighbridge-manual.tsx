@@ -1,3 +1,4 @@
+import {wbParseDate,wbFormatDate,wbToday} from "../utils/wb-date";
 import {WbModuleHeader} from "../components/jspl/WbModuleHeader";
 import {jsplColors as C} from "../constants/jspl-design";
 import { useEffect, useMemo, useState } from "react";
@@ -15,8 +16,8 @@ type Driver={driver_id:number;driver_name:string};
 type Entry={season_id:number|null;manual_entry_id:string;dnote_number:string;slip_date:string;crop_id:number|null;registration_text:string;status:string;net_kg:number;transporter_id:number|null;vehicle_reg_id:number|null;driver_id:number|null;notes:string|null;owner_type:string;third_party_name:string|null;origin_type:string;destination_type:string;movement_kind:string;customer_id:number|null;delivery_point_id:number|null;moisture_pct:number|null;harvest_class_id:number|null};
 type Allocation={manual_allocation_id:number;manual_entry_id:string;tracecode_id:number;allocated_kg:number};
 const field={borderWidth:1,borderColor:"#ccd3dd",padding:9,borderRadius:5,backgroundColor:"white",minWidth:180} as const;
-const dateParse=(v:string)=>{const match=v.trim().match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?$/);if(!match)return /^\d{4}-\d{2}-\d{2}$/.test(v)?v:null;const y=match[3]?Number(match[3].length===2?"20"+match[3]:match[3]):new Date().getFullYear(),m=+match[2],d=+match[1];const dt=new Date(Date.UTC(y,m-1,d));return dt.getUTCFullYear()===y&&dt.getUTCMonth()===m-1&&dt.getUTCDate()===d?`${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`:null};
-const dateDisplay=(v:string)=>v?/^\d{4}-\d{2}-\d{2}$/.test(v)?v:`${v.slice(8,10)}/${v.slice(5,7)}/${v.slice(0,4)}`:"";
+const dateParse=wbParseDate;
+const dateDisplay=wbFormatDate;
 const num=(v:string)=>v.trim()===""?NaN:Number(v);
 const empty=()=>({dnote_number:"",slip_date:"",season_id:"",crop_id:"",transporter_id:"",vehicle_reg_id:"",driver_id:"",registration_text:"",net_kg:"",notes:"",owner_type:"own",third_party_name:"",origin_type:"FIELD",destination_type:"farm_stock",movement_kind:"HARVEST_IN",customer_id:"",delivery_point_id:"",moisture_pct:"",harvest_class_id:""});
 function Button({title,onPress,disabled=false}:{title:string;onPress:()=>void;disabled?:boolean}){return <Pressable disabled={disabled} onPress={onPress} style={{padding:10,backgroundColor:disabled?"#a6b1bf":"#18599a",borderRadius:5,marginRight:8,marginTop:8}}><Text style={{color:"#fff",fontWeight:"bold"}}>{title}</Text></Pressable>}
