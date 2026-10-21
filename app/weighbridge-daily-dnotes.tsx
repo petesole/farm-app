@@ -1,5 +1,6 @@
 import {wbParseDate,wbFormatDate,wbToday} from "../utils/wb-date";
 import {WbModuleHeader} from "../components/jspl/WbModuleHeader";
+import {WbLastSync} from "../components/jspl/WbLastSync";
 import {jsplColors as C} from "../constants/jspl-design";
 import {useEffect,useMemo,useState} from "react";
 import {Platform,Pressable,ScrollView,Text,TextInput,View} from "react-native";
@@ -21,7 +22,7 @@ export default function DailyDnotes(){
  if(allowed===null)return <Text style={{padding:24}}>Checking Admin access…</Text>;
  if(!allowed)return <Text style={{padding:24}}>Daily DNotes Report — Admin only.</Text>;
  return <ScrollView style={{flex:1,backgroundColor:C.background}} contentContainerStyle={{padding:22,minWidth:1020}}>
- <WbModuleHeader title="Daily DNotes"/>
+ <WbModuleHeader title="Daily DNotes" right={<WbLastSync refreshKey={data.length}/>}/>
  <Text style={{fontSize:26,fontWeight:"bold",marginBottom:6}}>Daily DNotes — Tonnage & Trace Allocations</Text>
  <Text style={{color:"#667085",marginBottom:14}}>Completed WB computer and manual slips · Ordered by DNote number · Zimbabwe local date</Text>
  <View style={{flexDirection:"row",alignItems:"center",marginBottom:14}}><Text style={{marginRight:10}}>Date (DD/MM/YYYY):</Text><TextInput value={day} onChangeText={setDay} style={{borderWidth:1,borderColor:"#c9d3df",padding:10,backgroundColor:"white",width:170,marginRight:12}}/>{btn("Today",()=>setDay(localToday()))}{btn("Print",()=>{if(typeof window!=="undefined")window.print()})}{btn("Excel / CSV",exportCsv)}</View>
