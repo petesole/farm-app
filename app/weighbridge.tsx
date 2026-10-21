@@ -13,6 +13,7 @@ const routes=[
  {title:"Crop Report",description:"Harvest production by TraceCode",path:"/weighbridge-crop-report"},
  {title:"Delivery Report",description:"Customer WB and GRV records",path:"/weighbridge-delivery-report"},
  {title:"Transporter Report",description:"Seasonal rates, billed loads and GMB transport losses",path:"/weighbridge-transporter-report"},
+ {title:"Wheat Storage Classification",description:"Separate seed, commercial and mixed wheat ledger",path:"/wheat-storage-classification"},
  {title:"Daily DNotes",description:"Daily slip and allocation report",path:"/weighbridge-daily-dnotes"},
  {title:"Batch Scanner",description:"Scan and read customer documents",path:"/weighbridge-batch-scanner"},
  {title:"Return Reconciliation",description:"Match dispatches and actual returns",path:"/weighbridge-return-reconciliation"},
