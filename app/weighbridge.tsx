@@ -1,3 +1,4 @@
+import {wbParseDate,wbFormatDate,wbToday} from "../utils/wb-date";
 import {useEffect,useMemo,useState} from "react";
 import {router} from "expo-router";
 import {Image,Platform,Pressable,ScrollView,Text,TextInput,View} from "react-native";
@@ -41,7 +42,7 @@ export default function WeighbridgeAdmin(){
  <View style={{flexDirection:"row",alignItems:"center",marginBottom:S.md}}><Text style={{fontSize:19,fontWeight:"800",color:C.primaryDark,flex:1}}>Delivery document status</Text><TextInput placeholder="Search DNote, slip or truck" value={filter} onChangeText={setFilter} style={{width:280,padding:10,borderWidth:1,borderColor:C.border,borderRadius:R.sm,color:C.text}}/></View>
  <View style={{flexDirection:"row",backgroundColor:C.successTint,padding:10}}>{([["DNote",210],["Slip",90],["Date",115],["Truck",135],["Weight",115],["Customer WB",145],["GRV",135]] as [string,number][]).map(([s,w])=><Text key={s} style={{width:w,color:C.primaryDark,fontWeight:"800"}}>{s}</Text>)}</View>
  {visible.map(row=><Pressable key={row.source_type+":"+row.source_id} onPress={()=>router.push("/weighbridge-delivery-report")} style={{flexDirection:"row",padding:10,borderBottomWidth:1,borderColor:C.border}}>
- {([ [row.dnote_number||"—",210],[row.slip_number,90],[row.weigh_date,115],[row.registration_text||"—",135],[tonnes(row.net_kg),115],[row.receiving_wb_number||"Outstanding",145],[row.grv_number||"Outstanding",135]] as [string,number][]).map(([v,w],i)=><Text key={i} style={{width:w,color:i>=5&&v==="Outstanding"?C.danger:C.text}}>{v}</Text>)}
+ {([ [row.dnote_number||"—",210],[row.slip_number,90],[wbFormatDate(row.weigh_date),115],[row.registration_text||"—",135],[tonnes(row.net_kg),115],[row.receiving_wb_number||"Outstanding",145],[row.grv_number||"Outstanding",135]] as [string,number][]).map(([v,w],i)=><Text key={i} style={{width:w,color:i>=5&&v==="Outstanding"?C.danger:C.text}}>{v}</Text>)}
  </Pressable>)}
  {!busy&&!visible.length?<Text style={{padding:14,color:C.textSecondary}}>No matching dispatch records.</Text>:null}
  <Text style={{color:C.textSecondary,marginTop:S.md,fontSize:12}}>Out DNote and Out GRV are independent. Returning grain to stock does not clear required customer paperwork. Open the Delivery Report to enter or match customer documents.</Text>
