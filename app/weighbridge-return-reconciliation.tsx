@@ -1,3 +1,5 @@
+import {WbModuleHeader} from "../components/jspl/WbModuleHeader";
+import {jsplColors as C} from "../constants/jspl-design";
 import {useEffect,useState} from "react";
 import {router} from "expo-router";
 import {Platform,Pressable,ScrollView,Text,TextInput,View} from "react-native";
@@ -21,7 +23,8 @@ export default function Reconcile(){
  async function linkDoc(id:string,kind:"customer_wb"|"grv"){if(!current||busy)return;const d=docs.find(x=>x.received_id===id&&x.document_type===kind);if(!d)return;if(d.source_id&&(d.source_id!==current.source_id||d.source_type!==current.source_type)){setError("This document is already linked to another dispatch.");return;}setBusy(true);setError("");const r=await supabase.from("wb_received_document").update({source_type:current.source_type,source_id:current.source_id}).eq("received_id",id);setBusy(false);if(r.error){setError(r.error.message);return;}setInfo("Document linked. Return weighing was not changed.");await load();}
  if(Platform.OS!=="web")return <Text>Desktop web only.</Text>;if(allowed===null)return <Text>Checking admin access…</Text>;if(!allowed)return <Text>Weighbridge Admin only.</Text>;
  const matches=dispatch.filter(x=>[x.dnote_number,x.slip_number,x.customer_wb_number].join(" ").toLowerCase().includes(search.toLowerCase())).slice(0,250);
- return <ScrollView style={{backgroundColor:"#f5f7fa",flex:1}} contentContainerStyle={{padding:20,minWidth:950}}>
+ return <ScrollView style={{backgroundColor:C.background,flex:1}} contentContainerStyle={{padding:20,minWidth:950}}>
+ <WbModuleHeader title="Return Reconciliation"/>
  <Text style={{fontSize:24,fontWeight:"bold",marginBottom:10}}>Dispatch & Return Reconciliation</Text>
  <Text style={{marginBottom:12}}>A returned load does not clear Out DNote or Out GRV. Customer documentation is required independently. Physical differences use the actual weighed return kilograms.</Text>
  <View style={{flexDirection:"row"}}>{button("Receiving Documents",()=>router.push("/weighbridge-receiving-inbox"))}{button("Delivery Report",()=>router.push("/weighbridge-delivery-report"))}{button("Refresh",load)}</View>
