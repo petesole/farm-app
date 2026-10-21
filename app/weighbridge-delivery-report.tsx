@@ -1,3 +1,5 @@
+import {WbModuleHeader} from "../components/jspl/WbModuleHeader";
+import {jsplColors as C} from "../constants/jspl-design";
 import {useEffect,useMemo,useState} from "react";
 import {Platform,Pressable,ScrollView,Text,TextInput,View} from "react-native";
 import {supabase} from "../supabase";
@@ -9,7 +11,7 @@ const input={borderWidth:1,borderColor:"#bec8d5",borderRadius:4,backgroundColor:
 const money=(v:number|null)=>v==null?"—":Number(v).toLocaleString("en-US");
 const date=(v:string)=>{if(!v.trim())return null;if(/^\d{4}-\d{2}-\d{2}$/.test(v))return v;const m=v.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?$/);if(!m)return null;const y=Number(m[3]||new Date().getFullYear()),mo=+m[2],d=+m[1];const x=new Date(Date.UTC(y,mo-1,d));return x.getUTCFullYear()===y&&x.getUTCMonth()===mo-1&&x.getUTCDate()===d?`${y}-${String(mo).padStart(2,"0")}-${String(d).padStart(2,"0")}`:null};
 const showDate=(s:string|null)=>s?s.slice(8,10)+"/"+s.slice(5,7)+"/"+s.slice(0,4):"";
-function B({label,click}:{label:string;click:()=>void}){return <Pressable onPress={click} style={{backgroundColor:"#165a9c",borderRadius:5,padding:10,marginRight:10,marginBottom:9}}><Text style={{color:"#fff",fontWeight:"bold"}}>{label}</Text></Pressable>}
+function B({label,click}:{label:string;click:()=>void}){return <Pressable onPress={click} style={{backgroundColor:C.primary,borderRadius:5,padding:10,marginRight:10,marginBottom:9}}><Text style={{color:"#fff",fontWeight:"bold"}}>{label}</Text></Pressable>}
 function F({label,value,onChange}:{label:string;value:string;onChange:(x:string)=>void}){return <View style={{marginRight:12,marginBottom:10}}><Text style={{color:"#59677a",fontSize:12,marginBottom:4}}>{label}</Text><TextInput style={input} value={value} onChangeText={onChange}/></View>}
 export default function Deliveries(){
  const [departureDate,setDepartureDate]=useState(""),[matchWeight,setMatchWeight]=useState(""),[matching,setMatching]=useState(false),[matchPrefill,setMatchPrefill]=useState<string|null>(null);
@@ -62,7 +64,8 @@ export default function Deliveries(){
  }
  async function openDocument(doc:Doc){const r=await supabase.storage.from("wb-customer-documents").createSignedUrl(doc.storage_path,60);if(r.error){setError(r.error.message);return;}if(typeof window!=="undefined"&&r.data?.signedUrl)window.open(r.data.signedUrl,"_blank");}
  if(Platform.OS!=="web")return <Text>Desktop only</Text>;if(ok===null)return <Text>Checking Admin access…</Text>;if(!ok)return <Text style={{padding:20}}>Weighbridge Delivery Report — Admin only.</Text>;
- return <ScrollView style={{backgroundColor:"#f5f7fa",flex:1}} contentContainerStyle={{padding:20,minWidth:1080}}>
+ return <ScrollView style={{backgroundColor:C.background,flex:1}} contentContainerStyle={{padding:20,minWidth:1080}}>
+ <WbModuleHeader title="Delivery Report"/>
  <Text style={{fontWeight:"bold",fontSize:25,marginBottom:8}}>Weighbridge — Delivery Report</Text>
  <Text style={{color:"#697386",marginBottom:14}}>WB computer + Manual Weighbridge + legacy farm slips. Each source appears once. Customer WB and GRV are entered and saved separately against the same farm dispatch.</Text>
  <Text style={{fontSize:16,marginBottom:10}}>Dispatches: {rows.length}   |   Outstanding customer WB: {outDel}   |   Outstanding GRVs: {outGrv}   |   Season unassigned: {rows.filter(r=>r.season_id==null).length}</Text>
