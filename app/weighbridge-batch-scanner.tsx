@@ -1,3 +1,5 @@
+import {WbModuleHeader} from "../components/jspl/WbModuleHeader";
+import {jsplColors as C} from "../constants/jspl-design";
 import {useEffect,useState} from "react";
 import {router} from "expo-router";
 import {Platform,Pressable,ScrollView,Text,TextInput,View} from "react-native";
@@ -5,7 +7,7 @@ import {supabase} from "../supabase";
 type Batch={batch_id:string;created_at:string;label:string|null;status:string};
 type FileRow={file_id:string;batch_id:string;original_filename:string;storage_path:string;extraction_status:string;page_count:number|null};
 type SplitDoc={scan_document_id:string;batch_id:string;file_id:string;page_start:number;page_end:number;document_type:string;storage_path:string;extraction_status:string;extracted_data:Record<string,unknown>|null};
-const blue="#175a9e";
+const blue=C.primary;
 function Btn({name,go,disabled=false}:{name:string;go:()=>void;disabled?:boolean}){return <Pressable onPress={go} disabled={disabled} style={{backgroundColor:disabled?"#99a8b8":blue,padding:11,borderRadius:5,marginRight:9,marginBottom:8}}><Text style={{fontWeight:"bold",color:"white"}}>{name}</Text></Pressable>}
 export default function BatchScanner(){
  const [reviewId,setReviewId]=useState<string|null>(null),[reviewData,setReviewData]=useState<Record<string,string>>({});
@@ -78,7 +80,8 @@ export default function BatchScanner(){
  if(Platform.OS!=="web")return <Text>Desktop web only.</Text>;
  if(allowed===null)return <Text style={{padding:20}}>Checking Admin access…</Text>;
  if(!allowed)return <Text style={{padding:20}}>Batch Scanner — Admin only.</Text>;
- return <ScrollView style={{flex:1,backgroundColor:"#f4f6f9"}} contentContainerStyle={{padding:22,minWidth:860}}>
+ return <ScrollView style={{flex:1,backgroundColor:C.background}} contentContainerStyle={{padding:22,minWidth:860}}>
+ <WbModuleHeader title="Batch Scanner"/>
  <Text style={{fontSize:25,fontWeight:"bold",marginBottom:8}}>Customer WB & GRV — Batch Scanner</Text>
  <Text style={{color:"#64748b",marginBottom:16}}>Upload original batches, then choose page ranges to save as individual Customer WB or GRV PDFs. Automatic separation is not active. Read each saved PDF with AI, then review and correct the values before saving. Nothing is posted automatically to WB or GRV records.</Text>
  <View style={{backgroundColor:"white",padding:16,borderRadius:7,marginBottom:16}}>
