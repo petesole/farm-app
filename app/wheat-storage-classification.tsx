@@ -32,7 +32,7 @@ export default function WheatStorage(){
  <Text style={{fontSize:18,fontWeight:"bold",marginBottom:9}}>Transfer wheat between classifications</Text>
 
  <Text style={{color:C.textSecondary,marginBottom:10}}>This adjusts the seed/commercial split only. No opening balances or individual WB slips required.</Text>
- {<><Text style={{fontWeight:"bold"}}>From</Text><View style={{flexDirection:"row",flexWrap:"wrap"}}>{classes.map(([id,title])=><B key={id} text={title+(from===id?" ✓":"")} click={()=>setFrom(id)}/>)}</View></>:null}
+ <Text style={{fontWeight:"bold"}}>From</Text><View style={{flexDirection:"row",flexWrap:"wrap"}}>{classes.map(([id,title])=><B key={id} text={title+(from===id?" ✓":"")} click={()=>setFrom(id)}/>)}</View>
  <Text style={{fontWeight:"bold"}}>To</Text><View style={{flexDirection:"row",flexWrap:"wrap"}}>{classes.map(([id,title])=><B key={id} text={title+(to===id?" ✓":"")} click={()=>setTo(id)}/>)}</View>
  <View style={{flexDirection:"row",gap:12,flexWrap:"wrap"}}><View><Text>Date (YYYY-MM-DD)</Text><TextInput value={day} onChangeText={setDay} style={{padding:10,borderWidth:1,borderColor:C.border,width:170}}/></View><View><Text>Quantity (kg)</Text><TextInput value={kg} onChangeText={setKg} keyboardType="decimal-pad" placeholder="e.g. 6000" style={{padding:10,borderWidth:1,borderColor:C.border,width:170}}/></View></View>
  <Text>Reason (required)</Text><TextInput value={reason} onChangeText={setReason} placeholder="e.g. Seed downgraded to commercial" style={{padding:10,borderWidth:1,borderColor:C.border,maxWidth:600,marginBottom:8}}/>
