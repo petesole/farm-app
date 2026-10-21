@@ -5,6 +5,7 @@ import {useEffect,useMemo,useState} from "react";
 import {router} from "expo-router";
 import {Platform,Pressable,ScrollView,Text,TextInput,View} from "react-native";
 import {supabase} from "../supabase";
+type SplitPlan={start:number;end:number;type:string};
 type Batch={batch_id:string;created_at:string;label:string|null;status:string;is_test:boolean};
 type FileRow={file_id:string;batch_id:string;original_filename:string;storage_path:string;extraction_status:string;page_count:number|null};
 type Progress={batch_id:string;workflow_state:string;keep_open:boolean;file_count:number;complete_files:number;doc_count:number;matched_count:number;unmatched_count:number;pending_notices:number};
@@ -14,6 +15,7 @@ const blue=C.primary;
 function Btn({name,go,disabled=false}:{name:string;go:()=>void;disabled?:boolean}){return <Pressable onPress={go} disabled={disabled} style={{backgroundColor:disabled?"#99a8b8":blue,padding:11,borderRadius:5,marginRight:9,marginBottom:8}}><Text style={{fontWeight:"bold",color:"white"}}>{name}</Text></Pressable>}
 export default function BatchScanner(){
  const [tab,setTab]=useState<"active"|"awaiting_match"|"archived"|"test">("active"),[search,setSearch]=useState(""),[progress,setProgress]=useState<Progress[]>([]),[receipts,setReceipts]=useState<Receipt[]>([]);
+ const [plans,setPlans]=useState<Record<string,SplitPlan[]>>({}),[splitting,setSplitting]=useState("");
  const [reviewId,setReviewId]=useState<string|null>(null),[reviewData,setReviewData]=useState<Record<string,string>>({});
  const [splitDocs,setSplitDocs]=useState<SplitDoc[]>([]),[activeFile,setActiveFile]=useState<string|null>(null),[startPage,setStartPage]=useState("1"),[endPage,setEndPage]=useState("1"),[kind,setKind]=useState("customer_wb");
  const [allowed,setAllowed]=useState<boolean|null>(null),[name,setName]=useState(""),[batches,setBatches]=useState<Batch[]>([]),[files,setFiles]=useState<FileRow[]>([]),[error,setError]=useState(""),[message,setMessage]=useState(""),[busy,setBusy]=useState(false);
@@ -50,6 +52,37 @@ export default function BatchScanner(){
  setBusy(false);if(result.error||result.data?.error){setError(result.data?.error||result.error?.message||"PDF split failed");return;}
  setMessage("Individual PDF saved, pages "+start+"–"+end+". The original batch remains unchanged.");
  await refresh();const pages=Number(result.data?.total_pages)||maxPages;if(pages&&end>=pages){setActiveFile(null);setMessage("All "+pages+" pages have been separated. The complete original PDF is retained.");}else{setStartPage(String(end+1));setEndPage(String(end+1));}
+ }
+ function prepareAllPages(f:FileRow){
+  if(!f.page_count||f.page_count<1){setError("Page count is not available yet. Open the original PDF and use the existing page-range splitter.");return;}
+  const occupied=new Set<number>();splitDocs.filter(x=>x.file_id===f.file_id).forEach(x=>{for(let i=x.page_start;i<=x.page_end;i++)occupied.add(i)});
+  const next:SplitPlan[]=[];for(let i=1;i<=f.page_count;i++)if(!occupied.has(i))next.push({start:i,end:i,type:"customer_wb"});
+  setPlans(old=>({...old,[f.file_id]:next}));setActiveFile(f.file_id);setError("");setMessage("Confirm the document type of each page, and combine neighbouring pages if one document spans more than one page.");
+ }
+ function updatePlan(fileId:string,index:number,type:string){setPlans(old=>({...old,[fileId]:(old[fileId]||[]).map((p,i)=>i===index?{...p,type}:p)}))}
+ function mergeNext(fileId:string,index:number){
+  const plan=plans[fileId]||[];if(index>=plan.length-1||plan[index].end+1!==plan[index+1].start)return;
+  setPlans(old=>({...old,[fileId]:[...plan.slice(0,index),{...plan[index],end:plan[index+1].end},...plan.slice(index+2)]}));
+ }
+ function separatePlan(fileId:string,index:number){
+  const plan=plans[fileId]||[],item=plan[index];if(!item||item.start===item.end)return;
+  const items=Array.from({length:item.end-item.start+1},(_,i)=>({start:item.start+i,end:item.start+i,type:item.type}));
+  setPlans(old=>({...old,[fileId]:[...plan.slice(0,index),...items,...plan.slice(index+1)]}));
+ }
+ async function splitConfirmed(f:FileRow){
+  if(busy||!plans[f.file_id]?.length)return;
+  const work=plans[f.file_id].filter(p=>p.type!=="skip");if(!work.length){setError("Choose at least one page to split.");return;}
+  if(work.some(p=>splitDocs.some(d=>d.file_id===f.file_id&&p.start<=d.page_end&&p.end>=d.page_start))){setError("Some pages have already been split. Refresh and prepare again.");return;}
+  setBusy(true);setError("");let count=0;const failed:string[]=[];
+  for(const p of work){
+   setSplitting("Splitting pages "+p.start+(p.end>p.start?"–"+p.end:"")+" ("+(count+1)+"/"+work.length+")");
+   try{const res=await supabase.functions.invoke("wb-document-split",{body:{file_id:f.file_id,page_start:p.start,page_end:p.end,document_type:p.type}});
+    if(res.error||res.data?.error)throw new Error(res.data?.error||res.error?.message||"Split failed");count++;
+   }catch(e:any){failed.push("Pages "+p.start+"–"+p.end+": "+(e?.message||"Error"));}
+  }
+  setBusy(false);setSplitting("");setPlans(old=>({...old,[f.file_id]:[]}));setActiveFile(null);await refresh();
+  setMessage(count+" of "+work.length+" documents split. "+(failed.length?"Failed pages remain available to retry.":"All confirmed documents saved."));
+  if(failed.length)setError(failed.join("; "));
  }
  async function changeType(d:SplitDoc,newType:string){
  if(d.document_type===newType||busy)return;
@@ -110,6 +143,19 @@ export default function BatchScanner(){
  {files.filter(f=>f.batch_id===b.batch_id).map(f=><View key={f.file_id} style={{paddingVertical:8,borderTopWidth:1,borderColor:"#edf1f5"}}>
  <Text style={{fontWeight:"bold",marginBottom:5}}>Original batch file: {f.original_filename}</Text><View style={{flexDirection:"row"}}><Btn name="View complete original PDF" go={()=>openOriginal(f)}/></View>
  {f.page_count!=null&&splitDocs.filter(d=>d.file_id===f.file_id).reduce((n,d)=>n+d.page_end-d.page_start+1,0)>=f.page_count?<Text style={{color:"#166534",fontWeight:"bold",marginVertical:8}}>All {f.page_count} pages separated</Text>:<View style={{flexDirection:"row",marginTop:7}}><Btn name={activeFile===f.file_id?"Hide split options":"Separate PDF pages"} go={()=>{setActiveFile(activeFile===f.file_id?null:f.file_id);setStartPage(String(Math.max(0,...splitDocs.filter(d=>d.file_id===f.file_id).map(d=>d.page_end))+1));setEndPage(String(Math.max(0,...splitDocs.filter(d=>d.file_id===f.file_id).map(d=>d.page_end))+1))}}/></View>}
+ {f.page_count!=null&&f.page_count>0&&splitDocs.filter(d=>d.file_id===f.file_id).reduce((n,d)=>n+d.page_end-d.page_start+1,0)<f.page_count?<Btn name="Confirm all pages and split together" go={()=>prepareAllPages(f)} disabled={busy}/>:null}
+ {activeFile===f.file_id&&plans[f.file_id]?.length>0?<View style={{padding:12,backgroundColor:"#edf7ed",marginBottom:12,borderWidth:1,borderColor:C.border}}>
+ <Text style={{fontSize:16,fontWeight:"bold",marginBottom:8}}>Confirm each document before splitting ({plans[f.file_id].length} groups)</Text>
+ <Text style={{color:C.textSecondary,marginBottom:10}}>Each page is a separate Customer WB by default. Change its type; merge consecutive pages if they belong to the same document. Skipped pages remain unsplit.</Text>
+ {plans[f.file_id].map((p,i)=><View key={p.start} style={{padding:8,marginBottom:6,backgroundColor:"white",borderRadius:5}}>
+ <Text style={{fontWeight:"bold",marginBottom:6}}>Page {p.start}{p.end>p.start?"–"+p.end:""}</Text>
+ <View style={{flexDirection:"row",flexWrap:"wrap"}}>
+ {([["customer_wb","Customer WB"],["grv","GRV"],["rejection_notice","Rejection"],["unknown","Unknown"],["skip","Skip"]] as const).map(([value,label])=><Pressable key={value} onPress={()=>updatePlan(f.file_id,i,value)} style={{padding:8,marginRight:6,marginBottom:6,borderWidth:1,borderRadius:5,borderColor:p.type===value?C.primary:C.border,backgroundColor:p.type===value?C.successTint:"white"}}><Text>{label}{p.type===value?" ✓":""}</Text></Pressable>)}
+ </View>
+ <View style={{flexDirection:"row"}}>{i<plans[f.file_id].length-1&&p.end+1===plans[f.file_id][i+1].start?<Btn name="Merge with next page" go={()=>mergeNext(f.file_id,i)} disabled={busy}/>:null}{p.end>p.start?<Btn name="Separate pages" go={()=>separatePlan(f.file_id,i)} disabled={busy}/>:null}</View>
+ </View>)}
+ <View style={{flexDirection:"row",alignItems:"center"}}><Btn name={busy?(splitting||"Processing…"):"Confirm & split all selected documents"} go={()=>splitConfirmed(f)} disabled={busy}/><Btn name="Cancel" go={()=>setPlans(old=>({...old,[f.file_id]:[]}))} disabled={busy}/></View>
+ </View>:null}
  {activeFile===f.file_id?<View style={{padding:10,backgroundColor:"#f4f7fc"}}>
  <Text style={{fontWeight:"bold",marginBottom:6}}>Pages in original PDF: {f.page_count??"not yet determined"}</Text><Text style={{marginBottom:8}}>For a five-page scan containing five one-page Customer WB slips, save pages 1, 2, 3, 4 and 5 individually. After each save, the next page is selected automatically. Already saved pages cannot be saved again.</Text>
  <View style={{flexDirection:"row",alignItems:"center",flexWrap:"wrap"}}>
