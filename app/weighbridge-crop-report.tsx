@@ -1,3 +1,5 @@
+import {WbModuleHeader} from "../components/jspl/WbModuleHeader";
+import {jsplColors as C} from "../constants/jspl-design";
 import { useEffect,useMemo,useState } from "react";
 import { Platform,Pressable,ScrollView,Text,TextInput,View } from "react-native";
 import { supabase } from "../supabase";
@@ -8,7 +10,7 @@ const fmt=(v:number|null|undefined,n=2)=>v==null?"—":Number(v).toLocaleString(
 const dt=(d:string|null)=>d?/^\d{4}-\d{2}-\d{2}$/.test(d)?d:d.slice(8,10)+"/"+d.slice(5,7)+"/"+d.slice(0,4):"—";
 const columns=["Crop","Farm","Variety","TraceCode","Irrigation","Plant Pop","Actual Planting","Ha","Harvested (t)","Harvest t/ha","Expected t/ha","Delivered t/ha","Financial t/ha"];
 const cell=(v:string|number,key:string,align:"left"|"right"="left")=><View key={key} style={{width:key==="name"?145:key==="date"?130:110,padding:8,borderRightWidth:1,borderRightColor:"#d4dbe3",justifyContent:"center"}}><Text style={{color:"#243247",textAlign:align}}>{v}</Text></View>;
-function Btn({label,fn}:{label:string;fn:()=>void}){return <Pressable onPress={fn} style={{paddingVertical:10,paddingHorizontal:18,marginRight:10,borderRadius:5,backgroundColor:"#cbeaff",borderWidth:1,borderColor:"#80baf0"}}><Text>{label}</Text></Pressable>}
+function Btn({label,fn}:{label:string;fn:()=>void}){return <Pressable onPress={fn} style={{paddingVertical:10,paddingHorizontal:18,marginRight:10,borderRadius:5,backgroundColor:C.successTint,borderWidth:1,borderColor:"#80baf0"}}><Text>{label}</Text></Pressable>}
 export default function CropReport(){
  const [expected,setExpected]=useState<Expected[]>([]),[moistCrop,setMoistCrop]=useState(""),[moistValue,setMoistValue]=useState("");
  const [auth,setAuth]=useState<boolean|null>(null),[seasons,setSeasons]=useState<Season[]>([]),[season,setSeason]=useState(""),[rows,setRows]=useState<CropRow[]>([]),[filter,setFilter]=useState(""),[err,setErr]=useState(""),[busy,setBusy]=useState(false);
@@ -29,7 +31,8 @@ export default function CropReport(){
  if(Platform.OS!=="web")return <Text style={{padding:20}}>Crop Report is available on desktop web.</Text>;
  if(auth===null)return <Text style={{padding:20}}>Checking Admin access…</Text>;
  if(!auth)return <Text style={{padding:20}}>Crop Report — Admin only. {err}</Text>;
- return <ScrollView style={{flex:1,backgroundColor:"#f5f7fa"}} contentContainerStyle={{minWidth:1450,padding:18}}>
+ return <ScrollView style={{flex:1,backgroundColor:C.background}} contentContainerStyle={{minWidth:1450,padding:18}}>
+ <WbModuleHeader title="Crop Report"/>
  <View style={{flexDirection:"row",alignItems:"center",marginBottom:15,flexWrap:"wrap"}}>
  <Text style={{fontSize:29,fontWeight:"bold",color:"#1c2d40",marginRight:25}}>Crop Report {seasons.find(s=>String(s.season_id)===season)?.season_name||""}</Text>
  <Btn label="Print" fn={()=>{if(typeof window!=="undefined")window.print()}}/><Btn label="Excel / CSV" fn={csv}/>
