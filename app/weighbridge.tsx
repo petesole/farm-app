@@ -14,7 +14,8 @@ const routes=[
  {title:"Delivery Report",description:"Customer WB and GRV records",path:"/weighbridge-delivery-report"},
  {title:"Daily DNotes",description:"Daily slip and allocation report",path:"/weighbridge-daily-dnotes"},
  {title:"Batch Scanner",description:"Scan and read customer documents",path:"/weighbridge-batch-scanner"},
- {title:"Receiving Documents",description:"Save independently reviewed receipts",path:"/weighbridge-receiving-inbox"},
+ {title:"Receiving Documents",description:"Review and save live customer paperwork",path:"/weighbridge-receiving-inbox"},
+ {title:"Match Live Documents",description:"Confirm WB / GRV against farm dispatches",path:"/weighbridge-live-matching"},
  {title:"Return Reconciliation",description:"Match dispatches and actual returns",path:"/weighbridge-return-reconciliation"},
 ];
 export default function WeighbridgeAdmin(){
