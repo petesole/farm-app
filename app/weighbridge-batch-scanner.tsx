@@ -206,7 +206,7 @@ export default function BatchScanner(){
  <Text style={{fontWeight:"bold",fontSize:16}}>Page {d.page_start}{d.page_end!==d.page_start?"–"+d.page_end:""} · {d.document_type==="grv"?"GRV":d.document_type==="customer_wb"?"Customer WB":d.document_type}</Text>
  <Text style={{color:C.textSecondary}}>Status: {d.extraction_status} · {String(d.extracted_data?.wb_number||d.extracted_data?.grv_number||"")}</Text>
  <View style={{flexDirection:"row",flexWrap:"wrap"}}><Btn name="Open PDF" go={()=>openSplit(d.storage_path)}/>
- {tab==="active"?<><Btn name="Read PDF with AI" go={()=>readDocument(d)} disabled={busy}/>{d.extracted_data?<Btn name="Review reading with PDF" go={()=>startReview(d)}/>:null}</>:<Btn name="Confirm matching farm DNote" go={()=>router.push("/weighbridge-unmatched")}/>}</View>
+ {tab==="active"?<><Btn name="Read PDF with AI" go={()=>readDocument(d)} disabled={busy}/>{d.extracted_data?<Btn name="Review reading with PDF" go={()=>startReview(d)}/>:null}</>:<Btn name="Confirm matching DNote" go={()=>router.push(("/weighbridge-unmatched?scan="+encodeURIComponent(d.scan_document_id)) as any)}/>}</View>
  {reviewId===d.scan_document_id?<View style={{padding:10,backgroundColor:"#f4f7fa"}}>
  <View style={{flexDirection:"row",alignItems:"flex-start",gap:16}}><View style={{width:420}}>
  {Object.entries(reviewData).map(([k,v])=><View key={k} style={{marginBottom:7}}><Text>{k.replace(/_/g," ")}</Text><TextInput value={v} onChangeText={v=>setReviewData(x=>({...x,[k]:v}))} style={{backgroundColor:"white",padding:8,borderColor:C.border,borderWidth:1}}/></View>)}
