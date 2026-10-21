@@ -5,6 +5,7 @@ import {Image,Platform,Pressable,ScrollView,Text,TextInput,View} from "react-nat
 import {supabase} from "../supabase";
 import {jsplColors as C,jsplSpacing as S,jsplRadii as R} from "../constants/jspl-design";
 import {JsplDashboardButton} from "../components/jspl/JsplDashboardButton";
+import {WbLastSync} from "../components/jspl/WbLastSync";
 
 type Dispatch={linked_manual_slips?:string;source_type:string;source_id:string;slip_number:string;dnote_number:string|null;weigh_date:string;net_kg:number;registration_text:string|null;receiving_wb_number:string|null;grv_number:string|null};
 const tonnes=(kg:number)=>(Number(kg)/1000).toFixed(3)+" t";
@@ -19,8 +20,9 @@ const routes=[
  {title:"Return Reconciliation",description:"Match dispatches and actual returns",path:"/weighbridge-return-reconciliation"},
 ];
 export default function WeighbridgeAdmin(){
+ const [syncRefresh,setSyncRefresh]=useState(0);
  const [allowed,setAllowed]=useState<boolean|null>(null),[rows,setRows]=useState<Dispatch[]>([]),[error,setError]=useState(""),[busy,setBusy]=useState(false),[filter,setFilter]=useState("");
- async function load(){setBusy(true);const r=await supabase.from("wb_customer_dispatch_v").select("source_type,source_id,slip_number,dnote_number,weigh_date,net_kg,registration_text,receiving_wb_number,grv_number").order("weigh_date",{ascending:false}).limit(5000);setBusy(false);if(r.error){setError(r.error.message);return;}setRows((r.data||[]) as Dispatch[]);setError("");}
+ async function load(){setSyncRefresh(x=>x+1);setBusy(true);const r=await supabase.from("wb_customer_dispatch_v").select("source_type,source_id,slip_number,dnote_number,weigh_date,net_kg,registration_text,receiving_wb_number,grv_number").order("weigh_date",{ascending:false}).limit(5000);setBusy(false);if(r.error){setError(r.error.message);return;}setRows((r.data||[]) as Dispatch[]);setError("");}
  useEffect(()=>{if(Platform.OS!=="web"){setAllowed(false);return;}let live=true;(async()=>{const u=await supabase.auth.getUser();if(!live)return;if(!u.data.user){setAllowed(false);setError("Sign in first");return;}const p=await supabase.rpc("wb_admin_allowed");if(live){setAllowed(p.data===true&&!p.error);if(p.error)setError(p.error.message)}})();return()=>{live=false}},[]);
  useEffect(()=>{if(allowed)load()},[allowed]);
  const visible=useMemo(()=>rows.filter(x=>[x.dnote_number,x.slip_number,x.registration_text,x.weigh_date].join(" ").toLowerCase().includes(filter.toLowerCase())),[rows,filter]);
@@ -32,6 +34,7 @@ export default function WeighbridgeAdmin(){
  <View style={{backgroundColor:C.primaryDark,borderRadius:R.lg,padding:S.xl,flexDirection:"row",alignItems:"center",marginBottom:S.lg}}>
  <Image source={require("../assets/images/jspl_farm_logo.png")} resizeMode="contain" style={{width:80,height:80,marginRight:S.lg,borderRadius:R.md,backgroundColor:C.surface}}/>
  <View style={{flex:1}}><Text style={{color:C.surface,fontSize:29,fontWeight:"800"}}>Weighbridge Management</Text><Text style={{color:"#dce9dc",marginTop:4}}>John Sole (Private) Limited · Customer documents and dispatches</Text></View>
+ <WbLastSync refreshKey={syncRefresh}/>
  <Pressable onPress={load} disabled={busy} style={{borderWidth:1,borderColor:"#9cbbaa",borderRadius:R.sm,padding:12}}><Text style={{color:C.surface,fontWeight:"700"}}>{busy?"Loading…":"Refresh"}</Text></Pressable></View>
  <View style={{flexDirection:"row",marginBottom:S.xl}}>
  {([["Out DNote",outDel,"Customer WB information outstanding"],["Out GRV",outGrv,"GRV information outstanding"],["Dispatched loads",rows.length,"WB computer + manual"]] as [string,number,string][]).map(([label,value,note])=><View key={label} style={{flex:1,padding:S.lg,marginRight:S.md,backgroundColor:C.surface,borderWidth:1,borderColor:C.border,borderRadius:R.md}}>
