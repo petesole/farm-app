@@ -1,3 +1,4 @@
+import {WbAdminSignIn} from "../components/jspl/WbAdminSignIn";
 import {wbParseDate,wbFormatDate,wbToday} from "../utils/wb-date";
 import {WbModuleHeader} from "../components/jspl/WbModuleHeader";
 import {WbLastSync} from "../components/jspl/WbLastSync";
@@ -29,7 +30,7 @@ export default function DailyDnotes(){
  const btn=(name:string,onPress:()=>void)=><Pressable onPress={onPress} style={{padding:10,backgroundColor:C.primary,borderRadius:5,marginRight:9}}><Text style={{color:"white",fontWeight:"bold"}}>{name}</Text></Pressable>;
  if(Platform.OS!=="web")return <Text>Desktop web only.</Text>;
  if(allowed===null)return <Text style={{padding:24}}>Checking Admin access…</Text>;
- if(!allowed)return <Text style={{padding:24}}>Daily DNotes Report — Admin only.</Text>;
+ if(!allowed)return <WbAdminSignIn onAuthenticated={()=>setAllowed(true)}/>;
  return <ScrollView style={{flex:1,backgroundColor:C.background}} contentContainerStyle={{padding:22,minWidth:1020}}>
  <WbModuleHeader title="Daily DNotes" right={<WbLastSync refreshKey={data.length}/>}/>
  <Text style={{fontSize:26,fontWeight:"bold",marginBottom:6}}>Daily DNotes — Tonnage & Trace Allocations</Text>
