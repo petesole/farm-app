@@ -1,3 +1,4 @@
+import {WbAdminSignIn} from "../components/jspl/WbAdminSignIn";
 import {wbParseDate,wbFormatDate,wbToday} from "../utils/wb-date";
 import {WbModuleHeader} from "../components/jspl/WbModuleHeader";
 import {jsplColors as C} from "../constants/jspl-design";
@@ -59,7 +60,7 @@ export default function ManualWeighbridge(){
  async function complete(){if(!selected||selected.status!=="draft")return;if(selected.owner_type==="own"&&selected.moisture_pct==null){setError("Moisture is required before completing an own-grain slip.");return;}if(selectedNeedsAllocation&&Math.abs(total-Number(selected.net_kg))>0.001){setError("Allocate the entire nett weight before completing the slip.");return;}if(!selectedNeedsAllocation&&total>0){setError("This movement does not need a field allocation. Remove any allocations first.");return;}if(Number(selected.net_kg)!==num(form.net_kg)||selected.dnote_number!==form.dnote_number.trim()||selected.registration_text!==form.registration_text.trim()||selected.crop_id!==Number(form.crop_id)||selected.movement_kind!==form.movement_kind){setError("Slip details have changed. Save the draft again before completing.");return;}setWorking(true);const r=await supabase.from("wb_manual_entries").update({status:"completed"}).eq("manual_entry_id",selected.manual_entry_id);setWorking(false);if(r.error){setError(r.error.message);return;}await refresh();}
  if(Platform.OS!=="web")return <Text style={{padding:25}}>Manual Weighbridge is web-only.</Text>;
  if(allowed===null)return <Text style={{padding:25}}>Checking Admin access…</Text>;
- if(!allowed)return <Text style={{padding:25}}>Manual Weighbridge — Admin only. {error}</Text>;
+ if(!allowed)return <WbAdminSignIn onAuthenticated={()=>{setError("");setAllowed(true)}}/>;
  const locked=selected?.status==="completed";
  return <ScrollView style={{backgroundColor:C.background,flex:1}} contentContainerStyle={{padding:22,minWidth:1020}}>
  <WbModuleHeader title="Manual Weighbridge"/>
