@@ -41,7 +41,7 @@ export default function TransporterReport(){
  if(Platform.OS!=="web")return <Text>Desktop web only.</Text>;if(ok===null)return <Text>Checking access…</Text>;if(!ok)return <Text>WB Admin only.</Text>;
  return <ScrollView style={{flex:1,backgroundColor:C.background}} contentContainerStyle={{padding:20,minWidth:1000}}>
  <WbModuleHeader title="Transporter Report"/>
- <View style={{flexDirection:"row",flexWrap:"wrap"}}><Btn name="Back to WB Dashboard" go={()=>router.push("/weighbridge")}/><Btn name="Refresh" go={refresh}/><Btn name="Export to Excel (CSV)" go={download}/><Btn name="Print report" go={print}/></View>
+ <View style={{flexDirection:"row",flexWrap:"wrap"}}><Btn name="Refresh" go={refresh}/><Btn name="Export to Excel (CSV)" go={download}/><Btn name="Print report" go={print}/></View>
  <Text style={{color:C.textSecondary,marginBottom:12}}>Field → Storage: once per truck per day. GMB: USD 13/t and SeedCo: USD 21/t based on customer receiving WB. Own vehicles: no charge. Unmatched customer WB weights remain pending.</Text>
  {error?<Text style={{color:"#b42318"}}>{error}</Text>:null}{info?<Text style={{color:C.primary}}>{info}</Text>:null}
  <Text style={{fontWeight:"bold"}}>Season</Text><View style={{flexDirection:"row",flexWrap:"wrap"}}><Btn name={season==="all"?"All ✓":"All"} go={()=>setSeason("all")}/>{seasons.filter(s=>rows.some(x=>x.report_season_id===s.season_id)).map(s=><Btn key={s.season_id} name={s.season_name+(season===String(s.season_id)?" ✓":"")} go={()=>setSeason(String(s.season_id))}/>)}</View>
