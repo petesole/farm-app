@@ -1,3 +1,4 @@
+import { supabase } from "../../supabase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Redirect, Tabs } from "expo-router";
 import { useEffect, useState } from "react";
@@ -16,7 +17,7 @@ export default function TabsLayout() {
         const role = await AsyncStorage.getItem("role");
 
         if (!alive) return;
-        setLoggedIn(!!raw && !!role);
+        if (Platform.OS === "web") { const {data: session} = await supabase.auth.getUser(); if (!alive) return; setLoggedIn(!!session.user); } else { setLoggedIn(!!raw && !!role); }
       } catch {
         if (!alive) return;
         setLoggedIn(false);
