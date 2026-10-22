@@ -1,3 +1,4 @@
+import {WbAdminSignIn} from "../components/jspl/WbAdminSignIn";
 import {useEffect,useMemo,useState} from "react";
 import {router} from "expo-router";
 import {Platform,Pressable,ScrollView,Text,View} from "react-native";
@@ -31,7 +32,7 @@ export default function WbLiveMatching(){
  async function confirm(){if(!doc||!chosen||busy)return;const load=loads.find(d=>d.source_type+":"+d.source_id===chosen);if(!load)return;setBusy(true);setError("");setInfo("");const r=await supabase.rpc("wb_match_received_document",{p_received_id:doc.received_id,p_source_type:load.source_type,p_source_id:load.source_id});setBusy(false);if(r.error){setError(r.error.message);return;}setInfo(doc.document_type==="grv"?"GRV matched and GRV status updated.":"Customer WB matched and DNote status updated.");setSelected(null);setChosen(null);await refresh();}
  if(Platform.OS!=="web")return <Text>Desktop web only.</Text>;
  if(authorized===null)return <Text>Checking Admin access…</Text>;
- if(!authorized)return <Text>Admin only.</Text>;
+ if(!authorized)return <WbAdminSignIn onAuthenticated={()=>setAuthorized(true)}/>;
  return <ScrollView style={{flex:1,backgroundColor:C.background}} contentContainerStyle={{padding:24,minWidth:1000}}>
  <WbModuleHeader title="Match Live Customer Documents"/>
  <Text style={{color:C.textSecondary,marginBottom:14}}>Only reviewed and saved live receiving documents appear here. Suggestions are not automatic allocations: confirm the original PDF, DNote and vehicle before linking. Customer WB and GRV clear independently.</Text>
