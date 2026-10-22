@@ -10,7 +10,7 @@ type Batch={batch_id:string;created_at:string;label:string|null;status:string;is
 type FileRow={file_id:string;batch_id:string;original_filename:string;storage_path:string;extraction_status:string;page_count:number|null};
 type Progress={batch_id:string;workflow_state:string;keep_open:boolean;file_count:number;complete_files:number;doc_count:number;matched_count:number;unmatched_count:number;pending_notices:number};
 type Receipt={scan_document_id:string;document_number:string;delivery_note:string|null;document_date:string;customer:string|null;source_id:string|null};
-type SplitDoc={archive_resolved:boolean;scan_document_id:string;batch_id:string;file_id:string;page_start:number;page_end:number;document_type:string;storage_path:string;extraction_status:string;extracted_data:Record<string,unknown>|null};
+type SplitDoc={linked_source_id?:string|null;archive_resolved:boolean;scan_document_id:string;batch_id:string;file_id:string;page_start:number;page_end:number;document_type:string;storage_path:string;extraction_status:string;extracted_data:Record<string,unknown>|null};
 const blue=C.primary;
 function Btn({name,go,disabled=false}:{name:string;go:()=>void;disabled?:boolean}){return <Pressable onPress={go} disabled={disabled} style={{backgroundColor:disabled?"#99a8b8":blue,padding:11,borderRadius:5,marginRight:9,marginBottom:8}}><Text style={{fontWeight:"bold",color:"white"}}>{name}</Text></Pressable>}
 export default function BatchScanner(){
@@ -123,9 +123,9 @@ export default function BatchScanner(){
  async function reopen(b:Batch,open:boolean){setBusy(true);setError("");const x=await supabase.from("wb_scan_batch").update({keep_open:open}).eq("batch_id",b.batch_id);setBusy(false);if(x.error){setError(x.error.message);return;}setMessage(open?"Batch reopened in Active.":"Batch returned to automatic workflow.");await refresh();}
  async function resolveNotice(d:SplitDoc){if(d.document_type!=="rejection_notice")return;setBusy(true);setError("");const x=await supabase.from("wb_scan_document").update({archive_resolved:!d.archive_resolved}).eq("scan_document_id",d.scan_document_id);setBusy(false);if(x.error){setError(x.error.message);return;}await refresh();}
  const isLive=(d:SplitDoc)=>batches.some(b=>b.batch_id===d.batch_id&&!b.is_test);
- const isMatched=(d:SplitDoc)=>receipts.some(r=>r.scan_document_id===d.scan_document_id&&r.source_id);
+ const isMatched=(d:SplitDoc)=>!!d.linked_source_id||receipts.some(r=>r.scan_document_id===d.scan_document_id&&r.source_id);
  const readyDocs=splitDocs.filter(d=>isLive(d)&&d.extraction_status==="reviewed"&&["customer_wb","grv","customer_dnote"].includes(d.document_type)&&!isMatched(d));
- const activeDocs=splitDocs.filter(d=>isLive(d)&&!isMatched(d)&&!(d.extraction_status==="reviewed"&&["customer_wb","grv"].includes(d.document_type)));
+ const activeDocs=splitDocs.filter(d=>isLive(d)&&!isMatched(d)&&!(d.extraction_status==="reviewed"&&["customer_wb","grv","customer_dnote"].includes(d.document_type)));
  const completedOriginal=(b:Batch)=>{const fs=files.filter(f=>f.batch_id===b.batch_id);return fs.length>0&&fs.every(f=>f.page_count!=null&&f.page_count>0&&splitDocs.filter(d=>d.file_id===f.file_id).reduce((n,d)=>n+d.page_end-d.page_start+1,0)>=f.page_count);};
  const visibleBatches=batches.filter(b=>tab==="test"?b.is_test:tab==="archived"?!b.is_test&&completedOriginal(b):tab==="active"?!b.is_test&&!completedOriginal(b):false).filter(b=>[b.label,b.created_at,...files.filter(f=>f.batch_id===b.batch_id).map(f=>f.original_filename)].join(" ").toLowerCase().includes(search.toLowerCase()));
  const visibleDocs=(tab==="active"?activeDocs:tab==="awaiting_match"?readyDocs:[]).filter(d=>[d.document_type,JSON.stringify(d.extracted_data||{}),d.page_start].join(" ").toLowerCase().includes(search.toLowerCase()));
