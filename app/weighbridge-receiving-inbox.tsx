@@ -1,3 +1,4 @@
+import {WbAdminSignIn} from "../components/jspl/WbAdminSignIn";
 import {wbParseDate,wbFormatDate,wbToday} from "../utils/wb-date";
 import {WbModuleHeader} from "../components/jspl/WbModuleHeader";
 import {jsplColors as C} from "../constants/jspl-design";
@@ -34,7 +35,7 @@ export default function ReceiptInbox(){
  try{const r=existing?await supabase.from("wb_received_document").update(fields).eq("received_id",existing.received_id):await supabase.from("wb_received_document").insert(fields);if(r.error)throw r.error;setInfo(existing?"Receiving record updated. Match it to a dispatch to update statuses.":"Receiving record saved. Next: Match live documents to a farm dispatch.");setActive(null);await refresh();}
  catch(e:any){setError(e.message||"Could not save");}finally{setBusy(false)}
  }
- if(Platform.OS!=="web")return <Text>Desktop web only.</Text>;if(authorized===null)return <Text>Checking access…</Text>;if(!authorized)return <Text>WB Admin only.</Text>;
+ if(Platform.OS!=="web")return <Text>Desktop web only.</Text>;if(authorized===null)return <Text>Checking access…</Text>;if(!authorized)return <WbAdminSignIn onAuthenticated={()=>setAuthorized(true)}/>;
  return <ScrollView style={{backgroundColor:C.background,flex:1}} contentContainerStyle={{padding:20,minWidth:900}}>
  <WbModuleHeader title="Receiving Documents"/>
  <Text style={{fontSize:25,fontWeight:"bold",marginBottom:8}}>Customer Receiving Documents</Text>
