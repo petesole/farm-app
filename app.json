@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "FarmingMain (CLEAN)",
-    "slug": "farmingmain-clean",
+    "slug": "FarmingMainClean",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
