@@ -22,7 +22,7 @@ export function WbAdminSignIn({onAuthenticated}:{onAuthenticated:()=>void}){
     setMessage(role.error?.message||"This account does not have Weighbridge Admin access.");
     return;
    }
-   setCurrentEmail(auth.user.email||"");onAuthenticated();
+   setCurrentEmail(email.trim());onAuthenticated();
   }catch(e:any){setMessage(e?.message||"Unable to sign in.");}
   finally{setBusy(false);setPassword("");}
  };
