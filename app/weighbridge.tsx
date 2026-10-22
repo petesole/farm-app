@@ -1,3 +1,4 @@
+import {WbAdminSignIn} from "../components/jspl/WbAdminSignIn";
 import {wbParseDate,wbFormatDate,wbToday} from "../utils/wb-date";
 import {useEffect,useMemo,useState} from "react";
 import {router} from "expo-router";
@@ -29,7 +30,7 @@ export default function WeighbridgeAdmin(){
  const outCustomerWb=rows.filter(x=>!x.receiving_wb_number).length,outDnote=rows.filter(x=>!x.customer_dnote_number?.trim()).length,outGrv=rows.filter(x=>!x.grv_number).length;
  if(Platform.OS!=="web")return <Text>Weighbridge Admin is desktop only.</Text>;
  if(allowed===null)return <Text style={{padding:20}}>Checking Admin access…</Text>;
- if(!allowed)return <Text style={{padding:20,color:C.danger}}>Weighbridge Admin — restricted. {error}</Text>;
+ if(!allowed)return <WbAdminSignIn onAuthenticated={()=>{setError("");setAllowed(true)}}/>;
  return <ScrollView style={{flex:1,backgroundColor:C.background}} contentContainerStyle={{padding:S.xl,minWidth:980}}>
  <View style={{backgroundColor:C.primaryDark,borderRadius:R.lg,padding:S.xl,flexDirection:"row",alignItems:"center",marginBottom:S.lg}}>
  <Image source={require("../assets/images/jspl_farm_logo.png")} resizeMode="contain" style={{width:80,height:80,marginRight:S.lg,borderRadius:R.md,backgroundColor:C.surface}}/>
