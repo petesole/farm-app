@@ -50,9 +50,9 @@ export default function LoginScreen() {
       if (Platform.OS === "web") {
         const { data: auth, error: authError } = await supabase.auth.signInWithPassword({ email: u, password: p });
         if (authError || !auth.user) { setStatus(authError?.message || "Unable to sign in."); return; }
-        const { data: access, error: accessError } = await supabase.from("app_user_role").select("role_name").eq("user_id",auth.user.id);
+        const { data: access, error: accessError } = await supabase.rpc("my_farm_app_roles");
         if (accessError) { await supabase.auth.signOut(); setStatus("Unable to verify access: " + accessError.message); return; }
-        const roles = (access || []).map(r => norm(r.role_name));
+        const roles = (access || []).map((r: string) => norm(r));
         if (!roles.length) { await supabase.auth.signOut(); setStatus("Your account has no assigned FarmingMainLive role."); return; }
         const role = ["admin","manager","fuel","irrigation","scouting","scout","scouter","viewer"].find(r => roles.includes(r)) || roles[0];
         await AsyncStorage.setItem("app_user", JSON.stringify({ user_id: auth.user.id, username: auth.user.email, role }));
