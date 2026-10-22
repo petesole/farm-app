@@ -1,3 +1,4 @@
+import {WbAdminSignIn} from "../components/jspl/WbAdminSignIn";
 import {wbParseDate,wbFormatDate,wbToday} from "../utils/wb-date";
 import {WbModuleHeader} from "../components/jspl/WbModuleHeader";
 import {jsplColors as C} from "../constants/jspl-design";
@@ -22,7 +23,7 @@ export default function Reconcile(){
  const choices=returns.filter(x=>!links.some(y=>y.return_source_type===x.source_type&&y.return_source_id===x.source_id));
  async function addReturn(){if(!current||!ret||busy)return;const t=choices.find(x=>x.source_type+":"+x.source_id===ret);if(!t)return;setBusy(true);setError("");const r=await supabase.from("wb_dispatch_return_link").insert({dispatch_source_type:current.source_type,dispatch_source_id:current.source_id,return_source_type:t.source_type,return_source_id:t.source_id});setBusy(false);if(r.error){setError(r.error.message);return;}setRet("");setInfo("Actual return slip linked to original dispatch.");await load();}
  async function linkDoc(id:string,kind:"customer_wb"|"grv"){if(!current||busy)return;const d=docs.find(x=>x.received_id===id&&x.document_type===kind);if(!d)return;if(d.source_id&&(d.source_id!==current.source_id||d.source_type!==current.source_type)){setError("This document is already linked to another dispatch.");return;}setBusy(true);setError("");const r=await supabase.rpc("wb_match_received_document",{p_received_id:id,p_source_type:current.source_type,p_source_id:current.source_id});setBusy(false);if(r.error){setError(r.error.message);return;}setInfo("Customer document matched and delivery status updated. Return weighing was not changed.");await load();}
- if(Platform.OS!=="web")return <Text>Desktop web only.</Text>;if(allowed===null)return <Text>Checking admin access…</Text>;if(!allowed)return <Text>Weighbridge Admin only.</Text>;
+ if(Platform.OS!=="web")return <Text>Desktop web only.</Text>;if(allowed===null)return <Text>Checking admin access…</Text>;if(!allowed)return <WbAdminSignIn onAuthenticated={()=>setAllowed(true)}/>;
  const matches=dispatch.filter(x=>[x.dnote_number,x.slip_number,x.customer_wb_number].join(" ").toLowerCase().includes(search.toLowerCase())).slice(0,250);
  return <ScrollView style={{backgroundColor:C.background,flex:1}} contentContainerStyle={{padding:20,minWidth:950}}>
  <WbModuleHeader title="Return Reconciliation"/>
