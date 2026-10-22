@@ -1,3 +1,4 @@
+import {WbAdminSignIn} from "../components/jspl/WbAdminSignIn";
 import {router} from "expo-router";
 import {wbParseDate,wbFormatDate,wbToday} from "../utils/wb-date";
 import {WbModuleHeader} from "../components/jspl/WbModuleHeader";
@@ -68,7 +69,7 @@ export default function Deliveries(){
  };pick.click();
  }
  async function openDocument(doc:Doc){const r=await supabase.storage.from("wb-customer-documents").createSignedUrl(doc.storage_path,60);if(r.error){setError(r.error.message);return;}if(typeof window!=="undefined"&&r.data?.signedUrl)window.open(r.data.signedUrl,"_blank");}
- if(Platform.OS!=="web")return <Text>Desktop only</Text>;if(ok===null)return <Text>Checking Admin access…</Text>;if(!ok)return <Text style={{padding:20}}>Weighbridge Delivery Report — Admin only.</Text>;
+ if(Platform.OS!=="web")return <Text>Desktop only</Text>;if(ok===null)return <Text>Checking Admin access…</Text>;if(!ok)return <WbAdminSignIn onAuthenticated={()=>setOk(true)}/>;
  return <ScrollView style={{backgroundColor:C.background,flex:1}} contentContainerStyle={{padding:20,minWidth:1080}}>
  <WbModuleHeader title="Delivery Report"/>
  
