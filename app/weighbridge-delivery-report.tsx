@@ -68,7 +68,7 @@ export default function Deliveries(){
  if(Platform.OS!=="web")return <Text>Desktop only</Text>;if(ok===null)return <Text>Checking Admin access…</Text>;if(!ok)return <Text style={{padding:20}}>Weighbridge Delivery Report — Admin only.</Text>;
  return <ScrollView style={{backgroundColor:C.background,flex:1}} contentContainerStyle={{padding:20,minWidth:1080}}>
  <WbModuleHeader title="Delivery Report"/>
- <B label="Back to WB Dashboard" click={()=>router.push("/weighbridge")}/>
+ 
  <Text style={{fontWeight:"bold",fontSize:25,marginBottom:8}}>Weighbridge — Delivery Report</Text>
  <Text style={{color:"#697386",marginBottom:14}}>WB computer + Manual Weighbridge + legacy farm slips. Each source appears once. Customer WB and GRV are entered and saved separately against the same farm dispatch.</Text>
  <Text style={{fontSize:16,marginBottom:10}}>Dispatches: {rows.length}   |   Outstanding customer WB: {outDel}   |   Outstanding GRVs: {outGrv}   |   Season unassigned: {rows.filter(r=>r.season_id==null).length}</Text>
