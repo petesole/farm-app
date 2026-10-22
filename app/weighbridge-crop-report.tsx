@@ -1,3 +1,4 @@
+import {WbAdminSignIn} from "../components/jspl/WbAdminSignIn";
 import {wbParseDate,wbFormatDate,wbToday} from "../utils/wb-date";
 import {WbModuleHeader} from "../components/jspl/WbModuleHeader";
 import {jsplColors as C} from "../constants/jspl-design";
@@ -31,7 +32,7 @@ export default function CropReport(){
  function csv(){const hdr=["Season",...columns];const content=[hdr,...shown.map(r=>[r.season_name,r.crop_name||"",r.farm_name||"",r.variety_name||"",r.tracecode_name,r.irrigation_type||"",r.plant_population??"",dt(r.actual_planting_date),r.hectares??"",r.harvested_tonnes??"",r.harvest_yield_t_ha??"",projected(r)??"",r.delivered_yield_t_ha??"",r.financial_yield_t_ha??""])].map(a=>a.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(",")).join("\r\n");if(typeof document!=="undefined"){const blob=new Blob(["\ufeff",content],{type:"text/csv;charset=utf-8;"});const url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download="Crop_Report_"+(seasons.find(s=>String(s.season_id)===season)?.season_name||season)+".csv";link.click();URL.revokeObjectURL(url)}}
  if(Platform.OS!=="web")return <Text style={{padding:20}}>Crop Report is available on desktop web.</Text>;
  if(auth===null)return <Text style={{padding:20}}>Checking Admin access…</Text>;
- if(!auth)return <Text style={{padding:20}}>Crop Report — Admin only. {err}</Text>;
+ if(!auth)return <WbAdminSignIn onAuthenticated={()=>setAuth(true)}/>;
  return <ScrollView style={{flex:1,backgroundColor:C.background}} contentContainerStyle={{minWidth:1450,padding:18}}>
  <WbModuleHeader title="Crop Report"/>
  <View style={{flexDirection:"row",alignItems:"center",marginBottom:15,flexWrap:"wrap"}}>
