@@ -7,7 +7,7 @@ import {jsplColors as C,jsplSpacing as S,jsplRadii as R} from "../constants/jspl
 import {JsplDashboardButton} from "../components/jspl/JsplDashboardButton";
 import {WbLastSync} from "../components/jspl/WbLastSync";
 
-type Dispatch={linked_manual_slips?:string;source_type:string;source_id:string;slip_number:string;dnote_number:string|null;weigh_date:string;net_kg:number;registration_text:string|null;receiving_wb_number:string|null;grv_number:string|null};
+type Dispatch={customer_dnote_number?:string|null;linked_manual_slips?:string;source_type:string;source_id:string;slip_number:string;dnote_number:string|null;weigh_date:string;net_kg:number;registration_text:string|null;receiving_wb_number:string|null;grv_number:string|null};
 const tonnes=(kg:number)=>(Number(kg)/1000).toFixed(3)+" t";
 const routes=[
  {title:"Manual WB Entry",description:"Create and allocate manual slips",path:"/weighbridge-manual"},
@@ -22,11 +22,11 @@ const routes=[
 export default function WeighbridgeAdmin(){
  const [syncRefresh,setSyncRefresh]=useState(0);
  const [allowed,setAllowed]=useState<boolean|null>(null),[rows,setRows]=useState<Dispatch[]>([]),[error,setError]=useState(""),[busy,setBusy]=useState(false),[filter,setFilter]=useState("");
- async function load(){setSyncRefresh(x=>x+1);setBusy(true);const r=await supabase.from("wb_customer_dispatch_v").select("source_type,source_id,slip_number,dnote_number,weigh_date,net_kg,registration_text,receiving_wb_number,grv_number").order("weigh_date",{ascending:false}).limit(5000);setBusy(false);if(r.error){setError(r.error.message);return;}setRows((r.data||[]) as Dispatch[]);setError("");}
+ async function load(){setSyncRefresh(x=>x+1);setBusy(true);const [r,d]=await Promise.all([supabase.from("wb_customer_dispatch_v").select("source_type,source_id,slip_number,dnote_number,weigh_date,net_kg,registration_text,receiving_wb_number,grv_number").order("weigh_date",{ascending:false}).limit(5000),supabase.from("wb_source_delivery").select("source_type,source_id,customer_dnote_number").limit(5000)]);setBusy(false);if(r.error||d.error){setError(r.error?.message||d.error?.message||"Unable to load dispatches");return;}const notes=new Map((d.data||[]).map(x=>[x.source_type+":"+x.source_id,x.customer_dnote_number]));setRows(((r.data||[]) as Dispatch[]).map(x=>({...x,customer_dnote_number:notes.get(x.source_type+":"+x.source_id)||null})));setError("");}
  useEffect(()=>{if(Platform.OS!=="web"){setAllowed(false);return;}let live=true;(async()=>{const u=await supabase.auth.getUser();if(!live)return;if(!u.data.user){setAllowed(false);setError("Sign in first");return;}const p=await supabase.rpc("wb_admin_allowed");if(live){setAllowed(p.data===true&&!p.error);if(p.error)setError(p.error.message)}})();return()=>{live=false}},[]);
  useEffect(()=>{if(allowed)load()},[allowed]);
- const visible=useMemo(()=>rows.filter(x=>[x.dnote_number,x.slip_number,x.registration_text,x.weigh_date].join(" ").toLowerCase().includes(filter.toLowerCase())),[rows,filter]);
- const outDel=rows.filter(x=>!x.receiving_wb_number).length,outGrv=rows.filter(x=>!x.grv_number).length;
+ const visible=useMemo(()=>rows.filter(x=>[x.dnote_number,x.customer_dnote_number,x.slip_number,x.registration_text,x.weigh_date].join(" ").toLowerCase().includes(filter.toLowerCase())),[rows,filter]);
+ const outCustomerWb=rows.filter(x=>!x.receiving_wb_number).length,outDnote=rows.filter(x=>!x.customer_dnote_number?.trim()).length,outGrv=rows.filter(x=>!x.grv_number).length;
  if(Platform.OS!=="web")return <Text>Weighbridge Admin is desktop only.</Text>;
  if(allowed===null)return <Text style={{padding:20}}>Checking Admin access…</Text>;
  if(!allowed)return <Text style={{padding:20,color:C.danger}}>Weighbridge Admin — restricted. {error}</Text>;
@@ -37,18 +37,18 @@ export default function WeighbridgeAdmin(){
  <WbLastSync refreshKey={syncRefresh}/>
  <Pressable onPress={load} disabled={busy} style={{borderWidth:1,borderColor:"#9cbbaa",borderRadius:R.sm,padding:12}}><Text style={{color:C.surface,fontWeight:"700"}}>{busy?"Loading…":"Refresh"}</Text></Pressable></View>
  <View style={{flexDirection:"row",marginBottom:S.xl}}>
- {([["Out DNote",outDel,"Customer WB information outstanding"],["Out GRV",outGrv,"GRV information outstanding"],["Dispatched loads",rows.length,"WB computer + manual"]] as [string,number,string][]).map(([label,value,note])=><View key={label} style={{flex:1,padding:S.lg,marginRight:S.md,backgroundColor:C.surface,borderWidth:1,borderColor:C.border,borderRadius:R.md}}>
+ {([["Out Customer WB",outCustomerWb,"Customer WB receipt outstanding"],["Out DNote",outDnote,"Customer Delivery Note outstanding"],["Out GRV",outGrv,"GRV information outstanding"],["Dispatched loads",rows.length,"WB computer + manual"]] as [string,number,string][]).map(([label,value,note])=><View key={label} style={{flex:1,padding:S.lg,marginRight:S.md,backgroundColor:C.surface,borderWidth:1,borderColor:C.border,borderRadius:R.md}}>
  <Text style={{color:C.textSecondary,fontWeight:"700"}}>{label}</Text><Text style={{fontSize:34,color:C.primaryDark,fontWeight:"800",marginVertical:5}}>{value}</Text><Text style={{color:C.textSecondary,fontSize:12}}>{note}</Text></View>)}</View>
  {error?<Text style={{color:C.danger,marginBottom:S.md}}>{error}</Text>:null}
  <Text style={{color:C.primaryDark,fontSize:19,fontWeight:"800",marginBottom:S.md}}>Weighbridge modules</Text>
  <View style={{flexDirection:"row",flexWrap:"wrap",marginBottom:S.lg}}>{routes.map(r=><View key={r.path} style={{width:"24%",marginRight:"1%",marginBottom:S.md}}><JsplDashboardButton title={r.title} description={r.description} onPress={()=>router.push(r.path as any)}/></View>)}</View>
  <View style={{backgroundColor:C.surface,padding:S.lg,borderWidth:1,borderColor:C.border,borderRadius:R.md}}>
- <View style={{flexDirection:"row",alignItems:"center",marginBottom:S.md}}><Text style={{fontSize:19,fontWeight:"800",color:C.primaryDark,flex:1}}>Delivery document status</Text><TextInput placeholder="Search DNote, slip or truck" value={filter} onChangeText={setFilter} style={{width:280,padding:10,borderWidth:1,borderColor:C.border,borderRadius:R.sm,color:C.text}}/></View>
- <View style={{flexDirection:"row",backgroundColor:C.successTint,padding:10}}>{([["DNote",210],["Slip",90],["Date",115],["Truck",135],["Weight",115],["Customer WB",145],["GRV",135]] as [string,number][]).map(([s,w])=><Text key={s} style={{width:w,color:C.primaryDark,fontWeight:"800"}}>{s}</Text>)}</View>
+ <View style={{flexDirection:"row",alignItems:"center",marginBottom:S.md}}><Text style={{fontSize:19,fontWeight:"800",color:C.primaryDark,flex:1}}>Delivery document status</Text><TextInput placeholder="Search Field / Customer DNote, slip or truck" value={filter} onChangeText={setFilter} style={{width:280,padding:10,borderWidth:1,borderColor:C.border,borderRadius:R.sm,color:C.text}}/></View>
+ <View style={{flexDirection:"row",backgroundColor:C.successTint,padding:10}}>{([["Field DNote",125],["Customer DNote",145],["Slip",95],["Date",105],["Truck",120],["Weight",105],["Customer WB",135],["GRV",115]] as [string,number][]).map(([s,w])=><Text key={s} style={{width:w,color:C.primaryDark,fontWeight:"800"}}>{s}</Text>)}</View>
  {visible.map(row=><Pressable key={row.source_type+":"+row.source_id} onPress={()=>router.push("/weighbridge-delivery-report")} style={{flexDirection:"row",padding:10,borderBottomWidth:1,borderColor:C.border}}>
- {([ [row.dnote_number||"—",210],[row.slip_number,90],[wbFormatDate(row.weigh_date),115],[row.registration_text||"—",135],[tonnes(row.net_kg),115],[row.receiving_wb_number||"Outstanding",145],[row.grv_number||"Outstanding",135]] as [string,number][]).map(([v,w],i)=><Text key={i} style={{width:w,color:i>=5&&v==="Outstanding"?C.danger:C.text}}>{v}</Text>)}
+ {([ [row.dnote_number||"—",125],[row.customer_dnote_number||"Outstanding",145],[row.slip_number,95],[wbFormatDate(row.weigh_date),105],[row.registration_text||"—",120],[tonnes(row.net_kg),105],[row.receiving_wb_number||"Outstanding",135],[row.grv_number||"Outstanding",115]] as [string,number][]).map(([v,w],i)=><Text key={i} style={{width:w,color:i>=1&&[1,6,7].includes(i)&&v==="Outstanding"?C.danger:C.text}}>{v}</Text>)}
  </Pressable>)}
  {!busy&&!visible.length?<Text style={{padding:14,color:C.textSecondary}}>No matching dispatch records.</Text>:null}
- <Text style={{color:C.textSecondary,marginTop:S.md,fontSize:12}}>Out DNote and Out GRV are independent. Returning grain to stock does not clear required customer paperwork. Open the Delivery Report to enter or match customer documents.</Text>
+ <Text style={{color:C.textSecondary,marginTop:S.md,fontSize:12}}>Out Customer WB, Out DNote and Out GRV are independent. Out DNote means the customer-facing delivery note is missing; the Field DNote is retained separately. Returning grain to stock does not clear required customer paperwork. Open the Delivery Report to enter or match customer documents.</Text>
  </View></ScrollView>;
 }
