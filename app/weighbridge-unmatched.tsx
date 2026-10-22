@@ -23,6 +23,7 @@ export default function UnmatchedDocuments(){
  useEffect(()=>{if(typeof params.scan==="string"&&params.scan)setSelected(params.scan)},[params.scan]);
  const unmatched=scans.filter(s=>!samples.includes(s.batch_id)&&["customer_wb","grv","customer_dnote"].includes(s.document_type)&&!s.linked_source_id&&!receipts.some(r=>r.scan_document_id===s.scan_document_id&&r.source_id));
  const current=unmatched.find(s=>s.scan_document_id===selected);const x=current?.extracted_data||{};
+ useEffect(()=>{if(current?.document_type==="customer_dnote"){setCustomerDnote(String(current.extracted_data?.customer_dnote_number||""))}},[current?.scan_document_id]);
  useEffect(()=>{let alive=true;setPreview("");if(!current)return;supabase.storage.from("wb-customer-documents").createSignedUrl(current.storage_path,3600).then(r=>{if(!alive)return;if(r.error){setError("PDF preview: "+r.error.message);return;}setPreview(r.data?.signedUrl||"")});return()=>{alive=false}},[current?.scan_document_id]);
  const choices=useMemo(()=>{if(!current)return [];return loads.map(d=>{
   let score=0;const reason:string[]=[];const docNote=n(current.document_type==="customer_dnote"?"":x.delivery_note),farmNote=n(d.dnote_number);
