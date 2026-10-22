@@ -135,7 +135,7 @@ export default function BatchScanner(){
  if(!allowed)return <Text style={{padding:20}}>Batch Scanner — Admin only.</Text>;
  return <ScrollView style={{flex:1,backgroundColor:C.background}} contentContainerStyle={{padding:22,minWidth:860}}>
  <WbModuleHeader title="Batch Scanner"/>
- <Btn name="Back to WB Dashboard" go={()=>router.push("/weighbridge")}/>
+ 
  <Text style={{fontSize:25,fontWeight:"bold",marginBottom:8}}>Customer WB & GRV — Batch Scanner</Text>
  <Text style={{color:"#64748b",marginBottom:16}}>Upload original batches, then choose page ranges to save as individual Customer WB or GRV PDFs. Automatic separation is not active. Read each saved PDF with AI, then review and correct the values before saving. Nothing is posted automatically to WB or GRV records.</Text>
  <View style={{backgroundColor:"white",padding:16,borderRadius:7,marginBottom:16}}>
