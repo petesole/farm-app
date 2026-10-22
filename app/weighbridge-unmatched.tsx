@@ -1,3 +1,4 @@
+import {WbAdminSignIn} from "../components/jspl/WbAdminSignIn";
 import React,{useEffect,useMemo,useState} from "react";
 import {router,useLocalSearchParams} from "expo-router";
 import {Platform,Pressable,ScrollView,Text,TextInput,View} from "react-native";
@@ -39,7 +40,7 @@ export default function UnmatchedDocuments(){
  }).filter(d=>!d.blocked).filter(d=>!query.trim()||[d.dnote_number,d.slip_number,d.registration_text].join(" ").toLowerCase().includes(query.toLowerCase())).sort((a,b)=>b.score-a.score).slice(0,100)},[current,loads,query]);
  async function confirm(){if(!current||!chosen||busy)return;const d=loads.find(x=>x.source_type+":"+x.source_id===chosen);if(!d)return;setBusy(true);setError("");setInfo("");const r=current.document_type==="customer_dnote"?await supabase.rpc("wb_confirm_customer_dnote_scan",{p_scan_document_id:current.scan_document_id,p_source_type:d.source_type,p_source_id:d.source_id,p_customer_dnote_number:customerDnote.trim()}):await supabase.rpc("wb_confirm_reviewed_scan_match",{p_scan_document_id:current.scan_document_id,p_source_type:d.source_type,p_source_id:d.source_id});setBusy(false);if(r.error){setError(r.error.message);return;}setInfo(current.document_type==="customer_dnote"?"Customer DNote linked to outgoing dispatch; Field DNote unchanged.":"Confirmed. Document moved to history and "+(current.document_type==="grv"?"GRV":current.document_type==="customer_dnote"?"Customer DNote":"Customer WB")+" outstanding status updated.");setSelected("");setChosen("");await refresh();}
  async function viewPdf(){if(!current)return;const r=await supabase.storage.from("wb-customer-documents").createSignedUrl(current.storage_path,300);if(r.error){setError(r.error.message);return;}if(typeof window!=="undefined")window.open(r.data.signedUrl,"_blank");}
- if(Platform.OS!=="web")return <Text>Desktop web only.</Text>;if(authorized===null)return <Text>Checking access…</Text>;if(!authorized)return <Text>WB Admin only.</Text>;
+ if(Platform.OS!=="web")return <Text>Desktop web only.</Text>;if(authorized===null)return <Text>Checking access…</Text>;if(!authorized)return <WbAdminSignIn onAuthenticated={()=>setAuthorized(true)}/>;
  return <ScrollView style={{flex:1,backgroundColor:C.background}} contentContainerStyle={{padding:20,minWidth:1050}}>
  <WbModuleHeader title="Unmatched Customer Documents"/>
  <Text style={{color:C.textSecondary,marginBottom:12}}>Reviewed scans are ready to match directly. Select a document and confirm the correct farm dispatch. Nothing changes automatically before your confirmation.</Text>
