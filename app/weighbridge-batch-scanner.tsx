@@ -15,7 +15,7 @@ const blue=C.primary;
 function Btn({name,go,disabled=false}:{name:string;go:()=>void;disabled?:boolean}){return <Pressable onPress={go} disabled={disabled} style={{backgroundColor:disabled?"#99a8b8":blue,padding:11,borderRadius:5,marginRight:9,marginBottom:8}}><Text style={{fontWeight:"bold",color:"white"}}>{name}</Text></Pressable>}
 export default function BatchScanner(){
  const [tab,setTab]=useState<"active"|"awaiting_match"|"archived"|"test">("active"),[search,setSearch]=useState(""),[progress,setProgress]=useState<Progress[]>([]),[receipts,setReceipts]=useState<Receipt[]>([]);
- const [plans,setPlans]=useState<Record<string,SplitPlan[]>>({}),[splitting,setSplitting]=useState("");
+ const [directTypes,setDirectTypes]=useState<Record<string,string>>({}),[plans,setPlans]=useState<Record<string,SplitPlan[]>>({}),[splitting,setSplitting]=useState("");
  const [reviewId,setReviewId]=useState<string|null>(null),[reviewData,setReviewData]=useState<Record<string,string>>({}),[previewUrl,setPreviewUrl]=useState("");
  const [splitDocs,setSplitDocs]=useState<SplitDoc[]>([]),[activeFile,setActiveFile]=useState<string|null>(null),[startPage,setStartPage]=useState("1"),[endPage,setEndPage]=useState("1"),[kind,setKind]=useState("customer_wb");
  const [allowed,setAllowed]=useState<boolean|null>(null),[name,setName]=useState(""),[batches,setBatches]=useState<Batch[]>([]),[files,setFiles]=useState<FileRow[]>([]),[error,setError]=useState(""),[message,setMessage]=useState(""),[busy,setBusy]=useState(false);
@@ -41,6 +41,22 @@ export default function BatchScanner(){
  }catch(e:any){setError(e.message||String(e))}finally{setBusy(false)}
  };input.click()}
  async function openOriginal(f:FileRow){const signed=await supabase.storage.from("wb-customer-documents").createSignedUrl(f.storage_path,120);if(signed.error){setError(signed.error.message);return;}if(typeof window!=="undefined"&&signed.data?.signedUrl)window.open(signed.data.signedUrl,"_blank")}
+ async function saveSinglePage(f:FileRow){
+  if(busy)return;
+  const selectedType=directTypes[f.file_id]||"customer_dnote";
+  setBusy(true);setError("");setMessage("");
+  try{
+   const result=await supabase.functions.invoke("wb-document-split",{body:{file_id:f.file_id,page_start:1,page_end:1,document_type:selectedType,direct:true}});
+   if(result.error||result.data?.error){
+    let detail=result.data?.error||"";
+    const response=result.error?.context;
+    if(!detail&&response?.json){try{const body=await response.json();detail=body?.error||body?.message||""}catch{}}
+    throw new Error(detail||result.error?.message||"Could not register document");
+   }
+   setMessage("Single-page "+selectedType.replace(/_/g," ")+" saved without splitting. Select Read PDF with AI.");
+   await refresh();
+  }catch(e:any){setError(e?.message||String(e))}finally{setBusy(false)}
+ }
  async function splitPdf(){
  if(!activeFile||busy)return;
  const start=Number(startPage),end=Number(endPage);
@@ -154,6 +170,12 @@ export default function BatchScanner(){
  <View style={{flexDirection:"row",flexWrap:"wrap"}}>{tab==="archived"?<Btn name="Reopen batch" go={()=>reopen(b,true)} disabled={busy}/>:tab==="active"&&b.is_test===false&&progress.find(p=>p.batch_id===b.batch_id)?.keep_open?<Btn name="Resume automatic archiving" go={()=>reopen(b,false)} disabled={busy}/>:null}</View>
  {files.filter(f=>f.batch_id===b.batch_id).map(f=><View key={f.file_id} style={{paddingVertical:8,borderTopWidth:1,borderColor:"#edf1f5"}}>
  <Text style={{fontWeight:"bold",marginBottom:5}}>Original batch file: {f.original_filename}</Text><View style={{flexDirection:"row"}}><Btn name="View complete original PDF" go={()=>openOriginal(f)}/></View>
+ {!splitDocs.some(d=>d.file_id===f.file_id)?<View style={{padding:10,backgroundColor:"#edf7ed",marginVertical:8,borderRadius:6}}>
+ <Text style={{fontWeight:"bold",marginBottom:6}}>Single-page document — choose its type (no splitting)</Text>
+ <View style={{flexDirection:"row",flexWrap:"wrap"}}>{([["customer_dnote","Customer DNote"],["customer_wb","Customer WB"],["grv","GRV"],["rejection_notice","Rejection Notice"],["unknown","Unclassified"]] as const).map(([value,label])=><Pressable key={value} onPress={()=>setDirectTypes(s=>({...s,[f.file_id]:value}))} style={{padding:8,marginRight:7,marginBottom:7,borderWidth:1,borderRadius:5,borderColor:(directTypes[f.file_id]||"customer_dnote")===value?C.primary:C.border,backgroundColor:(directTypes[f.file_id]||"customer_dnote")===value?C.successTint:"white"}}><Text>{label}</Text></Pressable>)}</View>
+ <Btn name={busy?"Saving…":"Save single-page document"} go={()=>saveSinglePage(f)} disabled={busy}/>
+ <Text style={{color:C.textSecondary}}>For multi-page PDFs use Separate PDF pages below. The server checks that this file is one page.</Text>
+ </View>:null}
  {f.page_count!=null&&splitDocs.filter(d=>d.file_id===f.file_id).reduce((n,d)=>n+d.page_end-d.page_start+1,0)>=f.page_count?<Text style={{color:"#166534",fontWeight:"bold",marginVertical:8}}>All {f.page_count} pages separated</Text>:<View style={{flexDirection:"row",marginTop:7}}><Btn name={activeFile===f.file_id?"Hide split options":"Separate PDF pages"} go={()=>{setActiveFile(activeFile===f.file_id?null:f.file_id);setStartPage(String(Math.max(0,...splitDocs.filter(d=>d.file_id===f.file_id).map(d=>d.page_end))+1));setEndPage(String(Math.max(0,...splitDocs.filter(d=>d.file_id===f.file_id).map(d=>d.page_end))+1))}}/></View>}
  {f.page_count!=null&&f.page_count>0&&splitDocs.filter(d=>d.file_id===f.file_id).reduce((n,d)=>n+d.page_end-d.page_start+1,0)<f.page_count?<Btn name="Confirm all pages and split together" go={()=>prepareAllPages(f)} disabled={busy}/>:null}
  {activeFile===f.file_id&&plans[f.file_id]?.length>0?<View style={{padding:12,backgroundColor:"#edf7ed",marginBottom:12,borderWidth:1,borderColor:C.border}}>
