@@ -14,6 +14,7 @@ const routes=[
  {title:"Manual WB Entry",description:"Create and allocate manual slips",path:"/weighbridge-manual"},
  {title:"Crop Report",description:"Harvest production by TraceCode",path:"/weighbridge-crop-report"},
  {title:"Delivery Report",description:"Customer WB and GRV records",path:"/weighbridge-delivery-report"},
+ {title:"Document Dispatch",description:"Select deliveries and generate PDF email packs",path:"/weighbridge-document-dispatch"},
  {title:"Transporter Report",description:"Seasonal rates, billed loads and GMB transport losses",path:"/weighbridge-transporter-report"},
  {title:"Wheat Storage Classification",description:"Separate seed, commercial and mixed wheat ledger",path:"/wheat-storage-classification"},
  {title:"Daily DNotes",description:"Daily slip and allocation report",path:"/weighbridge-daily-dnotes"},
