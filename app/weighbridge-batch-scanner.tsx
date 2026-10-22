@@ -91,7 +91,7 @@ export default function BatchScanner(){
  const result=await supabase.from("wb_scan_document").update({document_type:newType}).eq("scan_document_id",d.scan_document_id).select("scan_document_id").single();
  if(result.error)throw result.error;
  setSplitDocs(old=>old.map(x=>x.scan_document_id===d.scan_document_id?{...x,document_type:newType}:x));
- setMessage("Document type changed to "+(newType==="customer_wb"?"Customer WB":newType==="grv"?"GRV":newType==="rejection_notice"?"Rejection Notice":"Unclassified")+". The existing PDF has not changed.");
+ setMessage("Document type changed to "+(newType==="customer_wb"?"Customer WB":newType==="grv"?"GRV":newType==="customer_dnote"?"Customer DNote":newType==="rejection_notice"?"Rejection Notice":"Unclassified")+". The existing PDF has not changed.");
  }catch(e:any){setError(e?.message||"Unable to update document type");}finally{setBusy(false)}
  }
  async function readDocument(d:SplitDoc){
@@ -124,7 +124,7 @@ export default function BatchScanner(){
  async function resolveNotice(d:SplitDoc){if(d.document_type!=="rejection_notice")return;setBusy(true);setError("");const x=await supabase.from("wb_scan_document").update({archive_resolved:!d.archive_resolved}).eq("scan_document_id",d.scan_document_id);setBusy(false);if(x.error){setError(x.error.message);return;}await refresh();}
  const isLive=(d:SplitDoc)=>batches.some(b=>b.batch_id===d.batch_id&&!b.is_test);
  const isMatched=(d:SplitDoc)=>receipts.some(r=>r.scan_document_id===d.scan_document_id&&r.source_id);
- const readyDocs=splitDocs.filter(d=>isLive(d)&&d.extraction_status==="reviewed"&&["customer_wb","grv"].includes(d.document_type)&&!isMatched(d));
+ const readyDocs=splitDocs.filter(d=>isLive(d)&&d.extraction_status==="reviewed"&&["customer_wb","grv","customer_dnote"].includes(d.document_type)&&!isMatched(d));
  const activeDocs=splitDocs.filter(d=>isLive(d)&&!isMatched(d)&&!(d.extraction_status==="reviewed"&&["customer_wb","grv"].includes(d.document_type)));
  const completedOriginal=(b:Batch)=>{const fs=files.filter(f=>f.batch_id===b.batch_id);return fs.length>0&&fs.every(f=>f.page_count!=null&&f.page_count>0&&splitDocs.filter(d=>d.file_id===f.file_id).reduce((n,d)=>n+d.page_end-d.page_start+1,0)>=f.page_count);};
  const visibleBatches=batches.filter(b=>tab==="test"?b.is_test:tab==="archived"?!b.is_test&&completedOriginal(b):tab==="active"?!b.is_test&&!completedOriginal(b):false).filter(b=>[b.label,b.created_at,...files.filter(f=>f.batch_id===b.batch_id).map(f=>f.original_filename)].join(" ").toLowerCase().includes(search.toLowerCase()));
@@ -173,16 +173,16 @@ export default function BatchScanner(){
  <View style={{flexDirection:"row",alignItems:"center",flexWrap:"wrap"}}>
  <Text style={{marginRight:6}}>From page</Text><TextInput value={startPage} onChangeText={setStartPage} style={{borderWidth:1,borderColor:"#bdc8d7",backgroundColor:"white",padding:8,width:60,marginRight:12}}/>
  <Text style={{marginRight:6}}>To page</Text><TextInput value={endPage} onChangeText={setEndPage} style={{borderWidth:1,borderColor:"#bdc8d7",backgroundColor:"white",padding:8,width:60,marginRight:12}}/>
- {["customer_wb","grv","rejection_notice","unknown"].map(x=><Pressable key={x} onPress={()=>setKind(x)} style={{padding:8,marginRight:6,backgroundColor:kind===x?"#cee7ff":"white",borderWidth:1,borderColor:"#cbd5e1"}}><Text>{x==="customer_wb"?"Customer WB":x==="grv"?"GRV":x==="rejection_notice"?"Rejection Notice":"Unclassified"}</Text></Pressable>)}
+ {["customer_wb","grv","customer_dnote","rejection_notice","unknown"].map(x=><Pressable key={x} onPress={()=>setKind(x)} style={{padding:8,marginRight:6,backgroundColor:kind===x?"#cee7ff":"white",borderWidth:1,borderColor:"#cbd5e1"}}><Text>{x==="customer_wb"?"Customer WB":x==="grv"?"GRV":x==="customer_dnote"?"Customer DNote":x==="rejection_notice"?"Rejection Notice":"Unclassified"}</Text></Pressable>)}
  </View><View style={{flexDirection:"row",marginTop:10}}><Btn name={busy?"Working…":splitDocs.some(d=>d.file_id===f.file_id&&Number(startPage)<=d.page_end&&Number(endPage)>=d.page_start)?"Pages already saved":"Save these pages as separate document"} go={splitPdf} disabled={busy||splitDocs.some(d=>d.file_id===f.file_id&&Number(startPage)<=d.page_end&&Number(endPage)>=d.page_start)}/></View>
  </View>:null}
  {splitDocs.some(d=>d.file_id===f.file_id)?<Text style={{fontWeight:"bold",marginTop:6}}>Individual documents saved from this batch:</Text>:null}
  {splitDocs.filter(d=>tab==="test"&&d.file_id===f.file_id&&(tab!=="active"||d.extraction_status!=="reviewed"||!["customer_wb","grv"].includes(d.document_type))&&(tab!=="awaiting_match"||d.extraction_status==="reviewed"&&["customer_wb","grv"].includes(d.document_type)&&!receipts.some(r=>r.scan_document_id===d.scan_document_id&&r.source_id))).sort((a,b)=>a.page_start-b.page_start).map(d=><View key={d.scan_document_id} style={{padding:10,marginTop:5,backgroundColor:"#edf7ed",borderRadius:5}}>
- <Text style={{fontWeight:"bold"}}>Pages {d.page_start}–{d.page_end} · {d.document_type==="customer_wb"?"Customer WB":d.document_type==="grv"?"GRV":d.document_type==="rejection_notice"?"Rejection Notice":"Unclassified"}</Text>
+ <Text style={{fontWeight:"bold"}}>Pages {d.page_start}–{d.page_end} · {d.document_type==="customer_wb"?"Customer WB":d.document_type==="grv"?"GRV":d.document_type==="customer_dnote"?"Customer DNote":d.document_type==="rejection_notice"?"Rejection Notice":"Unclassified"}</Text>
  <View style={{flexDirection:"row",alignItems:"center",flexWrap:"wrap",marginTop:7}}>
  <Btn name="Open individual PDF" go={()=>openSplit(d.storage_path)}/>
  <Text style={{marginRight:8,marginBottom:8}}>Change type:</Text>
- {["customer_wb","grv","unknown"].map(t=><Pressable key={t} disabled={busy||d.document_type===t} onPress={()=>changeType(d,t)} style={{padding:9,marginRight:6,marginBottom:8,borderRadius:4,borderWidth:1,borderColor:d.document_type===t?"#15803d":"#9aabb8",backgroundColor:d.document_type===t?"#d4f4de":"white",opacity:busy?0.6:1}}><Text style={{fontWeight:d.document_type===t?"bold":"normal"}}>{t==="customer_wb"?"Customer WB":t==="grv"?"GRV":t==="rejection_notice"?"Rejection Notice":"Unclassified"}{d.document_type===t?" ✓":""}</Text></Pressable>)}
+ {["customer_wb","grv","customer_dnote","unknown"].map(t=><Pressable key={t} disabled={busy||d.document_type===t} onPress={()=>changeType(d,t)} style={{padding:9,marginRight:6,marginBottom:8,borderRadius:4,borderWidth:1,borderColor:d.document_type===t?"#15803d":"#9aabb8",backgroundColor:d.document_type===t?"#d4f4de":"white",opacity:busy?0.6:1}}><Text style={{fontWeight:d.document_type===t?"bold":"normal"}}>{t==="customer_wb"?"Customer WB":t==="grv"?"GRV":t==="customer_dnote"?"Customer DNote":t==="rejection_notice"?"Rejection Notice":"Unclassified"}{d.document_type===t?" ✓":""}</Text></Pressable>)}
  </View>
  {d.document_type==="rejection_notice"?<View style={{flexDirection:"row",alignItems:"center",marginTop:7}}><Btn name={d.archive_resolved?"Reopen rejection notice":"Mark rejection notice resolved"} go={()=>resolveNotice(d)} disabled={busy}/><Text style={{color:"#64748b"}}>Resolution does not count as returned stock.</Text></View>:null}
  <View style={{flexDirection:"row",marginTop:5}}>
