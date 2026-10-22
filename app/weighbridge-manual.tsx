@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Platform, ScrollView, Text, TextInput, Pressable, View } from "react-native";
 import { supabase } from "../supabase";
 
-type Season={season_id:number;season_name:string};
+type Season={season_id:number;season_name:string;season_complete:boolean|null};
 type Crop={crop_id:number;crop_name:string;active:boolean};
 type Customer={customer_id:number;customer_name:string;active:boolean};
 type Point={delivery_point_id:number;customer_id:number;point_name:string;active:boolean};
@@ -91,14 +91,14 @@ export default function ManualWeighbridge(){
  </View>:null}
  {step===2?<View>
  <Text style={{fontWeight:"bold",fontSize:16,marginBottom:8}}>Step 2 — Slip details and nett weight</Text>
- <Picker label="Season (required)" value={form.season_id} onChange={v=>{change("season_id",v);setAllocationField("")}} options={seasons.map(s=>({id:String(s.season_id),name:s.season_name}))} disabled={!!locked||currentAlloc.length>0}/>
+ <Picker label="Season (required)" value={form.season_id} onChange={v=>{change("season_id",v);setAllocationField("")}} options={seasons.filter(s=>s.season_complete!==true||String(s.season_id)===form.season_id&&!!chosen).map(s=>({id:String(s.season_id),name:s.season_name}))} disabled={!!locked||currentAlloc.length>0}/>
  <View style={{flexDirection:"row",flexWrap:"wrap"}}>
  <Input label="Field DNote / manual slip reference" value={form.dnote_number} onChange={v=>change("dnote_number",v)} editable={!locked}/>
  <Input label="Date (DD/MM/YYYY, or 5/12)" value={form.slip_date} onChange={v=>change("slip_date",v)} editable={!locked}/>
  <Input label="Nett weight kg (single weight)" value={form.net_kg} onChange={v=>change("net_kg",v)} editable={!locked}/>
  </View>
  <View style={{flexDirection:"row",flexWrap:"wrap"}}>
- <Picker label="Crop" value={form.crop_id} onChange={v=>{change("crop_id",v);setAllocationField("")}} options={crops.filter(c=>form.owner_type!=="own"||c.active).map(c=>({id:String(c.crop_id),name:c.crop_name}))} disabled={!!locked||currentAlloc.length>0}/>
+ <Picker label="Crop" value={form.crop_id} onChange={v=>{change("crop_id",v);setAllocationField("")}} options={crops.filter(c=>c.active||String(c.crop_id)===form.crop_id&&!!chosen).map(c=>({id:String(c.crop_id),name:c.crop_name}))} disabled={!!locked||currentAlloc.length>0}/>
  <Picker label="Transporter" value={form.transporter_id} onChange={v=>setForm(f=>({...f,transporter_id:v,vehicle_reg_id:"",driver_id:""}))} options={transporters.map(t=>({id:String(t.wb_transporter_id),name:t.wb_transporter_name}))} disabled={!!locked}/>
  <Picker label="Vehicle registration" value={form.vehicle_reg_id} onChange={v=>{const vehicle=vehicles.find(x=>String(x.wb_transporter_reg_id)===v);setForm(f=>({...f,vehicle_reg_id:v,registration_text:vehicle?.wb_transporter_reg_no||f.registration_text,driver_id:vehicle?.default_driver_id?String(vehicle.default_driver_id):f.driver_id}))}} options={vehicles.filter(v=>!form.transporter_id||String(v.wb_transporter_id)===form.transporter_id).map(v=>({id:String(v.wb_transporter_reg_id),name:v.wb_transporter_reg_no}))} disabled={!!locked}/>
  <Picker label="Driver" value={form.driver_id} onChange={v=>change("driver_id",v)} options={drivers.map(d=>({id:String(d.driver_id),name:d.driver_name}))} disabled={!!locked}/>
