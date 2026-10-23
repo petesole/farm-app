@@ -1,7 +1,8 @@
 import {WbAdminSignIn} from "../components/jspl/WbAdminSignIn";
 import {WbModuleHeader} from "../components/jspl/WbModuleHeader";
 import {jsplColors as C} from "../constants/jspl-design";
-import {PDFDocument} from "pdf-lib";
+// Use the self-contained UMD build: Metro's ESM resolution breaks pdf-lib's nested tslib dependency.
+const {PDFDocument}=require("pdf-lib/dist/pdf-lib.js") as typeof import("pdf-lib");
 import {useEffect,useMemo,useState} from "react";
 import {Platform,Pressable,ScrollView,Text,TextInput,View} from "react-native";
 import {supabase} from "../supabase";
