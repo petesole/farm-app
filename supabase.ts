@@ -4,8 +4,16 @@ import { createClient } from "@supabase/supabase-js";
 import { Platform } from "react-native";
 import "react-native-url-polyfill/auto";
 
-const supabaseUrl = "https://azxaymxnicrsezeoxiau.supabase.co";
-const supabaseAnonKey = "sb_publishable_ZS4RL-MxFMNztg9M_DRdLw_ZtN_TSsy";
+// Development branch: intentionally fail closed until TEST credentials are provided.
+// Never default to the production project from a development build.
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error("Missing TEST Supabase credentials. Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in FarmingMainDev/.env.local before running dev.");
+}
+if (supabaseUrl.includes("azxaymxnicrsezeoxiau")) {
+  throw new Error("Refusing to connect development build to JSPL production Supabase. Set TEST project credentials.");
+}
 
 const isWeb = Platform.OS === "web";
 const isSSR = isWeb && typeof window === "undefined";
