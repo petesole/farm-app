@@ -5,19 +5,13 @@
 - `dev`: all ongoing module development (Weighbridge, Cashbook, Stock V2, and other modules).
 - Existing feature branches are backups/integration sources until merged; do not delete prematurely.
 
-## Windows setup (run once in FarmingMainLive)
+## Windows setup (run once from FarmingMainLive)
 ```powershell
 cd "C:\Users\Pete Sole\Documents\FarmingMainLive"
 git fetch origin
-git worktree add -b dev-local "..\FarmingMainDev" origin/dev
-```
-The command above creates a local tracking *branch* named dev-local. For the simpler exact `dev` branch, use:
-```powershell
-git worktree remove "..\FarmingMainDev"
-git branch -D dev-local
 git worktree add -b dev "..\FarmingMainDev" origin/dev
 ```
-If `dev` already exists locally, instead run `git worktree add "..\FarmingMainDev" dev`. Do not use `git worktree add -f` to override an occupied directory.
+This creates a local `dev` branch tracking `origin/dev` and opens the same repository in its own folder. If you already have a local `dev` branch, use `git worktree add "..\FarmingMainDev" dev` instead. Do not overwrite an existing directory.
 
 ## Required isolated database
 The `dev` source refuses to start unless `FarmingMainDev/.env.local` contains TEST Supabase credentials. It also rejects the current production project ID. The user must provision a *separate Supabase test project*, migrate the necessary schema, and seed safe test data before running `dev`. This is deliberate fail-closed protection.
