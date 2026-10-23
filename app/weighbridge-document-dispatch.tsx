@@ -32,20 +32,26 @@ export default function DocumentDispatch(){
  const [error,setError]=useState(""),[info,setInfo]=useState(""),[busy,setBusy]=useState(false);
  async function load(){
   setBusy(true);setError("");
-  const [l,d,s,cs,packs]=await Promise.all([
+  const [l,d,s,cs,packs,receipts]=await Promise.all([
    supabase.from("wb_customer_dispatch_v").select("source_type,source_id,slip_number,dnote_number,weigh_date,net_kg,customer_id").order("weigh_date",{ascending:false}).limit(5000),
    supabase.from("wb_customer_document").select("source_type,source_id,document_type,storage_path,original_filename,uploaded_at").order("uploaded_at",{ascending:false}).limit(5000),
-   supabase.from("wb_scan_document").select("linked_source_type,linked_source_id,document_type,storage_path,original_filename,created_at").not("linked_source_id","is",null).order("created_at",{ascending:false}).limit(5000),
+   supabase.from("wb_scan_document").select("scan_document_id,linked_source_type,linked_source_id,document_type,storage_path,original_filename,created_at").not("linked_source_id","is",null).order("created_at",{ascending:false}).limit(5000),
    supabase.from("wb_customer").select("customer_id,customer_name"),
-   supabase.from("wb_dispatch_combined").select("source_type,source_id,source_signature,storage_path,created_at").order("created_at",{ascending:false}).limit(5000)
+   supabase.from("wb_dispatch_combined").select("source_type,source_id,source_signature,storage_path,created_at").order("created_at",{ascending:false}).limit(5000),
+   supabase.from("wb_received_document").select("source_type,source_id,scan_document_id,document_type").not("source_id","is",null).limit(5000)
   ]);
   setBusy(false);
-  const failed=[l,d,s,cs,packs].find(x=>x.error);
+  const failed=[l,d,s,cs,packs,receipts].find(x=>x.error);
   if(failed?.error){setError(failed.error.message);return;}
   setLoads(((l.data||[]) as Load[]).filter(x=>!!x.source_id&&x.source_type!=="farm_slip"));
   const scans=(s.data||[]).map((x:any)=>({source_type:x.linked_source_type,source_id:x.linked_source_id,document_type:x.document_type,storage_path:x.storage_path,original_filename:x.original_filename,created_at:x.created_at}));
+  const scanById=new Map((s.data||[]).map((x:any)=>[x.scan_document_id,x]));
+  const viaReceipts=(receipts.data||[]).map((r:any)=>{
+   const doc:any=scanById.get(r.scan_document_id);
+   return doc?{source_type:r.source_type,source_id:r.source_id,document_type:r.document_type,storage_path:doc.storage_path,original_filename:doc.original_filename,created_at:doc.created_at}:null;
+  }).filter(Boolean) as DocumentRow[];
   const found=new Map<string,DocumentRow>();
-  for(const row of [...((d.data||[]) as DocumentRow[]),...scans]){
+  for(const row of [...((d.data||[]) as DocumentRow[]),...viaReceipts,...scans]){
    if(!row.source_type||!row.source_id||!row.storage_path)continue;
    const k=key(row)+":"+row.document_type;
    if(!found.has(k))found.set(k,row);
@@ -112,6 +118,38 @@ export default function DocumentDispatch(){
   const pack=saved(l);if(!pack)return;
   const r=await supabase.storage.from("wb-customer-documents").createSignedUrl(pack.storage_path,300);
   if(r.error){setError(r.error.message);return;}window.open(r.data.signedUrl,"_blank");
+ }
+ async function downloadToFolder(){
+  if(busy||!chosen.length)return;
+  setError("");setInfo("");
+  let dir:any;
+  try{
+   if(typeof (window as any).showDirectoryPicker==="function")dir=await (window as any).showDirectoryPicker({mode:"readwrite"});
+  }catch(e:any){if(e?.name==="AbortError")return;setError("Folder selection failed: "+(e?.message||String(e)));return;}
+  setBusy(true);
+  try{
+   let count=0;
+   for(const l of chosen){
+    const pack=saved(l);
+    if(!pack)continue;
+    const file=await supabase.storage.from("wb-customer-documents").download(pack.storage_path);
+    if(file.error||!file.data)throw new Error(l.slip_number+": "+(file.error?.message||"Unable to download PDF"));
+    const name="JSPL_"+clean(l.slip_number)+"_Complete.pdf";
+    if(dir){
+     const handle=await dir.getFileHandle(name,{create:true});
+     const stream=await handle.createWritable();
+     await stream.write(file.data);await stream.close();
+    }else{
+     const url=URL.createObjectURL(file.data);
+     const a=document.createElement("a");a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
+     setTimeout(()=>URL.revokeObjectURL(url),15000);
+    }
+    count++;
+   }
+   setInfo(count+" completed PDF pack(s) "+(dir?"saved to the selected folder.":"downloaded using your browser settings.")+" Missing/incomplete packs were skipped.");
+   if(!count)setError("No completed PDFs among the selected deliveries. All four documents must be present before a combined PDF can be saved.");
+  }catch(e:any){setError("Folder export failed: "+(e?.message||String(e)));}
+  finally{setBusy(false);}
  }
  async function build(){
   if(!chosen.length||!enabled.length||busy)return;
@@ -188,11 +226,12 @@ export default function DocumentDispatch(){
   </View>
   <View style={{backgroundColor:"white",padding:14,borderRadius:8}}>
    <Text style={{fontWeight:"bold",fontSize:18,marginBottom:8}}>Email attachment export · {chosen.length} selected deliveries</Text>
-   <Text style={{color:"#586a60",marginBottom:8}}>Complete deliveries automatically generate and save a combined PDF when this screen is open. Select loads below only to create a custom PDF for an email.</Text>
+   <Text style={{color:"#586a60",marginBottom:8}}>Complete deliveries automatically generate and save a combined PDF when this screen is open. Select deliveries and save their completed PDFs to a Windows folder, then attach them in your normal email application.</Text>
    <View style={{flexDirection:"row",flexWrap:"wrap"}}>{kinds.map(k=><Pressable key={k.id} onPress={()=>setEnabled(v=>v.includes(k.id)?v.filter(x=>x!==k.id):[...v,k.id])} style={{padding:9,marginRight:15}}><Text>{enabled.includes(k.id)?"☑":"☐"} {k.label}</Text></Pressable>)}</View>
    <View style={{flexDirection:"row",flexWrap:"wrap"}}><Pressable onPress={()=>setMode("combined")} style={{padding:9}}><Text>{mode==="combined"?"◉":"○"} One PDF for selected loads</Text></Pressable><Pressable onPress={()=>setMode("perload")} style={{padding:9}}><Text>{mode==="perload"?"◉":"○"} One PDF per load</Text></Pressable></View>
    <Text style={{marginVertical:8,color:missing.length?"#93511b":"#176541"}}>Missing selected documents: {missing.length}{missing.length?" · "+missing.slice(0,4).join("; "):""}</Text>
-   <Button label={busy?"Generating…":"Download selected PDF(s)"} click={build} disabled={busy||!chosen.length||!enabled.length}/>
+   <Button label="Save completed PDFs to folder" click={downloadToFolder} disabled={busy||!chosen.some(saved)}/>
+   <Button label={busy?"Generating…":"Download custom PDF(s)"} click={build} disabled={busy||!chosen.length||!enabled.length}/>
   </View>
  </ScrollView>;
 }
