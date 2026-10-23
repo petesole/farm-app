@@ -1,0 +1,205 @@
+// First-stage weighbridge UI: read-only harvest eligibility preview.
+// No writes or posting before production migration/RLS deployment.
+import { ThemedText } from "@/components/themed-text";
+import { ThemedView } from "@/components/themed-view";
+import { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { supabase } from "../../../supabase";
+
+type HarvestRow = {
+  tracecode_id: number;
+  tracecode_name: string | null;
+  tracecode_size: number | null;
+  start_date: string | null;
+  end_date: string | null;
+  season_id: number;
+  crop_id: number | null;
+  crop?: { crop_name: string | null } | null;
+  season?: { season_name: string | null } | null;
+};
+type ControlRow = { season_id: number; crop_id: number; harvest_enabled: boolean };
+type Eligible = HarvestRow & { cropName: string; seasonName: string };
+
+function todayLocal(): string {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+function parseEnteredDate(text: string): string | null {
+  const t = text.trim();
+  const m = /^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?$/.exec(t);
+  const ymd = m
+    ? [Number(m[3] ?? new Date().getFullYear()), Number(m[2]), Number(m[1])]
+    : /^(\d{4})-(\d{2})-(\d{2})$/.test(t)
+      ? t.split("-").map(Number)
+      : null;
+  if (!ymd) return null;
+  const [y, mo, day] = ymd;
+  const d = new Date(y, mo - 1, day);
+  if (d.getFullYear() !== y || d.getMonth() !== mo - 1 || d.getDate() !== day) return null;
+  return `${y}-${String(mo).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+export default function WeighbridgeHarvestPreview() {
+  const [dateText, setDateText] = useState(() => {
+    const [y, m, d] = todayLocal().split("-");
+    return `${d}/${m}/${y}`;
+  });
+  const [rows, setRows] = useState<HarvestRow[]>([]);
+  const [controls, setControls] = useState<ControlRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [allocationKg,setAllocationKg] = useState<Record<string,string>>({});
+  const [slipNumber,setSlipNumber] = useState("");
+  const [netKg,setNetKg] = useState("");
+  const [destination,setDestination] = useState<"field_to_stock"|"field_to_customer">("field_to_stock");
+  const [customer,setCustomer] = useState("");
+  const [saving,setSaving] = useState(false);
+  const selectedDate = parseEnteredDate(dateText);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const [tr, control] = await Promise.all([
+          supabase.from("tracecode")
+            .select("tracecode_id,tracecode_name,tracecode_size,start_date,end_date,season_id,crop_id,crop:crop_id(crop_name),season:season_id(season_name)")
+            .limit(10000),
+          supabase.from("wb_harvest_control").select("season_id,crop_id,harvest_enabled"),
+        ]);
+        if (tr.error) throw new Error(tr.error.message);
+        if (control.error) throw new Error(control.error.message);
+        if (mounted) {
+          setRows((tr.data ?? []) as unknown as HarvestRow[]);
+          setControls((control.data ?? []) as ControlRow[]);
+        }
+      } catch (e: any) {
+        if (mounted) setError(e?.message ?? "Unable to load harvest controls");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  const options = useMemo((): Eligible[] => {
+    if (!selectedDate) return [];
+    const enabled = new Set(controls.filter(x => x.harvest_enabled).map(x => `${x.season_id}:${x.crop_id}`));
+    return rows.filter(t =>
+      t.crop_id != null &&
+      enabled.has(`${t.season_id}:${t.crop_id}`) &&
+      (!t.start_date || t.start_date.slice(0, 10) <= selectedDate) &&
+      (!t.end_date || t.end_date.slice(0, 10) >= selectedDate)
+    ).map(t => ({
+      ...t,
+      cropName: t.crop?.crop_name ?? "Unnamed crop",
+      seasonName: t.season?.season_name ?? "Unnamed season",
+    })).sort((a, b) => a.cropName.localeCompare(b.cropName) || (a.tracecode_name ?? "").localeCompare(b.tracecode_name ?? ""));
+  }, [controls, rows, selectedDate]);
+
+  const byCrop = useMemo(() => {
+    const groups = new Map<string, Eligible[]>();
+    for (const t of options) {
+      const k = `${t.seasonName} — ${t.cropName}`;
+      groups.set(k, [...(groups.get(k) ?? []), t]);
+    }
+    return Array.from(groups.entries());
+  }, [options]);
+
+  const selectedTraces = options.filter(t=>Number(allocationKg[t.tracecode_id])>0);
+  const allocatedTotal=selectedTraces.reduce((sum,t)=>sum+Number(allocationKg[t.tracecode_id]||0),0);
+  const firstTrace=selectedTraces[0];
+  const sameCrop=selectedTraces.every(t=>t.crop_id===firstTrace?.crop_id && t.season_id===firstTrace?.season_id);
+  async function saveDraft(){
+    const kg=Number(netKg.replace(/,/g,""));
+    if(!selectedDate || !firstTrace || !slipNumber.trim() || !Number.isFinite(kg) || kg<=0){
+      Alert.alert("Incomplete", "Choose an eligible trace code and enter the slip number and positive net weight in kg.");return;
+    }
+    if(!sameCrop || allocatedTotal!==kg){
+      Alert.alert("Check allocations","All selected fields must be the same crop and season, and allocated kilograms must equal net kilograms.");return;
+    }
+    if(destination==="field_to_customer"&&!customer.trim()){
+      Alert.alert("Missing customer", "Enter the customer for a direct delivery.");return;
+    }
+    setSaving(true);
+    try{
+      const {data,error}=await supabase.rpc("wb_create_harvest_draft",{
+        p_slip_number:slipNumber.trim(),p_weigh_date:selectedDate,
+        p_crop_id:firstTrace.crop_id,p_season_id:firstTrace.season_id,
+        p_movement_type:destination,p_net_kg:kg,p_customer_name:destination==="field_to_customer"?customer.trim():null,
+        p_allocations:selectedTraces.map(t=>({tracecode_id:t.tracecode_id,allocated_kg:Number(allocationKg[t.tracecode_id])}))
+      });
+      if(error)throw error;
+      if(!data)throw new Error("No slip ID returned");
+      Alert.alert("Draft saved",`Slip #${data} saved with field allocations. It has NOT been confirmed or added to stock/harvest totals.`);
+      setSlipNumber("");setNetKg("");setCustomer("");setAllocationKg({});
+    }catch(e:any){Alert.alert("Could not save",e?.message??"Unknown error");}
+    finally{setSaving(false);}
+  }
+  return (
+    <ThemedView style={styles.page}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <ThemedText type="title">Weighbridge — Harvest</ThemedText>
+        <ThemedText style={styles.note}>Draft entry only: saving does not post harvested tonnes or stock.</ThemedText>
+        <ThemedText style={styles.caption}>Weighbridge date (dd/mm/yyyy; e.g. 5/12 assumes current year)</ThemedText>
+        <TextInput value={dateText} onChangeText={setDateText} placeholder="dd/mm/yyyy" style={styles.input} />
+        {!selectedDate ? <ThemedText style={styles.warning}>Enter a valid date.</ThemedText> : null}
+        {loading ? <ActivityIndicator /> : error ? (
+          <ThemedText style={styles.warning}>Harvest configuration unavailable: {error}. The database migration and permissions must be installed before this screen can load.</ThemedText>
+        ) : byCrop.length === 0 ? (
+          <ThemedText>No eligible trace codes for this date. Check Harvesting Control and trace-code start/end dates.</ThemedText>
+        ) : byCrop.map(([heading, values]) => (
+          <View key={heading} style={styles.group}>
+            <ThemedText type="subtitle">{heading}</ThemedText>
+            {values.map(t => (
+              <View key={t.tracecode_id} style={styles.row}>
+                <View style={{flex:1,gap:3}}>
+                  <ThemedText>{t.tracecode_name??`Trace #${t.tracecode_id}`}</ThemedText>
+                  <ThemedText style={styles.caption}>{t.tracecode_size??"—"} ha</ThemedText>
+                </View>
+                <TextInput
+                  style={[styles.input,{width:120}]}
+                  keyboardType="decimal-pad"
+                  placeholder="Allocated kg"
+                  value={allocationKg[t.tracecode_id]??""}
+                  onChangeText={v=>setAllocationKg(prev=>({...prev,[t.tracecode_id]:v}))}
+                />
+              </View>
+            ))}
+          </View>
+        ))}
+        <View style={styles.group}>
+          <ThemedText type="subtitle">New Farm WB draft</ThemedText>
+          <ThemedText style={styles.caption}>Enter allocated kg alongside one or more fields above.</ThemedText>
+          <ThemedText style={styles.caption}>Total allocated: {allocatedTotal.toLocaleString()} kg</ThemedText>
+          {!sameCrop?<ThemedText style={styles.warning}>Fields must be from the same crop and season.</ThemedText>:null}
+          <TextInput style={styles.input} placeholder="Farm WB slip number" value={slipNumber} onChangeText={setSlipNumber}/>
+          <TextInput style={styles.input} placeholder="Net weight (kg)" keyboardType="decimal-pad" value={netKg} onChangeText={setNetKg}/>
+          <View style={{flexDirection:"row",gap:8}}>
+            <Pressable style={[styles.row,{flex:1},destination==="field_to_stock"&&styles.selected]} onPress={()=>setDestination("field_to_stock")}><ThemedText>Farm stock</ThemedText></Pressable>
+            <Pressable style={[styles.row,{flex:1},destination==="field_to_customer"&&styles.selected]} onPress={()=>setDestination("field_to_customer")}><ThemedText>Customer</ThemedText></Pressable>
+          </View>
+          {destination==="field_to_customer"?<TextInput style={styles.input} placeholder="Customer name" value={customer} onChangeText={setCustomer}/>:null}
+          <Pressable disabled={saving||!firstTrace} onPress={saveDraft} style={[styles.selected,{padding:14,borderRadius:10,opacity:saving||!firstTrace?0.5:1}]}>
+            <ThemedText>{saving?"Saving…":"Save draft slip"}</ThemedText>
+          </Pressable>
+          <ThemedText style={styles.note}>Draft includes field allocations. Scanned documents and confirmation are not yet available; drafts do not count as harvested or dispatched weights.</ThemedText>
+        </View>
+      </ScrollView>
+    </ThemedView>
+  );
+}
+
+const styles = StyleSheet.create({
+  page: { flex: 1 },
+  content: { padding: 16, gap: 12, paddingBottom: 40 },
+  note: { opacity: 0.7, lineHeight: 19 },
+  caption: { opacity: 0.72 },
+  warning: { color: "#b45309" },
+  input: { borderWidth: 1, borderColor: "#999", borderRadius: 10, padding: 12 },
+  group: { gap: 8, padding: 12, borderWidth: 1, borderColor: "#aaa", borderRadius: 12 },
+  row: { padding: 12, borderWidth: 1, borderColor: "#aaa", borderRadius: 9, flexDirection: "row", justifyContent: "space-between" },
+  selected: { borderColor: "#2563eb", borderWidth: 2 },
+});
