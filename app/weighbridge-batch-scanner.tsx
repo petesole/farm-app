@@ -11,12 +11,13 @@ type Batch={batch_id:string;created_at:string;label:string|null;status:string;is
 type FileRow={file_id:string;batch_id:string;original_filename:string;storage_path:string;extraction_status:string;page_count:number|null};
 type Progress={batch_id:string;workflow_state:string;keep_open:boolean;file_count:number;complete_files:number;doc_count:number;matched_count:number;unmatched_count:number;pending_notices:number};
 type Receipt={scan_document_id:string;document_number:string;delivery_note:string|null;document_date:string;customer:string|null;source_id:string|null};
-type SplitDoc={linked_source_id?:string|null;archive_resolved:boolean;scan_document_id:string;batch_id:string;file_id:string;page_start:number;page_end:number;document_type:string;storage_path:string;extraction_status:string;extracted_data:Record<string,unknown>|null};
+type SplitDoc={duplicate_discarded?:boolean;linked_source_id?:string|null;archive_resolved:boolean;scan_document_id:string;batch_id:string;file_id:string;page_start:number;page_end:number;document_type:string;storage_path:string;extraction_status:string;extracted_data:Record<string,unknown>|null};
 const blue=C.primary;
 function Btn({name,go,disabled=false}:{name:string;go:()=>void;disabled?:boolean}){return <Pressable onPress={go} disabled={disabled} style={{backgroundColor:disabled?"#99a8b8":blue,padding:11,borderRadius:5,marginRight:9,marginBottom:8}}><Text style={{fontWeight:"bold",color:"white"}}>{name}</Text></Pressable>}
 export default function BatchScanner(){
  const [tab,setTab]=useState<"active"|"awaiting_match"|"archived"|"test">("active"),[search,setSearch]=useState(""),[progress,setProgress]=useState<Progress[]>([]),[receipts,setReceipts]=useState<Receipt[]>([]);
  const [directTypes,setDirectTypes]=useState<Record<string,string>>({}),[plans,setPlans]=useState<Record<string,SplitPlan[]>>({}),[splitting,setSplitting]=useState("");
+ const [confirmDiscard,setConfirmDiscard]=useState(false);
  const [reviewId,setReviewId]=useState<string|null>(null),[reviewData,setReviewData]=useState<Record<string,string>>({}),[previewUrl,setPreviewUrl]=useState("");
  const [splitDocs,setSplitDocs]=useState<SplitDoc[]>([]),[activeFile,setActiveFile]=useState<string|null>(null),[startPage,setStartPage]=useState("1"),[endPage,setEndPage]=useState("1"),[kind,setKind]=useState("customer_wb");
  const [allowed,setAllowed]=useState<boolean|null>(null),[name,setName]=useState(""),[batches,setBatches]=useState<Batch[]>([]),[files,setFiles]=useState<FileRow[]>([]),[error,setError]=useState(""),[message,setMessage]=useState(""),[busy,setBusy]=useState(false);
@@ -124,7 +125,7 @@ export default function BatchScanner(){
  }
  async function startReview(d:SplitDoc,data:Record<string,unknown>|null=d.extracted_data){
  setReviewData(Object.fromEntries(Object.entries(data||{}).filter(([k])=>k!=="uncertain_fields").map(([k,v])=>[k,v==null?"":String(v)])));
- setReviewId(d.scan_document_id);setPreviewUrl("");
+ setReviewId(d.scan_document_id);setConfirmDiscard(false);setPreviewUrl("");
  const signed=await supabase.storage.from("wb-customer-documents").createSignedUrl(d.storage_path,3600);
  if(signed.error){setError("Could not load PDF preview: "+signed.error.message);return;}
  setPreviewUrl(signed.data?.signedUrl||"");
@@ -139,10 +140,28 @@ export default function BatchScanner(){
  }
  async function reopen(b:Batch,open:boolean){setBusy(true);setError("");const x=await supabase.from("wb_scan_batch").update({keep_open:open}).eq("batch_id",b.batch_id);setBusy(false);if(x.error){setError(x.error.message);return;}setMessage(open?"Batch reopened in Active.":"Batch returned to automatic workflow.");await refresh();}
  async function resolveNotice(d:SplitDoc){if(d.document_type!=="rejection_notice")return;setBusy(true);setError("");const x=await supabase.from("wb_scan_document").update({archive_resolved:!d.archive_resolved}).eq("scan_document_id",d.scan_document_id);setBusy(false);if(x.error){setError(x.error.message);return;}await refresh();}
+ const normId=(v:unknown)=>String(v??"").toUpperCase().replace(/[^A-Z0-9]/g,"");
+ const numberOf=(t:string,data:Record<string,unknown>|null|undefined)=>{
+  const fields=t==="grv"?["grv_number"]:t==="customer_wb"?["wb_number"]:t==="customer_dnote"?["customer_dnote_number","delivery_note_number","document_number"]:[];
+  return fields.map(k=>normId(data?.[k])).find(Boolean)||"";
+ };
+ const reviewDoc=splitDocs.find(d=>d.scan_document_id===reviewId);
+ const reviewNumber=reviewDoc?numberOf(reviewDoc.document_type,reviewData):"";
+ const duplicateMatches=reviewDoc&&reviewNumber?splitDocs.filter(d=>d.scan_document_id!==reviewId&&!d.duplicate_discarded&&d.document_type===reviewDoc.document_type&&numberOf(d.document_type,d.extracted_data)===reviewNumber):[];
+ async function discardDuplicate(){
+  if(!reviewDoc||!duplicateMatches.length||busy||!confirmDiscard)return;
+  if(isMatched(reviewDoc)){setError("This scan is already linked to a dispatch and cannot be deleted here.");return;}
+  setBusy(true);setError("");
+  const out=await supabase.from("wb_scan_document").update({duplicate_discarded:true}).eq("scan_document_id",reviewDoc.scan_document_id).is("linked_source_id",null);
+  setBusy(false);
+  if(out.error){setError(out.error.message);return;}
+  setReviewId(null);setConfirmDiscard(false);setPreviewUrl("");await refresh();
+  setMessage("Duplicate removed from the active workflow. The original matched document and stored audit copy remain untouched.");
+ }
  const isLive=(d:SplitDoc)=>batches.some(b=>b.batch_id===d.batch_id&&!b.is_test);
  const isMatched=(d:SplitDoc)=>!!d.linked_source_id||receipts.some(r=>r.scan_document_id===d.scan_document_id&&r.source_id);
- const readyDocs=splitDocs.filter(d=>isLive(d)&&d.extraction_status==="reviewed"&&["customer_wb","grv","customer_dnote"].includes(d.document_type)&&!isMatched(d));
- const activeDocs=splitDocs.filter(d=>isLive(d)&&!isMatched(d)&&!(d.extraction_status==="reviewed"&&["customer_wb","grv","customer_dnote"].includes(d.document_type)));
+ const readyDocs=splitDocs.filter(d=>!d.duplicate_discarded&&isLive(d)&&d.extraction_status==="reviewed"&&["customer_wb","grv","customer_dnote"].includes(d.document_type)&&!isMatched(d));
+ const activeDocs=splitDocs.filter(d=>!d.duplicate_discarded&&isLive(d)&&!isMatched(d)&&!(d.extraction_status==="reviewed"&&["customer_wb","grv","customer_dnote"].includes(d.document_type)));
  const completedOriginal=(b:Batch)=>{const fs=files.filter(f=>f.batch_id===b.batch_id);return fs.length>0&&fs.every(f=>f.page_count!=null&&f.page_count>0&&splitDocs.filter(d=>d.file_id===f.file_id).reduce((n,d)=>n+d.page_end-d.page_start+1,0)>=f.page_count);};
  const visibleBatches=batches.filter(b=>tab==="test"?b.is_test:tab==="archived"?!b.is_test&&completedOriginal(b):tab==="active"?!b.is_test&&!completedOriginal(b):false).filter(b=>[b.label,b.created_at,...files.filter(f=>f.batch_id===b.batch_id).map(f=>f.original_filename)].join(" ").toLowerCase().includes(search.toLowerCase()));
  const visibleDocs=(tab==="active"?activeDocs:tab==="awaiting_match"?readyDocs:[]).filter(d=>[d.document_type,JSON.stringify(d.extracted_data||{}),d.page_start].join(" ").toLowerCase().includes(search.toLowerCase()));
@@ -220,6 +239,17 @@ export default function BatchScanner(){
  <Text style={{width:180}}>{k.replace(/_/g," ")}</Text>
  <TextInput value={v} onChangeText={x=>setReviewData(old=>({...old,[k]:x}))} style={{borderWidth:1,borderColor:"#ccc",padding:7,width:300}}/>
  </View>)}
+ {duplicateMatches.length>0?<View style={{padding:11,backgroundColor:"#fff0e8",borderWidth:1,borderColor:"#d1844b",borderRadius:6,marginBottom:10}}>
+ <Text style={{fontWeight:"800",color:"#973e13",marginBottom:5}}>Already in the system: {d.document_type==="grv"?"GRV":d.document_type==="customer_wb"?"Customer WB":"Delivery Note"} {reviewNumber}</Text>
+ <Text style={{color:"#793e22",marginBottom:7}}>{duplicateMatches.length} existing document(s) with the same type and number. Check before keeping this new copy.</Text>
+ {duplicateMatches.slice(0,5).map(m=><Text key={m.scan_document_id} style={{fontSize:12,color:"#793e22"}}>{m.scan_document_id} · {isMatched(m)?"Already matched":"Not matched"} · {m.extraction_status}</Text>)}
+ <View style={{flexDirection:"row",flexWrap:"wrap",marginTop:8}}>
+ <Btn name="Keep this copy" go={()=>{setConfirmDiscard(false);saveReview(d)}} disabled={busy}/>
+ <Btn name={confirmDiscard?"Confirm delete duplicate":"Delete duplicate"} go={()=>{if(confirmDiscard)void discardDuplicate();else setConfirmDiscard(true)}} disabled={busy||isMatched(d)}/>
+ {confirmDiscard?<Btn name="Cancel deletion" go={()=>setConfirmDiscard(false)}/>:null}
+ </View>
+ <Text style={{fontSize:11,color:"#793e22"}}>Delete removes only this new scan from active processing; its original stored file is retained for audit. Existing linked records are never deleted.</Text>
+ </View>:null}
  <Btn name="Save reviewed reading" go={()=>saveReview(d)} disabled={busy}/>
  </View><View style={{flex:1,minWidth:430}}>{previewUrl?React.createElement("iframe" as any,{src:previewUrl,title:"Scanned customer document",style:{width:"100%",height:680,border:"1px solid #cbd5e1",borderRadius:6}}):<Text>Loading document preview…</Text>}<Btn name="Open PDF in new tab" go={()=>openSplit(d.storage_path)}/></View></View>
  </View>:null}
@@ -234,6 +264,17 @@ export default function BatchScanner(){
  {reviewId===d.scan_document_id?<View style={{padding:10,backgroundColor:"#f4f7fa"}}>
  <View style={{flexDirection:"row",alignItems:"flex-start",gap:16}}><View style={{width:420}}>
  {Object.entries(reviewData).map(([k,v])=><View key={k} style={{marginBottom:7}}><Text>{k.replace(/_/g," ")}</Text><TextInput value={v} onChangeText={v=>setReviewData(x=>({...x,[k]:v}))} style={{backgroundColor:"white",padding:8,borderColor:C.border,borderWidth:1}}/></View>)}
+ {duplicateMatches.length>0?<View style={{padding:11,backgroundColor:"#fff0e8",borderWidth:1,borderColor:"#d1844b",borderRadius:6,marginBottom:10}}>
+ <Text style={{fontWeight:"800",color:"#973e13",marginBottom:5}}>Already in the system: {d.document_type==="grv"?"GRV":d.document_type==="customer_wb"?"Customer WB":"Delivery Note"} {reviewNumber}</Text>
+ <Text style={{color:"#793e22",marginBottom:7}}>{duplicateMatches.length} existing document(s) with the same type and number. Check before keeping this new copy.</Text>
+ {duplicateMatches.slice(0,5).map(m=><Text key={m.scan_document_id} style={{fontSize:12,color:"#793e22"}}>{m.scan_document_id} · {isMatched(m)?"Already matched":"Not matched"} · {m.extraction_status}</Text>)}
+ <View style={{flexDirection:"row",flexWrap:"wrap",marginTop:8}}>
+ <Btn name="Keep this copy" go={()=>{setConfirmDiscard(false);saveReview(d)}} disabled={busy}/>
+ <Btn name={confirmDiscard?"Confirm delete duplicate":"Delete duplicate"} go={()=>{if(confirmDiscard)void discardDuplicate();else setConfirmDiscard(true)}} disabled={busy||isMatched(d)}/>
+ {confirmDiscard?<Btn name="Cancel deletion" go={()=>setConfirmDiscard(false)}/>:null}
+ </View>
+ <Text style={{fontSize:11,color:"#793e22"}}>Delete removes only this new scan from active processing; its original stored file is retained for audit. Existing linked records are never deleted.</Text>
+ </View>:null}
  <Btn name="Save review → Awaiting Match" go={()=>saveReview(d)} disabled={busy}/>
  </View><View style={{flex:1,minWidth:390}}>{previewUrl?React.createElement("iframe" as any,{src:previewUrl,title:"Original customer scan",style:{width:"100%",height:660,border:"1px solid #ccc"}}):<Text>Loading PDF…</Text>}</View></View>
  </View>:null}</View>)}
