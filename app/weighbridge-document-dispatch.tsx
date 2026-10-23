@@ -24,6 +24,9 @@ export default function DocumentDispatch(){
  const [allowed,setAllowed]=useState<boolean|null>(null),[loads,setLoads]=useState<Load[]>([]),[docs,setDocs]=useState<DocumentRow[]>([]);
  const [customers,setCustomers]=useState<{customer_id:number;customer_name:string}[]>([]);
  const [combined,setCombined]=useState<Combined[]>([]);
+ const [outgoing,setOutgoing]=useState<{source_type:string;source_id:string;storage_path:string}[]>([]);
+ const [outgoingErrors,setOutgoingErrors]=useState<Record<string,string>>({});
+ const outgoingPending=useRef(new Set<string>());
  const [autoErrors,setAutoErrors]=useState<Record<string,string>>({});
  const pending=useRef(new Set<string>());
 
@@ -32,16 +35,17 @@ export default function DocumentDispatch(){
  const [error,setError]=useState(""),[info,setInfo]=useState(""),[busy,setBusy]=useState(false);
  async function load(){
   setBusy(true);setError("");
-  const [l,d,s,cs,packs,receipts]=await Promise.all([
+  const [l,d,s,cs,packs,receipts,out]=await Promise.all([
    supabase.from("wb_customer_dispatch_v").select("source_type,source_id,slip_number,dnote_number,weigh_date,net_kg,customer_id").order("weigh_date",{ascending:false}).limit(5000),
    supabase.from("wb_customer_document").select("source_type,source_id,document_type,storage_path,original_filename,uploaded_at").order("uploaded_at",{ascending:false}).limit(5000),
    supabase.from("wb_scan_document").select("scan_document_id,linked_source_type,linked_source_id,document_type,storage_path,original_filename,created_at").order("created_at",{ascending:false}).limit(5000),
    supabase.from("wb_customer").select("customer_id,customer_name"),
    supabase.from("wb_dispatch_combined").select("source_type,source_id,source_signature,storage_path,created_at").order("created_at",{ascending:false}).limit(5000),
-   supabase.from("wb_received_document").select("source_type,source_id,scan_document_id,document_type").not("source_id","is",null).limit(5000)
+   supabase.from("wb_received_document").select("source_type,source_id,scan_document_id,document_type").not("source_id","is",null).limit(5000),
+   supabase.from("wb_dispatch_outgoing_pdf").select("source_type,source_id,storage_path").limit(5000)
   ]);
   setBusy(false);
-  const failed=[l,d,s,cs,packs,receipts].find(x=>x.error);
+  const failed=[l,d,s,cs,packs,receipts,out].find(x=>x.error);
   if(failed?.error){setError(failed.error.message);return;}
   setLoads(((l.data||[]) as Load[]).filter(x=>!!x.source_id&&x.source_type!=="farm_slip"));
   const scans=(s.data||[]).map((x:any)=>({source_type:x.linked_source_type,source_id:x.linked_source_id,document_type:x.document_type,storage_path:x.storage_path,original_filename:x.original_filename,created_at:x.created_at}));
@@ -56,9 +60,11 @@ export default function DocumentDispatch(){
    const k=key(row)+":"+row.document_type;
    if(!found.has(k))found.set(k,row);
   }
+  for(const o of (out.data||[]))found.set(o.source_type+":"+o.source_id+":outgoing_wb",{source_type:o.source_type,source_id:o.source_id,document_type:"outgoing_wb",storage_path:o.storage_path,original_filename:"JSPL_Outgoing_WB.pdf"});
   setDocs([...found.values()]);
   setCustomers((cs.data||[]) as any);
   setCombined((packs.data||[]) as Combined[]);
+  setOutgoing((out.data||[]) as any);
  }
  useEffect(()=>{if(Platform.OS!=="web"){setAllowed(false);return;}let active=true;(async()=>{const u=await supabase.auth.getUser();if(!active)return;if(!u.data.user){setAllowed(false);return;}const r=await supabase.rpc("wb_admin_allowed");if(active)setAllowed(!r.error&&r.data===true)})();return()=>{active=false}},[]);
  useEffect(()=>{if(allowed)load()},[allowed]);
@@ -70,6 +76,62 @@ export default function DocumentDispatch(){
  const chosen=loads.filter(l=>selected.includes(key(l)));
  const missing=chosen.flatMap(l=>enabled.filter(k=>!available.has(key(l)+":"+k)).map(k=>l.slip_number+" — "+kinds.find(x=>x.id===k)?.label));
 
+ async function makeOutgoing(l:Load){
+  if(!l.source_id||outgoingPending.current.has(key(l))||outgoing.some(o=>key(o)===key(l))||outgoingErrors[key(l)])return;
+  const id=key(l);outgoingPending.current.add(id);
+  try{
+   const isScale=l.source_type==="scale";
+   const q=isScale?await supabase.from("wb_scale_transaction").select("official_slip_number,first_at,second_at,gross_kg,tare_kg,net_kg,dnote_number,registration_text,driver_name,driver_identity_number,driver_id,transporter_id,status").eq("transaction_id",l.source_id).single():await supabase.from("wb_manual_entries").select("slip_date,net_kg,dnote_number,registration_text,driver_id,transporter_id,status").eq("manual_entry_id",l.source_id).single();
+   if(q.error||!q.data)throw new Error(q.error?.message||"Original record unavailable");
+   const x:any=q.data;
+   if(isScale&&(x.gross_kg==null||x.tare_kg==null||x.net_kg==null))throw new Error("Original gross/tare/nett values are incomplete");
+   if(!isScale&&x.net_kg==null)throw new Error("Manual nett weight missing");
+   const ids=[x.driver_id,x.transporter_id];
+   const [driver,transport]=await Promise.all([
+    ids[0]?supabase.from("wb_driver").select("driver_name,identity_number").eq("driver_id",ids[0]).maybeSingle():Promise.resolve({data:null,error:null}),
+    ids[1]?supabase.from("wb_transporter").select("wb_transporter_name").eq("wb_transporter_id",ids[1]).maybeSingle():Promise.resolve({data:null,error:null})
+   ]);
+   const pdf=await PDFDocument.create();const page=pdf.addPage([595,420]);
+   const {StandardFonts,rgb}=require("pdf-lib/dist/pdf-lib.js");
+   const regular=await pdf.embedFont(StandardFonts.Helvetica),bold=await pdf.embedFont(StandardFonts.HelveticaBold);
+   const put=(v:any,left:number,top:number,size=10,strong=false)=>{
+    const content=String(v??"—").replace(/[^\x20-\x7e]/g," ").slice(0,90);
+    page.drawText(content,{x:left,y:420-top,size,font:strong?bold:regular,color:rgb(0.08,0.13,0.1)});
+   };
+   const line=(y:number)=>page.drawLine({start:{x:24,y},end:{x:571,y},thickness:0.6,color:rgb(0.55,0.62,0.57)});
+   put("JOHN SOLE (PRIVATE) LIMITED",27,38,16,true);put(isScale?"WEIGHBRIDGE SLIP":"MANUAL WEIGHBRIDGE RECORD",340,38,11,true);line(366);
+   put("WB No.",28,77,9);put(l.slip_number,108,77,12,true);
+   put("Date",325,77,9);put(l.weigh_date,400,77,11,true);
+   put("DNote",28,104,9);put(x.dnote_number||l.dnote_number,108,104,11);
+   put("Vehicle",325,104,9);put(x.registration_text||"—",400,104,11,true);
+   put("Transporter",28,132,9);put(transport.data?.wb_transporter_name||"—",108,132,10);
+   put("Driver",325,132,9);put(x.driver_name||driver.data?.driver_name||"—",400,132,10);
+   put("Driver ID",325,157,9);put(x.driver_identity_number||driver.data?.identity_number||"—",400,157,9);
+   line(244);
+   put("GROSS",46,199,10,true);put("TARE",242,199,10,true);put("NETT",428,199,10,true);
+   const kg=(v:any)=>v==null?"—":Number(v).toLocaleString("en-US")+" kg";
+   put(isScale?kg(x.gross_kg):"—",30,226,13,true);
+   put(isScale?kg(x.tare_kg):"—",221,226,13,true);
+   put(kg(x.net_kg),410,229,16,true);
+   line(174);
+   put(isScale?"Electronic copy of synced weighbridge transaction":"Manual nett entry — no gross or tare weighing recorded",27,278,10);
+   put("JSPL  |  WEIGHBRIDGE",27,389,9);
+   const bytes=await pdf.save();
+   const storagePath="outgoing/"+l.source_type+"/"+l.source_id+"/"+Date.now()+".pdf";
+   const upload=await supabase.storage.from("wb-customer-documents").upload(storagePath,new Uint8Array(bytes),{contentType:"application/pdf",upsert:false});
+   if(upload.error)throw upload.error;
+   const saved=await supabase.from("wb_dispatch_outgoing_pdf").insert({source_type:l.source_type,source_id:l.source_id,storage_path:storagePath});
+   if(saved.error)throw saved.error;
+   setOutgoing(xs=>[...xs,{source_type:l.source_type,source_id:l.source_id!,storage_path:storagePath}]);
+   setDocs(xs=>[...xs,{source_type:l.source_type,source_id:l.source_id!,document_type:"outgoing_wb",storage_path:storagePath,original_filename:"JSPL_Outgoing_WB.pdf"}]);
+  }catch(e:any){setOutgoingErrors(v=>({...v,[id]:String(e?.message||e)}));}
+  finally{outgoingPending.current.delete(id);}
+ }
+ useEffect(()=>{
+  if(!allowed||busy)return;
+  const next=loads.find(l=>!outgoing.some(o=>key(o)===key(l))&&!outgoingErrors[key(l)]&&!outgoingPending.current.has(key(l)));
+  if(next)void makeOutgoing(next);
+ },[allowed,busy,loads,outgoing,outgoingErrors]);
  async function createMerged(batch:Load[],requireComplete:boolean){
   const pdf=await PDFDocument.create();let pagesAdded=0;
   for(const l of batch)for(const kind of kinds.filter(k=>requireComplete||enabled.includes(k.id))){
@@ -222,6 +284,7 @@ export default function DocumentDispatch(){
      </ScrollView>
     </View>
    </ScrollView>
+   {Object.keys(outgoingErrors).length>0?<Text style={{marginTop:8,color:"#b42318"}}>Outgoing slip errors: {Object.entries(outgoingErrors).slice(0,4).map(([id,msg])=>id+": "+msg).join(" | ")} <Text onPress={()=>setOutgoingErrors({})} style={{fontWeight:"bold"}}>Retry</Text></Text>:null}
    {Object.keys(autoErrors).length>0?<Text style={{marginTop:9,color:"#b42318"}}>Combined PDF errors: {Object.entries(autoErrors).slice(0,3).map(([id,msg])=>id+": "+msg).join(" | ")}</Text>:null}
   </View>
   <View style={{backgroundColor:"white",padding:14,borderRadius:8}}>
