@@ -35,7 +35,7 @@ export default function DocumentDispatch(){
   const [l,d,s,cs,packs,receipts]=await Promise.all([
    supabase.from("wb_customer_dispatch_v").select("source_type,source_id,slip_number,dnote_number,weigh_date,net_kg,customer_id").order("weigh_date",{ascending:false}).limit(5000),
    supabase.from("wb_customer_document").select("source_type,source_id,document_type,storage_path,original_filename,uploaded_at").order("uploaded_at",{ascending:false}).limit(5000),
-   supabase.from("wb_scan_document").select("scan_document_id,linked_source_type,linked_source_id,document_type,storage_path,original_filename,created_at").not("linked_source_id","is",null).order("created_at",{ascending:false}).limit(5000),
+   supabase.from("wb_scan_document").select("scan_document_id,linked_source_type,linked_source_id,document_type,storage_path,original_filename,created_at").order("created_at",{ascending:false}).limit(5000),
    supabase.from("wb_customer").select("customer_id,customer_name"),
    supabase.from("wb_dispatch_combined").select("source_type,source_id,source_signature,storage_path,created_at").order("created_at",{ascending:false}).limit(5000),
    supabase.from("wb_received_document").select("source_type,source_id,scan_document_id,document_type").not("source_id","is",null).limit(5000)
