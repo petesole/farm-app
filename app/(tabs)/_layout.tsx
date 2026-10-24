@@ -52,6 +52,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="wb-admin" options={{ title: "Weighbridge", href: Platform.OS === "web" ? "/wb-admin" : null }} />
       <Tabs.Screen name="fuel" options={{ title: "Fuel" }} />
       <Tabs.Screen name="stock-test" options={{ title: "Stock V2", href: Platform.OS === "web" ? "/stock-test" : null }} />
+      <Tabs.Screen name="cashbook" options={{ title: "Cashbook", href: Platform.OS === "web" ? "/cashbook" : null }} />
       <Tabs.Screen
         name="irrigation_main_dashboard"
         options={{ title: "Irrigation" }}
