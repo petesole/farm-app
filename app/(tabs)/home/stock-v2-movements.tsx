@@ -3,7 +3,7 @@ import {useLocalSearchParams,useRouter} from "expo-router";
 import {ActivityIndicator,Pressable,ScrollView,StyleSheet,View} from "react-native";
 import {ThemedText} from "@/components/themed-text";
 import {ThemedView} from "@/components/themed-view";
-import {jsplColors,jsplSpacing,jsplRadii} from "@/constants/jspl-design";
+import {jsplColors,jsplSpacing,jsplRadii,jsplSizes} from "@/constants/jspl-design";
 import {supabase} from "../../../supabase";
 
 const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
@@ -50,7 +50,7 @@ export default function StockV2MovementReport(){
 }
 const styles=StyleSheet.create({
  root:{flex:1,backgroundColor:jsplColors.background},header:{padding:jsplSpacing.lg,gap:8,borderBottomWidth:1,borderColor:jsplColors.border},
- back:{alignSelf:"flex-start",padding:10,borderWidth:1,borderColor:jsplColors.border,borderRadius:jsplRadii.sm},
+ back:{alignSelf:"flex-start",minHeight:jsplSizes.buttonHeight,justifyContent:"center",paddingHorizontal:jsplSpacing.md,borderWidth:1,borderColor:jsplColors.border,borderRadius:jsplRadii.sm},
  heading:{fontWeight:"700",fontSize:22,color:jsplColors.primaryDark},sub:{color:jsplColors.textSecondary},error:{padding:20,color:jsplColors.danger},
  list:{flex:1},table:{minWidth:1040,padding:12},rowHead:{flexDirection:"row",paddingVertical:9,backgroundColor:"#dce5ed"},row:{flexDirection:"row",paddingVertical:7,borderBottomWidth:1,borderColor:jsplColors.border},alt:{backgroundColor:"#f1f3f5"},
  col:{paddingHorizontal:5},date:{width:135},id:{width:90},desc:{flex:1,minWidth:250},price:{width:145,alignItems:'flex-end'},priceText:{textAlign:'right',fontWeight:'700',color:jsplColors.text},priceNote:{fontSize:11,color:jsplColors.textSecondary,textAlign:'right'},number:{width:110,textAlign:"right"},bold:{fontWeight:"700"},empty:{padding:20,color:jsplColors.textSecondary}
