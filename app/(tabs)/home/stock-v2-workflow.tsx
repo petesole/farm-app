@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from "react-native";
 import { supabase } from "../../../supabase";
 
-const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
+const endpoint=(process.env.EXPO_PUBLIC_SUPABASE_URL||"").replace(/\\/$/,"")+"/functions/v1/stock-v2-demo-workflow";
 type Item={item_code:string;item_name:string;base_unit:string;quantity:number;ao_quantity:number;input_type:string|null;input_category:string|null;active_ingredient:string|null;last_purchase_price:number|null;weighted_average_price:number|null;last_purchase_supplier:string|null};
 type OrderLine={owner_code:string;contract_id:number|null;order_id:number;order_number:string;supplier_name:string;item_code:string;item_name:string;base_unit:string;ordered_quantity:number;received_quantity:number;ordered_unit_price:number|null;status:string};
 type SprayLine={job_id:number;external_tracecode_id:number;tracecode_name:string;item_code:string;item_name:string;area_ha:number;rate_per_ha:number;planned_quantity:number;issued_quantity:number;status:string};
