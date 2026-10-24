@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, TextInput,
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { supabase } from "../../../supabase";
+import {jsplColors,jsplSpacing,jsplRadii,jsplSizes} from "@/constants/jspl-design";
 
 type Trace={tracecode_id:number;tracecode_name:string;end_date:string|null};
 type Input={input_id:number;inputs_name:string};
@@ -136,4 +137,4 @@ export default function StockV2DirectIssue(){
   </View>
  </ScrollView></ThemedView>;
 }
-const styles=StyleSheet.create({root:{flex:1},page:{padding:16,gap:10,paddingBottom:40},head:{fontWeight:"700",fontSize:16},label:{opacity:0.8},warn:{color:"#9b6c19"},error:{color:"#b22"},chip:{padding:9,borderWidth:1,borderColor:"#999",borderRadius:8,marginRight:6},sel:{backgroundColor:"#c8e8d8"},dropdownButton:{borderWidth:1,borderColor:"#888",borderRadius:8,paddingHorizontal:14,justifyContent:"center"},selectedText:{color:"#187a48",fontWeight:"600"},input:{borderWidth:1,borderColor:"#888",padding:10,borderRadius:8,backgroundColor:"white",color:"#222"},card:{borderWidth:1,borderColor:"#aaa",borderRadius:10,padding:12,gap:8},option:{padding:9,borderBottomWidth:1,borderBottomColor:"#ddd"},suggest:{backgroundColor:"white",borderWidth:1,borderColor:"#ddd",padding:4},btn:{padding:12,borderWidth:1,borderColor:"#888",borderRadius:9,alignItems:"center"},disabled:{backgroundColor:"#ddd",borderRadius:8,padding:14,alignItems:"center"}});
+const styles=StyleSheet.create({root:{flex:1,backgroundColor:jsplColors.background},page:{padding:jsplSpacing.xl,gap:jsplSpacing.md,paddingBottom:40},head:{fontWeight:"700",fontSize:16},label:{opacity:0.8},warn:{color:"#9b6c19"},error:{color:"#b22"},chip:{padding:9,borderWidth:1,borderColor:"#999",borderRadius:8,marginRight:6},sel:{backgroundColor:"#c8e8d8"},dropdownButton:{borderWidth:1,borderColor:"#888",borderRadius:8,paddingHorizontal:14,justifyContent:"center"},selectedText:{color:"#187a48",fontWeight:"600"},input:{minHeight:jsplSizes.inputHeight,borderWidth:1,borderColor:jsplColors.border,paddingHorizontal:jsplSpacing.md,paddingVertical:9,borderRadius:jsplRadii.sm,backgroundColor:jsplColors.surface,color:jsplColors.text},card:{borderWidth:1,borderColor:"#aaa",borderRadius:10,padding:12,gap:8},option:{padding:9,borderBottomWidth:1,borderBottomColor:"#ddd"},suggest:{backgroundColor:"white",borderWidth:1,borderColor:"#ddd",padding:4},btn:{minHeight:jsplSizes.buttonHeight,paddingHorizontal:jsplSpacing.md,borderWidth:1,borderColor:jsplColors.border,borderRadius:jsplRadii.sm,alignItems:"center",justifyContent:"center"},disabled:{backgroundColor:"#ddd",borderRadius:8,padding:14,alignItems:"center"}});
