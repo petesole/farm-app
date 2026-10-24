@@ -4,6 +4,8 @@ import {ActivityIndicator,Pressable,ScrollView,StyleSheet,TextInput,View} from "
 import {ThemedText} from "@/components/themed-text";
 import {ThemedView} from "@/components/themed-view";
 import {supabase} from "../../../supabase";
+import {JsplSearchCombo} from "@/components/jspl/JsplSearchCombo";
+import {displayJsplDate} from "@/utils/jspl-input";
 import {jsplColors,jsplSpacing,jsplRadii,jsplSizes} from "@/constants/jspl-design";
 const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
 type Line={document_id:number;document_date:string;delivery_note:string;delivery_note_date:string|null;supplier_name:string;owner_code:string;item_code:string;item_name:string;base_unit:string;line_id:number;quantity:number};
@@ -12,9 +14,16 @@ export default function GRVOutstanding(){
  const router=useRouter();
  const [rows,setRows]=useState<Line[]>([]),[selected,setSelected]=useState<number|null>(null),[invoice,setInvoice]=useState(""),[date,setDate]=useState(new Date().toLocaleDateString("en-GB")),[prices,setPrices]=useState<Record<number,string>>({});
  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[success,setSuccess]=useState("");
+ const [grower,setGrower]=useState("ALL");
  const load=async()=>{setBusy(true);setError("");try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");const r=await fetch(endpoint+"?outstanding_dnotes=1",{headers:{authorization:"Bearer "+session.access_token}});const d=await r.json();if(!r.ok)throw Error(d.error||"Unable to load outstanding invoices");setRows(d.rows??[]);}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
  useEffect(()=>{void load()},[]);
  const documents=useMemo(()=>{const map=new Map<number,Line[]>();for(const l of rows){if(!map.has(l.document_id))map.set(l.document_id,[]);map.get(l.document_id)!.push(l);}return [...map.values()]},[rows]);
+ const growers=useMemo(()=>[...new Set(documents.map(d=>d[0].owner_code))].sort(),[documents]);
+ const visibleDocuments=useMemo(()=>documents.filter(d=>grower==="ALL"||d[0].owner_code===grower),[documents,grower]);
+ const dnoteOptions=useMemo(()=>visibleDocuments.map(group=>({
+  id:group[0].document_id,
+  label:"DNote "+group[0].delivery_note+" · "+displayJsplDate(group[0].delivery_note_date||group[0].document_date),
+ })),[visibleDocuments]);
  const selectedLines=documents.find(d=>d[0].document_id===selected)??[];
  const valid=selectedLines.length>0&&invoice.trim().length>0&&!!fmt(date)&&selectedLines.every(l=>Number.isFinite(Number(prices[l.line_id]))&&Number(prices[l.line_id])>0);
  const post=async()=>{if(!valid||busy)return;setBusy(true);setError("");setSuccess("");try{
@@ -34,10 +43,21 @@ export default function GRVOutstanding(){
   <ThemedText>Received delivery notes awaiting supplier invoices. Matching an invoice does not receive stock a second time.</ThemedText>
   <Pressable style={styles.button} onPress={()=>void load()}><ThemedText>↻ Refresh</ThemedText></Pressable>
   {busy?<ActivityIndicator/>:null}{error?<ThemedText style={styles.error}>{error}</ThemedText>:null}{success?<ThemedText>{success}</ThemedText>:null}
-  {documents.length===0?<ThemedText>No outstanding delivery notes.</ThemedText>:documents.map(group=><Pressable key={group[0].document_id} onPress={()=>{setSelected(group[0].document_id);setInvoice("");setPrices({});setError("")}} style={[styles.card,selected===group[0].document_id&&styles.selected]}>
-    <ThemedText style={styles.bold}>DNote {group[0].delivery_note} · {group[0].owner_code}</ThemedText>
-    <ThemedText>{group[0].supplier_name} · {group[0].delivery_note_date||group[0].document_date} · {group.length} products</ThemedText>
-  </Pressable>)}
+  <View style={styles.pickerSection}>
+   <ThemedText style={styles.bold}>Filter by Grower</ThemedText>
+   <View style={styles.growerFilters}>
+    {["ALL",...growers].map(owner=><Pressable key={owner} accessibilityRole="button" accessibilityState={{selected:grower===owner}}
+     onPress={()=>{setGrower(owner);setSelected(null);setInvoice("");setPrices({});setError("")}}
+     style={[styles.growerButton,grower===owner&&styles.growerActive]}>
+     <ThemedText style={grower===owner?styles.growerActiveText:styles.growerText}>{owner==="ALL"?"All Growers":owner}</ThemedText>
+    </Pressable>)}
+   </View>
+   {documents.length===0?<ThemedText>No outstanding delivery notes.</ThemedText>:visibleDocuments.length===0?<ThemedText>No outstanding delivery notes for this grower.</ThemedText>:<>
+    <JsplSearchCombo label="Outstanding Delivery Notes" selector="product" options={dnoteOptions} value={selected}
+     placeholder="Search by DNote number" onChange={value=>{setSelected(value===null?null:Number(value));setInvoice("");setPrices({});setError("")}}/>
+    {selectedLines.length>0?<ThemedText style={styles.muted}>{selectedLines[0].supplier_name} · {selectedLines[0].owner_code} · {selectedLines.length} products</ThemedText>:null}
+   </>}
+  </View>
   {selectedLines.length>0?<View style={styles.form}>
    <ThemedText style={styles.bold}>Match invoice to {selectedLines[0].delivery_note}</ThemedText>
    <ThemedText>Supplier Invoice Number</ThemedText><TextInput style={styles.input} value={invoice} onChangeText={setInvoice}/>
@@ -47,4 +67,4 @@ export default function GRVOutstanding(){
   </View>:null}
  </ScrollView></ThemedView>;
 }
-const styles=StyleSheet.create({root:{flex:1,backgroundColor:jsplColors.background},page:{padding:jsplSpacing.lg,gap:12},heading:{fontWeight:"700",fontSize:22,color:jsplColors.primaryDark},card:{backgroundColor:"#fff",padding:12,borderWidth:1,borderColor:jsplColors.border,borderRadius:8,gap:5},selected:{borderColor:jsplColors.primary,borderWidth:2},bold:{fontWeight:"700"},button:{minHeight:jsplSizes.buttonHeight,justifyContent:"center",paddingHorizontal:jsplSpacing.md,alignSelf:"flex-start",borderColor:jsplColors.border,borderWidth:1,borderRadius:jsplRadii.sm},form:{backgroundColor:"#fff",borderWidth:1,borderColor:jsplColors.border,borderRadius:8,padding:14,gap:9},line:{borderTopWidth:1,borderColor:jsplColors.border,paddingTop:9,gap:5},input:{minHeight:jsplSizes.inputHeight,borderWidth:1,borderRadius:jsplRadii.sm,borderColor:jsplColors.border,paddingHorizontal:jsplSpacing.md,paddingVertical:9,color:jsplColors.text,backgroundColor:jsplColors.surface},submit:{backgroundColor:jsplColors.primary,padding:15,alignSelf:"flex-start",borderRadius:6},disabled:{opacity:0.5},submitText:{color:"white",fontWeight:"700"},error:{color:jsplColors.danger}});
+const styles=StyleSheet.create({root:{flex:1,backgroundColor:jsplColors.background},page:{padding:jsplSpacing.lg,gap:12},heading:{fontWeight:"700",fontSize:22,color:jsplColors.primaryDark},pickerSection:{backgroundColor:jsplColors.surface,padding:jsplSpacing.lg,borderWidth:1,borderColor:jsplColors.border,borderRadius:jsplRadii.md,gap:jsplSpacing.md},growerFilters:{flexDirection:"row",flexWrap:"wrap",gap:jsplSpacing.sm},growerButton:{minHeight:jsplSizes.buttonHeight,justifyContent:"center",paddingHorizontal:jsplSpacing.lg,borderWidth:1,borderColor:jsplColors.border,borderRadius:jsplRadii.sm,backgroundColor:jsplColors.surface},growerActive:{backgroundColor:jsplColors.primary,borderColor:jsplColors.primary},growerText:{color:jsplColors.text},growerActiveText:{color:jsplColors.surface,fontWeight:"700"},muted:{color:jsplColors.textSecondary},bold:{fontWeight:"700"},button:{minHeight:jsplSizes.buttonHeight,justifyContent:"center",paddingHorizontal:jsplSpacing.md,alignSelf:"flex-start",borderColor:jsplColors.border,borderWidth:1,borderRadius:jsplRadii.sm},form:{backgroundColor:"#fff",borderWidth:1,borderColor:jsplColors.border,borderRadius:8,padding:14,gap:9},line:{borderTopWidth:1,borderColor:jsplColors.border,paddingTop:9,gap:5},input:{minHeight:jsplSizes.inputHeight,borderWidth:1,borderRadius:jsplRadii.sm,borderColor:jsplColors.border,paddingHorizontal:jsplSpacing.md,paddingVertical:9,color:jsplColors.text,backgroundColor:jsplColors.surface},submit:{backgroundColor:jsplColors.primary,padding:15,alignSelf:"flex-start",borderRadius:6},disabled:{opacity:0.5},submitText:{color:"white",fontWeight:"700"},error:{color:jsplColors.danger}});
