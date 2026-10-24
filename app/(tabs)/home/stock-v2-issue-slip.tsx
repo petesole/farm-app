@@ -4,7 +4,7 @@ import {ActivityIndicator,Platform,Pressable,ScrollView,StyleSheet,TextInput,Vie
 import {ThemedText} from "@/components/themed-text";
 import {ThemedView} from "@/components/themed-view";
 import {supabase} from "../../../supabase";
-import {jsplColors,jsplSpacing,jsplRadii} from "@/constants/jspl-design";
+import {jsplColors,jsplSpacing,jsplRadii,jsplSizes} from "@/constants/jspl-design";
 
 const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
 type Line={item_code:string;item_name:string;base_unit:string;quantity:number;rate_per_ha:number|null;mix_instruction:string|null};
@@ -92,7 +92,7 @@ export default function IssueSlip(){
 }
 const styles=StyleSheet.create({
  root:{flex:1,backgroundColor:jsplColors.background},page:{padding:jsplSpacing.lg,gap:12},
- button:{alignSelf:"flex-start",padding:10,borderRadius:jsplRadii.sm,borderWidth:1,borderColor:jsplColors.border},
+ button:{alignSelf:"flex-start",minHeight:jsplSizes.buttonHeight,justifyContent:"center",paddingHorizontal:jsplSpacing.md,borderRadius:jsplRadii.sm,borderWidth:1,borderColor:jsplColors.border},
  heading:{fontSize:20,fontWeight:"700",color:jsplColors.primaryDark},
  slipWrap:{gap:14,alignItems:"flex-start"},
  sheet:{backgroundColor:"#fff",width:302,borderWidth:1,borderColor:"#ddd",padding:10,gap:4},
@@ -109,7 +109,7 @@ const styles=StyleSheet.create({
  numCell:{width:"16%",fontSize:11,textAlign:"right",color:"#000"},
  note:{fontSize:8,color:"#000",marginVertical:5},
  controls:{gap:8,backgroundColor:"#fff",padding:14,borderRadius:jsplRadii.sm,borderWidth:1,borderColor:jsplColors.border},
- input:{width:140,borderWidth:1,borderColor:jsplColors.border,padding:10},
- primary:{backgroundColor:jsplColors.primary,padding:12,alignSelf:"flex-start",borderRadius:jsplRadii.sm},
+ input:{width:140,minHeight:jsplSizes.inputHeight,borderWidth:1,borderColor:jsplColors.border,paddingHorizontal:jsplSpacing.md,paddingVertical:9,borderRadius:jsplRadii.sm,backgroundColor:jsplColors.surface},
+ primary:{backgroundColor:jsplColors.primary,minHeight:jsplSizes.buttonHeight,justifyContent:"center",paddingHorizontal:jsplSpacing.md,alignSelf:"flex-start",borderRadius:jsplRadii.sm},
  warning:{color:jsplColors.danger,fontSize:9},error:{color:jsplColors.danger}
 });
