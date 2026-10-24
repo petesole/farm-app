@@ -66,7 +66,7 @@ begin
  select coalesce(sum(a.allocated_quantity),0) into v_allocated
  from stock_v2.accounting_grv_allocation a
  where a.received_line_id=new.received_line_id
-   and (tg_op='INSERT' or a.accounting_line_id<>old.accounting_line_id);
+   and (tg_op='INSERT' or a.accounting_line_id<>new.accounting_line_id);
  if v_allocated+new.allocated_quantity>v_receipt.quantity then
    raise exception 'Invoice allocations exceed physical receipt quantity';
  end if;
