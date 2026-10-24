@@ -29,6 +29,11 @@ export default function ControlPanelScreen() {
             subtitle="Development only — no saving or stock movement"
             onPress={() => router.push("/(tabs)/home/stock-v2-spray-planning" as any)}
           />
+          <Tile
+            title="Farm Cashbook V1 (Test Preview)"
+            subtitle="Payments, receipts and transfers — demo only, no database writes"
+            onPress={() => router.push("/cashbook-v1" as any)}
+          />
           {/* ✅ Users (Invite + Roles) */}
           <Tile
             title="Users"
