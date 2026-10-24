@@ -4,6 +4,7 @@ import {ActivityIndicator,Pressable,ScrollView,StyleSheet,TextInput,View} from "
 import {ThemedText} from "@/components/themed-text";
 import {ThemedView} from "@/components/themed-view";
 import {supabase} from "../../../supabase";
+import {jsplColors,jsplSpacing,jsplRadii,jsplSizes} from "@/constants/jspl-design";
 const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
 type Supplier={supplier_id:number;supplier_name:string;active:boolean};
 export default function Suppliers(){
@@ -33,4 +34,4 @@ export default function Suppliers(){
   </View>)}
  </ScrollView></ThemedView>
 }
-const styles=StyleSheet.create({root:{flex:1,backgroundColor:"#f4f7f4"},page:{padding:20,gap:14},title:{fontSize:23,fontWeight:"800",color:"#174832"},line:{flexDirection:"row",flexWrap:"wrap",gap:9,alignItems:"center"},lineRow:{flexDirection:"row",flexWrap:"wrap",gap:12,alignItems:"center",padding:12,borderBottomWidth:1,borderColor:"#d2dbd5",backgroundColor:"#fff"},label:{fontWeight:"700",color:"#174832"},panel:{padding:15,backgroundColor:"#fff",gap:12,borderWidth:1,borderColor:"#bdcfc1",borderRadius:6},button:{padding:9,borderColor:"#a8bead",borderWidth:1,borderRadius:5,backgroundColor:"#fff"},input:{padding:11,borderWidth:1,borderColor:"#b6c8b9",backgroundColor:"#fff",borderRadius:5},error:{color:"#b21e28"},success:{color:"#19703d"}});
+const styles=StyleSheet.create({root:{flex:1,backgroundColor:jsplColors.background},page:{padding:jsplSpacing.xl,gap:jsplSpacing.lg},title:{fontSize:23,fontWeight:"800",color:jsplColors.primaryDark},line:{flexDirection:"row",flexWrap:"wrap",gap:9,alignItems:"center"},lineRow:{flexDirection:"row",flexWrap:"wrap",gap:12,alignItems:"center",padding:12,borderBottomWidth:1,borderColor:"#d2dbd5",backgroundColor:"#fff"},label:{fontWeight:"700",color:jsplColors.primaryDark},panel:{padding:jsplSpacing.lg,backgroundColor:jsplColors.surface,gap:jsplSpacing.md,borderWidth:1,borderColor:jsplColors.border,borderRadius:jsplRadii.md},button:{minHeight:jsplSizes.buttonHeight,paddingHorizontal:jsplSpacing.md,justifyContent:"center",borderColor:jsplColors.border,borderWidth:1,borderRadius:jsplRadii.sm,backgroundColor:jsplColors.surface},input:{minHeight:jsplSizes.inputHeight,paddingHorizontal:jsplSpacing.md,borderWidth:1,borderColor:jsplColors.border,backgroundColor:jsplColors.surface,borderRadius:jsplRadii.sm},error:{color:jsplColors.danger},success:{color:jsplColors.primary}});
