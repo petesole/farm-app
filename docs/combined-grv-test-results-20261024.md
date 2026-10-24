@@ -23,3 +23,11 @@ Executed in a transaction and ROLLED BACK:
 6. Only then enable the GRV page's combined posting button and run visual/UI checks.
 
 Keep `main` and Weighbridge untouched. Existing live Stock V2 workflows remain unchanged.
+
+## Additional isolated test backend — 24 October 2026
+- Migration applied: `isolated_stock_v2_grv_atomic_post_test` in PRIVATE `stock_v2_grv_test` schema.
+- Created `request_log` and `post_combined_grv(uuid,jsonb)`, accessible to trusted database roles only; no authenticated/anon/Public grants.
+- Atomic test transaction supports previously received DNotes, newly recorded direct receipts, invoice quantity and price, per-line allocations, disputed variance status, and idempotent replay.
+- Verified transactionally with ROLLBACK: 5 old + 5 new = 10; duplicate request made only one new receipt; excess allocation rejected; partial 4+6 across invoices; wrong supplier rejected; unmatched invoice quantity flagged disputed.
+- Final SELECT results: zero persisted test receipts, zero persisted GRVs and zero persisted requests.
+- **Not production ready:** this function writes to isolated test fixture tables rather than actual `stock_v2` physical ledger; live function integration, authorization, stock valuation, deployment and browser workflow still pending. Do not enable the live posting button yet.
