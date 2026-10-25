@@ -1,3 +1,4 @@
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 import {fuelDateISO} from "./fuel_admin_dates";
 // app/(tabs)/fuel_gen_usage.tsx
 import { router, useLocalSearchParams } from 'expo-router';
@@ -218,6 +219,7 @@ export default function FuelGenUsageScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      <JsplModuleHeader title="Generator Fuel Usage" />
       <ThemedText type="title">Generator Usage</ThemedText>
 
       <ThemedView style={styles.card}>
