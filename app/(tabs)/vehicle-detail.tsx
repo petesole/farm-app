@@ -9,13 +9,20 @@ import {jsplColors as C,jsplSpacing as S,jsplRadii as R} from "@/constants/jspl-
 type Ref={id:number;label:string};
 type Vehicle={vehicle_id:number;vehicle_name:string;vehicle_model:string|null;vehicle_assignment_id:number|null;tractor_size:number|null;consumption:number|null;vehicle_discontinued:boolean;has_meter:boolean;meter_type:string|null;vehicle_type_id:number|null;tractor_class_id:number|null};
 export default function VehicleDetail(){
- const {id}=useLocalSearchParams<{id?:string}>();
- const vehicleId=id && id!=="new"?Number(id):null;
+ const {id,mode}=useLocalSearchParams<{id?:string;mode?:string}>();
+ // An explicit create mode takes precedence over any stale edit ID retained by navigation.
+ const creating=mode==="create" || id==="new";
+ const parsedId=Number(id);
+ const vehicleId=!creating && id && Number.isSafeInteger(parsedId) && parsedId>0 ? parsedId : null;
  const [allowed,setAllowed]=useState<boolean|null>(null);
  const [types,setTypes]=useState<Ref[]>([]),[assignments,setAssignments]=useState<Ref[]>([]),[classes,setClasses]=useState<Ref[]>([]);
  const [row,setRow]=useState<Partial<Vehicle>>({vehicle_name:"",vehicle_model:"",vehicle_discontinued:false,has_meter:false,meter_type:null,vehicle_type_id:null,vehicle_assignment_id:null,tractor_class_id:null,tractor_size:null,consumption:null});
  const [size,setSize]=useState(""),[consumption,setConsumption]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState("");
- useEffect(()=>{(async()=>{
+ useEffect(()=>{
+  // Reset form state whenever this screen is reused for a new vehicle.
+  setRow({vehicle_name:"",vehicle_model:"",vehicle_discontinued:false,has_meter:false,meter_type:null,vehicle_type_id:null,vehicle_assignment_id:null,tractor_class_id:null,tractor_size:null,consumption:null});
+  setSize("");setConsumption("");setError("");
+  (async()=>{
   const {data:u,error:ue}=await supabase.auth.getUser();
   if(ue||!u.user){setAllowed(false);return;}
   const {data:roles,error:re}=await supabase.rpc("my_farm_app_roles");
@@ -32,7 +39,7 @@ export default function VehicleDetail(){
   setAssignments((a.data||[]).map(x=>({id:Number(x.vehicle_assignment_id),label:x.vehicle_assignment})));
   setClasses((c.data||[]).map(x=>({id:Number(x.tractor_class_id),label:x.class_name})));
   if(v.data){setRow(v.data as Vehicle);setSize(v.data.tractor_size==null?"":String(v.data.tractor_size));setConsumption(v.data.consumption==null?"":String(v.data.consumption));}
- })()},[vehicleId]);
+ })()},[vehicleId,creating]);
  const set=(key:keyof Vehicle,value:any)=>setRow(old=>({...old,[key]:value}));
  async function save(){
   if(!row.vehicle_name?.trim()){setError("Vehicle name is required.");return;}
