@@ -27,7 +27,7 @@ export default function MainDashboard() {
       <JsplModuleHeader title="Main Dashboard" subtitle="John Sole (Private) Limited · Farm Management" />
       <Text style={{ fontSize: 19, fontWeight: "700", color: C.text, marginBottom: S.xl }}>Select a module</Text>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: S.lg }}>
-        <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Fields" description="Field management" onPress={() => router.push("/(tabs)/field-dashboard")} /></View>
+        <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Trace" description="TraceCode management" onPress={() => router.push("/(tabs)/field-dashboard")} /></View>
         <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Weighbridge" description="Weighbridge management" onPress={() => router.push("/weighbridge")} /></View>
         <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Fuel" description="Fuel management" onPress={() => router.push("/(tabs)/fuel")} /></View>
         <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Control Panel" description="Admin setup and management" onPress={() => router.push("/(tabs)/control-panel")} /></View>
