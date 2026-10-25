@@ -1,3 +1,4 @@
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Picker } from "@react-native-picker/picker";
@@ -169,6 +170,7 @@ export default function FieldEditScreen() {
   return (
     <ThemedView style={styles.container}>
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+      <JsplModuleHeader title="Edit Field" />
         <ThemedText type="title">
           {isNew ? "New Field" : "Edit Field"}
         </ThemedText>
