@@ -1,4 +1,5 @@
-import {useEffect,useState} from "react";
+import {useCallback,useEffect,useState} from "react";
+import {useFocusEffect} from "@react-navigation/native";
 import {ActivityIndicator,Pressable,ScrollView,StyleSheet,Switch,Text,View} from "react-native";
 import {Redirect,router,useLocalSearchParams} from "expo-router";
 import {supabase} from "@/supabase";
@@ -10,7 +11,7 @@ export default function FieldControlList(){
  const def=controlFor(kind);
  const [allowed,setAllowed]=useState<boolean|null>(null),[rows,setRows]=useState<Record<string,any>[]>([]),[showInactive,setShowInactive]=useState(false),[error,setError]=useState("");
  useEffect(()=>{(async()=>{const {data:u,error:ue}=await supabase.auth.getUser();if(ue||!u.user){setAllowed(false);return;}const {data:r,error:e}=await supabase.rpc("my_farm_app_roles");setAllowed(!e&&Array.isArray(r)&&r.some((x:string)=>String(x).trim().toLowerCase()==="admin"));})()},[]);
- useEffect(()=>{if(!allowed||!def)return;let valid=true;(async()=>{const {data,error:e}=await supabase.from(def.table).select("*").order(def.name);if(!valid)return;if(e)setError(e.message);else{setError("");setRows((data||[]).filter((item:Record<string,any>) => item != null && item[def.id] != null && typeof item[def.name] === "string" && item[def.name].trim().length > 0));}})();return()=>{valid=false};},[allowed,kind]);
+ useFocusEffect(useCallback(()=>{if(!allowed||!def)return;let valid=true;(async()=>{const {data,error:e}=await supabase.from(def.table).select("*").order(def.name);if(!valid)return;if(e)setError(e.message);else{setError("");setRows((data||[]).filter((item:Record<string,any>) => item != null && item[def.id] != null && typeof item[def.name] === "string" && item[def.name].trim().length > 0));}})();return()=>{valid=false};},[allowed,kind]));
  if(!def)return <Redirect href="/(tabs)/fields-control"/>;
  if(allowed===null)return <ActivityIndicator/>;
  if(!allowed)return <Redirect href="/(tabs)/fuel"/>;
