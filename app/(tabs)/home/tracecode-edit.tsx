@@ -337,7 +337,7 @@ export default function TracecodeEditScreen() {
     [varieties, varietyId]
   );
 
-  const budgetsForCrop = useMemo(()=>fuelBudgets.filter(b=>b.crop_id===cropId || b.fuel_budget_id===fuelBudgetId),[fuelBudgets,cropId,fuelBudgetId]);
+  const budgetsForCrop = useMemo(()=>fuelBudgets.filter(b=>b.active && b.crop_id===cropId),[fuelBudgets,cropId]);
   const selectedFuelBudget = fuelBudgets.find(b=>b.fuel_budget_id===fuelBudgetId);
 
   const fieldsForFarm = useMemo(() => {
@@ -615,6 +615,15 @@ export default function TracecodeEditScreen() {
         return;
       }
 
+      // Open TraceCodes must not be assigned an inactive fuel budget.
+      if (!endDb && fuelBudgetId != null) {
+        const chosenBudget = fuelBudgets.find(b => b.fuel_budget_id === fuelBudgetId);
+        if (!chosenBudget?.active || chosenBudget.crop_id !== cropId) {
+          Alert.alert("Fuel budget unavailable", "This TraceCode is active. Select an active fuel budget for its crop, or clear the fuel budget selection.");
+          return;
+        }
+      }
+
       const payload: Omit<TracecodeRow, "tracecode_id"> = {
         tracecode_name: name,
         tracecode_size: toNumOrNull(tracecodeSize),
@@ -765,7 +774,7 @@ export default function TracecodeEditScreen() {
             title="Select Fuel Budget"
             items={budgetsForCrop}
             getKey={(b)=>String(b.fuel_budget_id)}
-            getLabel={(b)=>b.fuel_budget_name+(b.active?"":" (inactive)")}
+            getLabel={(b)=>b.fuel_budget_name}
             onPick={(b)=>{setFuelBudgetId(b.fuel_budget_id);setFuelBudgetModal(false);}}
             onClose={()=>setFuelBudgetModal(false)}
           />
@@ -846,7 +855,7 @@ export default function TracecodeEditScreen() {
             <Card title="Fuel planning">
               <SelectorRow
                 label="Fuel budget"
-                valueText={selectedFuelBudget?.fuel_budget_name??"Select fuel budget…"}
+                valueText={selectedFuelBudget ? selectedFuelBudget.fuel_budget_name + (selectedFuelBudget.active ? "" : " (inactive — change or clear)") : "Select fuel budget…"}
                 onPress={()=>setFuelBudgetModal(true)}
                 disabled={!cropId}
               />
