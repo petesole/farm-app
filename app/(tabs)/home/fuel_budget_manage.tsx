@@ -72,6 +72,7 @@ export default function FuelBudgetManage(){
   setLoading(false);
  },[]);
  const choose=(b:Budget)=>{
+  setJobFilter(null);setDapFilter(null);setClassFilter(null);
   setSelected(b.fuel_budget_id);setName(b.fuel_budget_name);setNotes(b.notes||"");setCropId(b.crop_id);setActive(b.active);
   loadDetail(b.fuel_budget_id);
  };
@@ -157,7 +158,7 @@ export default function FuelBudgetManage(){
   if(result.error)setError(result.error.message);else if(selected){setMessage("Job added; edit its details below.");await loadDetail(selected);if(result.data){const newRow=await supabase.from("fuel_budget_activity").select("*").eq("fuel_budget_activity_id",result.data.fuel_budget_activity_id).single();if(newRow.data)startEdit(newRow.data as Activity);}}
  };
  const visibleJobs=useMemo(()=>{
-  const list=rows.filter(a=>(jobFilter==null||a.vehicle_job_id===jobFilter)&&(dapFilter==null||a.target_dap===dapFilter)&&(classFilter==null||a.tractor_class_id===classFilter));
+  const list=rows.filter(a=>(jobFilter==null||Number(a.vehicle_job_id)===Number(jobFilter))&&(dapFilter==null||Number(a.target_dap)===Number(dapFilter))&&(classFilter==null||Number(a.tractor_class_id)===Number(classFilter)));
   list.sort((a,b)=>{
    const va=jobSort==="job"?jobs.find(j=>j.vehicle_job_id===a.vehicle_job_id)?.vehicle_job_name??"":jobSort==="class"?tractors.find(t=>t.tractor_class_id===a.tractor_class_id)?.class_name??"":a.target_dap;
    const vb=jobSort==="job"?jobs.find(j=>j.vehicle_job_id===b.vehicle_job_id)?.vehicle_job_name??"":jobSort==="class"?tractors.find(t=>t.tractor_class_id===b.tractor_class_id)?.class_name??"":b.target_dap;
@@ -202,14 +203,16 @@ export default function FuelBudgetManage(){
    <ThemedView style={s.card}>
     <ThemedText type="subtitle">Budget Jobs ({visibleJobs.length} of {rows.length})</ThemedText>
     <View style={s.filterLine}>
+      <Pressable style={s.button} onPress={()=>{setJobFilter(null);setDapFilter(null);setClassFilter(null);}}><ThemedText>Clear Filters</ThemedText></Pressable>
       <View style={s.compactPicker}><Picker selectedValue={jobSort} onValueChange={v=>{setJobSort(v);setJobDescending(false);}}>
        <Picker.Item label="Sort: Job A–Z" value="job"/><Picker.Item label="Sort: DAP" value="dap"/><Picker.Item label="Sort: Tractor class" value="class"/>
       </Picker></View>
       <Pressable style={s.button} onPress={()=>setJobDescending(v=>!v)}><ThemedText>{jobDescending?"Z–A / High–Low":"A–Z / Low–High"} ⇅</ThemedText></Pressable>
-      <View style={s.compactPicker}><Picker selectedValue={dapFilter} onValueChange={setDapFilter}><Picker.Item label="All DAP" value={null}/>{[...new Set(rows.map(a=>a.target_dap).filter((x):x is number=>x!=null))].sort((a,b)=>a-b).map(v=><Picker.Item key={v} label={String(v)} value={v}/>)}</Picker></View>
-      <View style={s.compactPicker}><Picker selectedValue={jobFilter} onValueChange={setJobFilter}><Picker.Item label="All Jobs" value={null}/>{jobs.filter(j=>rows.some(a=>a.vehicle_job_id===j.vehicle_job_id)).map(j=><Picker.Item key={j.vehicle_job_id} label={j.vehicle_job_name} value={j.vehicle_job_id}/>)}</Picker></View>
-      <View style={s.compactPicker}><Picker selectedValue={classFilter} onValueChange={setClassFilter}><Picker.Item label="All Tractor Sizes" value={null}/>{tractors.filter(t=>rows.some(a=>a.tractor_class_id===t.tractor_class_id)).map(t=><Picker.Item key={t.tractor_class_id} label={t.class_name} value={t.tractor_class_id}/>)}</Picker></View>
+      <View style={s.compactPicker}><Picker selectedValue={dapFilter} onValueChange={v=>{setDapFilter(v);setJobFilter(null);setClassFilter(null);}}><Picker.Item label="All DAP" value={null}/>{[...new Set(rows.map(a=>a.target_dap).filter((x):x is number=>x!=null))].sort((a,b)=>a-b).map(v=><Picker.Item key={v} label={String(v)} value={v}/>)}</Picker></View>
+      <View style={s.compactPicker}><Picker selectedValue={jobFilter} onValueChange={v=>{setJobFilter(v);setDapFilter(null);setClassFilter(null);}}><Picker.Item label="All Jobs" value={null}/>{jobs.filter(j=>rows.some(a=>a.vehicle_job_id===j.vehicle_job_id)).map(j=><Picker.Item key={j.vehicle_job_id} label={j.vehicle_job_name} value={j.vehicle_job_id}/>)}</Picker></View>
+      <View style={s.compactPicker}><Picker selectedValue={classFilter} onValueChange={v=>{setClassFilter(v);setJobFilter(null);setDapFilter(null);}}><Picker.Item label="All Tractor Sizes" value={null}/>{tractors.filter(t=>rows.some(a=>a.tractor_class_id===t.tractor_class_id)).map(t=><Picker.Item key={t.tractor_class_id} label={t.class_name} value={t.tractor_class_id}/>)}</Picker></View>
     </View>
+    {visibleJobs.length===0?<ThemedText style={s.small}>No matching jobs. Choose another filter or select Clear Filters.</ThemedText>:null}
     {visibleJobs.map(a=><View key={a.fuel_budget_activity_id} style={s.jobRow}>
      <View style={s.jobSummary}>
       <ThemedText style={[s.bold,s.jobSeq]}>{a.sequence_no??"—"}</ThemedText>
