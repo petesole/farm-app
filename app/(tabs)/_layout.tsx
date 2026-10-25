@@ -57,8 +57,9 @@ export default function TabsLayout() {
   }
 
   return (
-    <Tabs initialRouteName={isAdmin ? "field-dashboard" : "fuel"} screenOptions={{ headerShown: false }}>
+    <Tabs initialRouteName={isAdmin ? "main-dashboard" : "fuel"} screenOptions={{ headerShown: false }}>
       <Tabs.Screen name="home" options={{ href: null }} />
+      <Tabs.Screen name="main-dashboard" options={{ title: "Main", href: isAdmin ? "/main-dashboard" : null }} />
       <Tabs.Screen name="field-dashboard" options={{ title: "Fields", href: isAdmin ? "/field-dashboard" : null }} />
       <Tabs.Screen name="wb-admin" options={{ title: "Weighbridge", href: isAdmin && Platform.OS === "web" ? "/wb-admin" : null }} />
       <Tabs.Screen name="fuel" options={{ title: "Fuel", href: canFuel ? "/fuel" : null }} />
