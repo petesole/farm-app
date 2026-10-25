@@ -1,7 +1,8 @@
-export type FieldControlKey="farm"|"zesa_point"|"rain_gauge"|"field_classification";
+export type FieldControlKey="farm"|"zesa_point"|"rain_gauge"|"field_classification"|"crop";
 export type FieldDefinition={key:string;label:string;type:"text"|"number"|"date";required?:boolean};
 export type ControlDefinition={table:FieldControlKey;title:string;id:string;name:string;fields:FieldDefinition[]};
 export const fieldControls:Record<FieldControlKey,ControlDefinition>={
+ crop:{table:"crop",title:"Crop",id:"crop_id",name:"crop_name",fields:[{key:"crop_name",label:"Crop name",type:"text",required:true}]},
  farm:{table:"farm",title:"Farm",id:"farm_id",name:"farm_name",fields:[
   {key:"farm_name",label:"Farm name",type:"text",required:true},
   {key:"rental",label:"Rental",type:"number"},
