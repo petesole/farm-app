@@ -63,6 +63,7 @@ export default function FieldEditScreen() {
   const [fieldName, setFieldName] = useState("");
   const [farmId, setFarmId] = useState<number | null>(null);
   const [fieldSize, setFieldSize] = useState("");
+  const [soilWaterHolding,setSoilWaterHolding]=useState("");
   const [latitude, setLatitude] = useState("");
   const [longitude, setLongitude] = useState("");
   const [zesaPointId, setZesaPointId] = useState("");
@@ -110,6 +111,7 @@ export default function FieldEditScreen() {
           setFieldName(r.field_name ?? "");
           setFarmId(r.farm_id ?? null);
           setFieldSize(r.field_size?.toString() ?? "");
+          setSoilWaterHolding((r as any).soil_water_holding_pct?.toString() ?? "");
           setLatitude(r.latitude ?? "");
           setLongitude(r.longitude ?? "");
           setZesaPointId(r.zesa_point_id?.toString() ?? "");
@@ -137,6 +139,7 @@ export default function FieldEditScreen() {
       field_name: fieldName.trim(),
       farm_id: farmId,
       field_size: toNumOrNull(fieldSize),
+      soil_water_holding_pct: toNumOrNull(soilWaterHolding),
       latitude: latitude.trim() || null,
       longitude: longitude.trim() || null,
       discontinued,
@@ -212,6 +215,7 @@ export default function FieldEditScreen() {
 
         {/* Numeric / text fields */}
         <Input label="Field size (Ha)" value={fieldSize} setValue={setFieldSize} />
+        <Input label="Soil water holding (%)" value={soilWaterHolding} setValue={setSoilWaterHolding} />
         <Input label="Latitude" value={latitude} setValue={setLatitude} />
         <Input label="Longitude" value={longitude} setValue={setLongitude} />
         {([
