@@ -58,6 +58,7 @@ export default function FieldMasterDashboardScreen() {
 
   const [q, setQ] = useState("");
   const [farmFilterId, setFarmFilterId] = useState<number | null>(null); // null = All
+  const [statusFilter, setStatusFilter] = useState<"active" | "inactive" | "all">("active");
 
   async function load() {
     const [farmRes, fieldRes] = await Promise.all([
@@ -124,6 +125,8 @@ export default function FieldMasterDashboardScreen() {
 
     return rows.filter((r) => {
       if (farmFilterId !== null && r.farm_id !== farmFilterId) return false;
+      if (statusFilter === "active" && r.discontinued === true) return false;
+      if (statusFilter === "inactive" && r.discontinued !== true) return false;
       if (!qq) return true;
 
       const hay = [
@@ -146,7 +149,7 @@ export default function FieldMasterDashboardScreen() {
 
       return hay.includes(qq);
     });
-  }, [rows, q, farmFilterId]);
+  }, [rows, q, farmFilterId, statusFilter]);
 
   function FarmPills() {
     const pillValues = [{ farm_id: null as any, farm_name: "All" as any }, ...farms];
@@ -246,6 +249,19 @@ export default function FieldMasterDashboardScreen() {
         />
 
         <FarmPills />
+        <View style={{ marginTop: 12 }}>
+          <ThemedText style={{ opacity: 0.7, marginBottom: 6 }}>Field status</ThemedText>
+          <View style={styles.pills}>
+            {(["active", "all", "inactive"] as const).map(value => (
+              <Pressable key={value} onPress={() => setStatusFilter(value)}
+                style={[styles.pill, statusFilter === value && styles.pillActive]}>
+                <ThemedText style={[styles.pillText, statusFilter === value && styles.pillTextActive]}>
+                  {value === "all" ? "All" : value === "active" ? "Active" : "Inactive"}
+                </ThemedText>
+              </Pressable>
+            ))}
+          </View>
+        </View>
 
         <ThemedText style={{ marginTop: 10, opacity: 0.7 }}>
           Showing {filtered.length} of {rows.length}
