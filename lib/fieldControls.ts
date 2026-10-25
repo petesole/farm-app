@@ -23,5 +23,5 @@ export const fieldControls:Record<FieldControlKey,ControlDefinition>={
   {key:"field_classification_name",label:"Classification name",type:"text",required:true}]}
 };
 export function controlFor(value:string|string[]|undefined){return typeof value==="string"&&Object.prototype.hasOwnProperty.call(fieldControls,value)?fieldControls[value as FieldControlKey]:null;}
-export function dateInput(v:string){const s=v.trim();if(!s)return null;const m=/^(\\d{2})\\/(\\d{2})\\/(\\d{4})$/.exec(s);return m?m[3]+"-"+m[2]+"-"+m[1]:null;}
-export function dateDisplay(s:string|null){if(!s)return "";const m=/^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(s);return m?m[3]+"/"+m[2]+"/"+m[1]:s;}
+export function dateInput(v:string){const s=v.trim();if(!s)return null;const p=s.split("/");if(p.length!==3||p[0].length!==2||p[1].length!==2||p[2].length!==4)return null;const iso=p[2]+"-"+p[1]+"-"+p[0];const d=new Date(iso+"T12:00:00Z");return Number.isNaN(d.getTime())||d.toISOString().slice(0,10)!==iso?null:iso;}
+export function dateDisplay(s:string|null){if(!s)return "";const p=s.split("-");return p.length===3?p[2]+"/"+p[1]+"/"+p[0]:s;}
