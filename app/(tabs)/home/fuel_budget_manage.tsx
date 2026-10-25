@@ -222,12 +222,14 @@ export default function FuelBudgetManage(){
       <Pressable style={s.tinyButton} disabled={busy} onPress={()=>setRemovingId(a.fuel_budget_activity_id)}><ThemedText style={s.error}>Remove</ThemedText></Pressable>
      </View>
      {editing===a.fuel_budget_activity_id?<>
-      <ThemedText>Job</ThemedText><View style={s.picker}><Picker selectedValue={draft.vehicle_job_id} onValueChange={v=>updateField("vehicle_job_id",v)}>{jobs.map(j=><Picker.Item key={j.vehicle_job_id} value={j.vehicle_job_id} label={j.vehicle_job_name}/>)}</Picker></View>
-      <ThemedText>Tractor Class</ThemedText><View style={s.picker}><Picker selectedValue={draft.tractor_class_id??null} onValueChange={v=>updateField("tractor_class_id",v)}><Picker.Item label="None" value={null}/>{tractors.map(t=><Picker.Item key={t.tractor_class_id} value={t.tractor_class_id} label={t.class_name}/>)}</Picker></View>
-      <ThemedText>Description</ThemedText><TextInput style={s.input} value={draft.description||""} onChangeText={v=>updateField("description",v)} placeholder="e.g. Pre Land Prep"/>
-      {numericFields.map(k=><View key={k}><ThemedText>{labels[k]}</ThemedText><TextInput style={s.input} keyboardType="numeric" value={String((draft as any)[k]??"")} onChangeText={v=>updateField(k,v)}/></View>)}
-      <Pressable style={[s.button,draft.include_trip_fuel&&s.selected]} onPress={()=>updateField("include_trip_fuel",!draft.include_trip_fuel)}><ThemedText>Include travel fuel: {draft.include_trip_fuel?"Yes":"No"}</ThemedText></Pressable>
-      <ThemedText>Notes</ThemedText><TextInput style={s.input} value={draft.notes||""} onChangeText={v=>updateField("notes",v)}/>
+      <View style={s.editGrid}>
+       <View style={s.editFieldWide}><ThemedText style={s.small}>Job</ThemedText><View style={s.picker}><Picker selectedValue={draft.vehicle_job_id} onValueChange={v=>updateField("vehicle_job_id",v)}>{jobs.map(j=><Picker.Item key={j.vehicle_job_id} value={j.vehicle_job_id} label={j.vehicle_job_name}/>)}</Picker></View></View>
+       <View style={s.editField}><ThemedText style={s.small}>Tractor Class</ThemedText><View style={s.picker}><Picker selectedValue={draft.tractor_class_id??null} onValueChange={v=>updateField("tractor_class_id",v)}><Picker.Item label="None" value={null}/>{tractors.map(t=><Picker.Item key={t.tractor_class_id} value={t.tractor_class_id} label={t.class_name}/>)}</Picker></View></View>
+       <View style={s.editFieldWide}><ThemedText style={s.small}>Description</ThemedText><TextInput style={s.input} value={draft.description||""} onChangeText={v=>updateField("description",v)} placeholder="e.g. Pre Land Prep"/></View>
+       {numericFields.map(k=><View key={k} style={s.editField}><ThemedText style={s.small}>{labels[k]}</ThemedText><TextInput style={s.input} keyboardType="numeric" value={String((draft as any)[k]??"")} onChangeText={v=>updateField(k,v)}/></View>)}
+       <View style={s.editField}><ThemedText style={s.small}>Notes</ThemedText><TextInput style={s.input} value={draft.notes||""} onChangeText={v=>updateField("notes",v)}/></View>
+       <Pressable style={[s.button,draft.include_trip_fuel&&s.selected]} onPress={()=>updateField("include_trip_fuel",!draft.include_trip_fuel)}><ThemedText>Travel fuel: {draft.include_trip_fuel?"Yes":"No"}</ThemedText></Pressable>
+      </View>
       <View style={s.line}><Pressable style={s.button} disabled={busy} onPress={saveJob}><ThemedText style={s.bold}>Save Job</ThemedText></Pressable><Pressable style={s.button} onPress={()=>setEditing(null)}><ThemedText>Cancel</ThemedText></Pressable></View>
      </>:null}
      {removingId===a.fuel_budget_activity_id?<View style={s.block}>
@@ -282,6 +284,8 @@ const s=StyleSheet.create({
  budgetOpen:{flex:1,flexDirection:"row",alignItems:"center",gap:10},
  copyDialog:{padding:12,borderRadius:8,borderWidth:1,borderColor:"#99B7A1",gap:9,backgroundColor:"#F3F8F4"},
  filterLine:{flexDirection:"row",flexWrap:"wrap",gap:8,alignItems:"center"},
+ editGrid:{flexDirection:"row",flexWrap:"wrap",gap:9,marginTop:10,marginBottom:8,alignItems:"flex-end"},
+ editField:{minWidth:115,flexGrow:1,maxWidth:165},editFieldWide:{minWidth:180,flexGrow:2,maxWidth:285},
  compactPicker:{minWidth:145,flexGrow:1,maxWidth:215,borderWidth:1,borderColor:"#D1D5DB",borderRadius:6},
  jobRow:{borderBottomWidth:1,borderBottomColor:"#D1D5DB",paddingVertical:5},
  jobSummary:{flexDirection:"row",alignItems:"center",gap:9,flexWrap:"wrap"},
