@@ -7,7 +7,7 @@ import { ThemedView } from "@/components/themed-view";
 import { supabase } from "../../../supabase";
 
 type Budget={fuel_budget_id:number;fuel_budget_name:string;crop_id:number|null;active:boolean;notes:string|null};
-type Crop={crop_id:number;crop_name:string};
+type Crop={crop_id:number;crop_name:string;active:boolean};
 type Job={vehicle_job_id:number;vehicle_job_name:string};
 type Tractor={tractor_class_id:number;class_name:string;class_code:string};
 type Activity={
@@ -49,7 +49,7 @@ export default function FuelBudgetManage(){
   setLoading(true);setError(null);
   const [b,c,j,t]=await Promise.all([
    supabase.from("fuel_budget").select("fuel_budget_id,fuel_budget_name,crop_id,active,notes").order("fuel_budget_name"),
-   supabase.from("crop").select("crop_id,crop_name").order("crop_name"),
+   supabase.from("crop").select("crop_id,crop_name,active").order("crop_name"),
    supabase.from("vehicle_job").select("vehicle_job_id,vehicle_job_name").order("vehicle_job_name"),
    supabase.from("tractor_class").select("tractor_class_id,class_name,class_code").order("class_name")
   ]);
@@ -214,18 +214,31 @@ export default function FuelBudgetManage(){
   </>:<>
    <ThemedView style={s.card}>
     <View style={s.line}><ThemedText type="subtitle">Existing Fuel Budgets</ThemedText><Pressable style={s.button} onPress={startCreate}><ThemedText style={s.bold}>+ New Fuel Budget</ThemedText></Pressable></View>
-    <ThemedText>Filter by crop</ThemedText>
-    <View style={s.picker}><Picker selectedValue={filterCrop} onValueChange={setFilterCrop}><Picker.Item label="All crops" value={null}/>{crops.map(c=><Picker.Item key={c.crop_id} value={c.crop_id} label={c.crop_name}/>)}</Picker></View>
-    {filtered.map(b=><Pressable key={b.fuel_budget_id} style={s.block} onPress={()=>choose(b)}>
-     <View style={s.line}><ThemedText style={s.bold}>{b.fuel_budget_name}</ThemedText><ThemedText>{b.active?"Active":"Inactive"}</ThemedText></View>
-     <ThemedText>{cropName(b.crop_id)}</ThemedText><ThemedText style={s.small}>Tap to edit or copy →</ThemedText>
-    </Pressable>)}
+    <View style={s.cropFilters}>
+      <Pressable style={[s.cropButton,filterCrop===null&&s.selected]} onPress={()=>setFilterCrop(null)}><ThemedText style={s.bold}>All</ThemedText></Pressable>
+      {crops.filter(c=>c.active).map(c=><Pressable key={c.crop_id} style={[s.cropButton,filterCrop===c.crop_id&&s.selected]} onPress={()=>setFilterCrop(c.crop_id)}><ThemedText style={s.bold}>{c.crop_name}</ThemedText></Pressable>)}
+    </View>
+    <View style={s.budgetList}>
+      {filtered.map(b=><Pressable key={b.fuel_budget_id} style={s.budgetRow} onPress={()=>choose(b)}>
+        <ThemedText style={s.budgetCrop}>{cropName(b.crop_id)}</ThemedText>
+        <ThemedText style={[s.budgetTitle,s.bold]} numberOfLines={1}>{b.fuel_budget_name}</ThemedText>
+        <ThemedText style={s.budgetStatus}>{b.active?"Active":"Inactive"}</ThemedText>
+        <ThemedText>›</ThemedText>
+      </Pressable>)}
+    </View>
     {filtered.length===0?<ThemedText>No budgets found.</ThemedText>:null}
    </ThemedView>
   </>}
  </ScrollView>;
 }
 const s=StyleSheet.create({
+ cropFilters:{flexDirection:"row",flexWrap:"wrap",gap:6,marginVertical:2},
+ cropButton:{borderWidth:1,borderColor:"rgba(120,120,120,.35)",borderRadius:7,paddingHorizontal:12,paddingVertical:7},
+ budgetList:{gap:0},
+ budgetRow:{flexDirection:"row",alignItems:"center",gap:10,paddingVertical:8,paddingHorizontal:9,borderBottomWidth:1,borderBottomColor:"rgba(120,120,120,.25)"},
+ budgetCrop:{width:120,fontSize:13},
+ budgetTitle:{flex:1,fontSize:14},
+ budgetStatus:{width:66,fontSize:12,opacity:0.7},
  page:{padding:18,paddingBottom:45,gap:12},card:{borderWidth:1,borderColor:"rgba(120,120,120,.35)",borderRadius:12,padding:14,gap:10},
  block:{borderWidth:1,borderColor:"rgba(120,120,120,.24)",borderRadius:9,padding:12,gap:8},
  line:{flexDirection:"row",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8},
