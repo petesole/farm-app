@@ -1,3 +1,16 @@
+# Important compatibility finding — 25 October 2026
+
+**HOLD production execution** of the original six-table SQL below until Fuel RPC permissions are fixed. Read-only inspection confirmed:
+- `fuel_insert_dip(date,integer,numeric)`: SECURITY DEFINER; allows anonymous EXECUTE; inserts directly into `public.fuel_dip` without checking `auth.uid()`.
+- `get_fuel_dashboard()`: SECURITY DEFINER; allows anonymous EXECUTE; reads fuel issues, receipts, vehicles, supplier and allocation data.
+- `fuel_missing_closing_days()`: SECURITY INVOKER; allows anonymous EXECUTE; reads fuel issues and receipts.
+
+These RPCs would undermine the planned table restrictions if left public. Recommended release changes are to revoke anonymous EXECUTE for all three, require a verified assigned role to view dashboard reports, and permit only admin/manager/fuel to insert dips. The privileged dip insertion function must check role server-side and use a hardened search_path. Test authenticated Fuel screens before changing live permissions.
+
+**Do not enable RLS on only six tables and treat Fuel as secured.** Verify other publicly exposed views/functions and the fuel_dip table as well.
+
+---
+
 # JSPL Fuel database access — reviewed SQL, NOT applied
 Prepared 25 October 2026. The published Fuel app has NOT been proven compatible with this change. Do not execute on FarmingMain until client cutover and workflow tests are complete.
 
