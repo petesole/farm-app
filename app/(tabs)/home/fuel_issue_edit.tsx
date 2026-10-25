@@ -1,3 +1,4 @@
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 import {fuelDateDisplay,fuelDateISO} from "./fuel_admin_dates";
 import {useEffect,useState} from "react";
 import {ActivityIndicator,Pressable,ScrollView,StyleSheet,TextInput,View} from "react-native";
@@ -68,6 +69,7 @@ export default function FuelIssueEdit(){
   setNotice(editing===null?"Missing fuel issue added.":"Fuel issue updated.");await load(date);
  }
  return <ScrollView contentContainerStyle={s.page}>
+ <JsplModuleHeader title="Fuel Issue Corrections" />
   <ThemedText type="title">Fuel Issue Edit / Add</ThemedText>
   <Pressable style={s.btn} onPress={()=>router.back()}><ThemedText>← Fuel Admin</ThemedText></Pressable>
   <View style={s.card}><ThemedText type="subtitle">Select date</ThemedText><View style={s.row}>
