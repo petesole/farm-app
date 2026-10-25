@@ -1,3 +1,5 @@
+import { zimTodayISO } from "@/lib/zimDate";
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 // app/(tabs)/fuel_gen_allocation.tsx
 import { Picker } from '@react-native-picker/picker';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -59,8 +61,8 @@ export default function FuelGenAllocationScreen() {
         .from('tracecode')
         .select('tracecode_id,tracecode_name,crop_id,start_date,end_date')
         .eq('crop_id', cropId)
-        .not('start_date', 'is', null)
-        .is('end_date', null)
+        .lte('start_date', zimTodayISO())
+        .or('end_date.is.null,end_date.gte.' + zimTodayISO())
         .order('tracecode_name', { ascending: true })
         .limit(3000);
 
@@ -110,8 +112,8 @@ export default function FuelGenAllocationScreen() {
     const tc = await supabase
       .from('tracecode')
       .select('crop_id, crop:crop_id (crop_id, crop_name)')
-      .not('start_date', 'is', null)
-      .is('end_date', null)
+      .lte('start_date', zimTodayISO())
+        .or('end_date.is.null,end_date.gte.' + zimTodayISO())
       .not('crop_id', 'is', null)
       .limit(5000);
 
@@ -227,6 +229,7 @@ export default function FuelGenAllocationScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      <JsplModuleHeader title="Generator Allocation" />
       <ThemedText type="title">Generator Allocation</ThemedText>
 
       <ThemedView style={styles.card}>
