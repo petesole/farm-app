@@ -1,5 +1,4 @@
 // app/(tabs)/fuel.tsx
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -100,10 +99,23 @@ export default function FuelScreen() {
   };
 
   const loadMyRoleName = async () => {
-    const storedRole = await AsyncStorage.getItem("role");
-    const r = norm(storedRole) || null;
-    setRoleName(r);
-    return r;
+    // Only accept roles verified by the database for the current Auth user.
+    const { data: identity, error: identityError } = await supabase.auth.getUser();
+    if (identityError || !identity.user) {
+      setRoleName(null);
+      setErr("Please sign in again.");
+      return null;
+    }
+    const { data: roles, error: roleError } = await supabase.rpc("my_farm_app_roles");
+    if (roleError || !Array.isArray(roles)) {
+      setRoleName(null);
+      setErr("Unable to verify your permissions.");
+      return null;
+    }
+    const role = ["admin", "manager", "fuel", "viewer", "irrigation", "scouting", "scout", "scouter"]
+      .find((item) => roles.map((value: string) => norm(value)).includes(item)) ?? null;
+    setRoleName(role);
+    return role;
   };
 
   const checkRequiredDips = async (currentRole?: string | null) => {
