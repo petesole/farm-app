@@ -249,7 +249,7 @@ export default function FieldDashboard() {
 
   return (
     <View style={styles.container}>
-      <JsplModuleHeader title="Fields" subtitle="John Sole (Private) Limited · Field Dashboard" />
+      <JsplModuleHeader title="Fields" subtitle="John Sole (Private) Limited · Field Dashboard" showMain={isAdmin} />
       <View style={styles.headingRow}>
         <Text style={styles.heading}>Field Dashboard</Text>
       </View>
