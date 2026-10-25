@@ -6,6 +6,7 @@ import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   StyleSheet,
   TextInput,
@@ -87,7 +88,11 @@ export default function LoginScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <ThemedText type="title">Login</ThemedText>
+      <View style={styles.brand}>
+        <Image source={require("../assets/images/jspl_farm_logo.png")} resizeMode="contain" style={styles.logo} />
+        <ThemedText type="title">JSPL Farm Management</ThemedText>
+        <ThemedText style={styles.subheading}>John Sole (Private) Limited</ThemedText>
+      </View>
 
       <View style={{ height: 14 }} />
 
@@ -139,6 +144,9 @@ const styles = StyleSheet.create({
     padding: 20,
     justifyContent: "center",
   },
+  brand: { alignItems: "center", marginBottom: 24 },
+  logo: { width: 116, height: 116, marginBottom: 14 },
+  subheading: { marginTop: 5, opacity: 0.7 },
   label: {
     opacity: 0.7,
     marginBottom: 6,
