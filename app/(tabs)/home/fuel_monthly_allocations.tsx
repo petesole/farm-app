@@ -1,3 +1,4 @@
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 // app/(tabs)/home/fuel_monthly_allocations.tsx
 
 import { supabase } from "@/supabase";
@@ -74,6 +75,7 @@ export default function FuelMonthlyAllocations() {
 
   return (
     <View style={styles.container}>
+      <JsplModuleHeader title="Monthly Fuel Allocations" />
       {/* Top bar */}
       <View style={styles.topRow}>
         <Pressable onPress={() => router.replace("/(tabs)/fuel")} style={styles.closeBtn}>
