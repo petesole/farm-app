@@ -43,6 +43,7 @@ type TracecodeRow = {
 
   plant_population: number | null;
   fuel_budget_id: number | null;
+  contract_id: number | null;
   crop_status: "Planned" | "Planted" | "Not Planted" | "Abandoned";
 };
 
@@ -54,6 +55,7 @@ type SeasonRow = { season_id: number; season_name: string | null };
 type IrrRow = { irrigation_type_id: number; irrigation_type: string | null };
 type CropRow = { crop_id: number; crop_name: string | null };
 type VarietyRow = { variety_id: number; crop_id: number | null; variety_name: string | null };
+type ContractRow = {contract_id:number;contract_name:string;active:boolean};
 type FuelBudgetRow = { fuel_budget_id:number; fuel_budget_name:string; crop_id:number|null; active:boolean };
 
 /** ---------- Helpers ---------- */
@@ -276,6 +278,9 @@ export default function TracecodeEditScreen() {
   const [crops, setCrops] = useState<CropRow[]>([]);
   const [varieties, setVarieties] = useState<VarietyRow[]>([]);
   const [fuelBudgets,setFuelBudgets] = useState<FuelBudgetRow[]>([]);
+  const [contracts,setContracts] = useState<ContractRow[]>([]);
+  const [contractId,setContractId] = useState<number|null>(null);
+  const [contractModal,setContractModal] = useState(false);
 
   // Modals (admin only)
   const [farmModal, setFarmModal] = useState(false);
@@ -341,6 +346,9 @@ export default function TracecodeEditScreen() {
     [varieties, varietyId]
   );
 
+  const selfContract = contracts.find(x=>x.contract_name==="Self");
+  const selectedContract = contracts.find(x=>x.contract_id===contractId)??selfContract;
+  const availableContracts=contracts.filter(x=>x.active);
   const budgetsForCrop = useMemo(()=>fuelBudgets.filter(b=>b.active && b.crop_id===cropId),[fuelBudgets,cropId]);
   const selectedFuelBudget = fuelBudgets.find(b=>b.fuel_budget_id===fuelBudgetId);
 
@@ -367,7 +375,7 @@ export default function TracecodeEditScreen() {
   }
 
   async function loadLookupsAdmin() {
-    const [farmRes, fieldRes, seasonRes, irrRes, cropRes, varRes, fuelRes] = await Promise.all([
+    const [farmRes, fieldRes, seasonRes, irrRes, cropRes, varRes, fuelRes, contractRes] = await Promise.all([
       supabase.from("farm").select("farm_id,farm_name").order("farm_name"),
       supabase.from("field").select("field_id,field_name,farm_id").order("field_name"),
       supabase.from("season").select("season_id,season_name").order("season_name"),
@@ -375,6 +383,7 @@ export default function TracecodeEditScreen() {
       supabase.from("crop").select("crop_id,crop_name").order("crop_name"),
       supabase.from("variety").select("variety_id,variety_name,crop_id").order("variety_name"),
       supabase.from("fuel_budget").select("fuel_budget_id,fuel_budget_name,crop_id,active").order("fuel_budget_name"),
+      supabase.from("contract").select("contract_id,contract_name,active").order("contract_name"),
     ]);
 
     if (farmRes.error) throw new Error(`farm: ${farmRes.error.message}`);
@@ -384,6 +393,7 @@ export default function TracecodeEditScreen() {
     if (cropRes.error) throw new Error(`crop: ${cropRes.error.message}`);
     if (varRes.error) throw new Error(`variety: ${varRes.error.message}`);
     if (fuelRes.error) throw new Error(`fuel_budget: ${fuelRes.error.message}`);
+    if (contractRes.error) throw new Error(`contract: ${contractRes.error.message}`);
 
     setFarms((farmRes.data ?? []) as FarmRow[]);
     setFields((fieldRes.data ?? []) as FieldRow[]);
@@ -392,6 +402,7 @@ export default function TracecodeEditScreen() {
     setCrops((cropRes.data ?? []) as CropRow[]);
     setVarieties((varRes.data ?? []) as VarietyRow[]);
     setFuelBudgets((fuelRes.data ?? []) as FuelBudgetRow[]);
+    setContracts((contractRes.data??[]) as ContractRow[]);
   }
 
   async function loadTracecodeAdmin(tid: number) {
@@ -441,6 +452,7 @@ export default function TracecodeEditScreen() {
           setCropId(null);
           setVarietyId(null);
           setFuelBudgetId(null);
+          setContractId(null);
 
           setStartDate("");
           setEndDate("");
@@ -474,6 +486,7 @@ export default function TracecodeEditScreen() {
           setCropId(tc.crop_id ?? null);
           setVarietyId(tc.variety_id ?? null);
           setFuelBudgetId(tc.fuel_budget_id ?? null);
+          setContractId(tc.contract_id ?? null);
 
           setStartDate(isoToDDMMYYYY(tc.start_date));
           setEndDate(isoToDDMMYYYY(tc.end_date));
@@ -630,6 +643,7 @@ export default function TracecodeEditScreen() {
         }
       }
 
+      if(!selectedContract || (endDb===null && !selectedContract.active)){Alert.alert("Contract unavailable","Select an active contract before saving.");return;}
       const payload: Omit<TracecodeRow, "tracecode_id"> = {
         tracecode_name: name,
         tracecode_size: toNumOrNull(tracecodeSize),
@@ -649,6 +663,7 @@ export default function TracecodeEditScreen() {
 
         plant_population: toNumOrNull(plantPopulation),
         fuel_budget_id: fuelBudgetId,
+        contract_id: contractId??selfContract?.contract_id??null,
         crop_status: cropStatus,
       };
 
@@ -785,6 +800,15 @@ export default function TracecodeEditScreen() {
             onClose={() => setCropModal(false)}
           />
 
+          <SelectModal<ContractRow>
+            visible={contractModal}
+            title="Select Contract"
+            items={availableContracts}
+            getKey={x=>String(x.contract_id)}
+            getLabel={x=>x.contract_name}
+            onPick={x=>{setContractId(x.contract_id);setContractModal(false);}}
+            onClose={()=>setContractModal(false)}
+          />
           <SelectModal<FuelBudgetRow>
             visible={fuelBudgetModal}
             title="Select Fuel Budget"
@@ -861,6 +885,9 @@ export default function TracecodeEditScreen() {
               />
             </Card>
 
+            <Card title="Contract">
+              <SelectorRow label="Contract" valueText={selectedContract?.contract_name??"Self"} onPress={()=>setContractModal(true)}/>
+            </Card>
             <Card title="Crop (names, not IDs)">
               <SelectorRow
                 label="Crop"
