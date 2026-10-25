@@ -193,8 +193,9 @@ export default function FuelWeeklyPlanScreen() {
   const chosenRows=filtered.filter(r=>selectedKeys.has(clearedKey({...r,target_dap:r.target_dap!})));
   const remainingFraction=(r:Row)=>n(r.planned_operations)>0?r.remainingOperations/n(r.planned_operations):1;
   const hoursFor=(r:Row)=>{
-    const ha=n(r.effective_hectares)>0?n(r.effective_hectares):r.fieldHa;
-    const rate=n(r.standard_ha_per_day);
+    const approval=approvalByKey.get(clearedKey({...r,target_dap:r.target_dap!}));
+    const ha=approval?approval.approved_hectares:n(r.effective_hectares)>0?n(r.effective_hectares):r.fieldHa;
+    const rate=n(approval?.approved_ha_per_day??r.standard_ha_per_day);
     if(rate<=0)return null;
     return ha*remainingFraction(r)/rate*12;
   };
@@ -204,12 +205,13 @@ export default function FuelWeeklyPlanScreen() {
       const k=displayClass(r),old=result.get(k)||{jobs:0,hours:0,unknown:0,litres:0};
       const hours=hoursFor(r);
       old.jobs++;old.hours+=hours??0;old.unknown+=hours==null?1:0;
-      old.litres+=n(r.total_budget_litres)*remainingFraction(r);
+      const planned=approvalByKey.get(clearedKey({...r,target_dap:r.target_dap!}));
+      old.litres+=planned?planned.approved_work_litres+(planned.include_trip_fuel?planned.approved_trips*planned.trip_litres:0):n(r.total_budget_litres)*remainingFraction(r);
       result.set(k,old);
     }
     return [...result.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
   },[chosenRows]);
-  const chosenLitres=chosenRows.reduce((sum,r)=>sum+n(r.total_budget_litres)*(n(r.planned_operations)>0?r.remainingOperations/n(r.planned_operations):1),0);
+  const chosenLitres=chosenRows.reduce((sum,r)=>{const a=approvalByKey.get(clearedKey({...r,target_dap:r.target_dap!}));return sum+(a?a.approved_work_litres+(a.include_trip_fuel?a.approved_trips*a.trip_litres:0):n(r.total_budget_litres)*remainingFraction(r));},0);
   const litresRemaining=(r:Row)=>n(r.total_budget_litres)*remainingFraction(r);
   const total=filtered.reduce((sum,r)=>sum+litresRemaining(r),0);
   const missingDates=useMemo(()=>{
@@ -265,7 +267,7 @@ export default function FuelWeeklyPlanScreen() {
       </View>
     </ThemedView>
     <ThemedView style={s.card}>
-      <ThemedText type="subtitle">Actual fuel plan for this week</ThemedText>
+      <ThemedText type="subtitle">Weekly fuel planning estimates</ThemedText>
       <ThemedText style={s.bold}>{chosen.length} jobs selected · {fmt(chosenLitres)} L shown with current filters</ThemedText>
       <View style={s.nav}>
         <Choice label="Budget jobs" selected={planView==="budget"} onPress={()=>setPlanView("budget")}/>
@@ -314,7 +316,7 @@ export default function FuelWeeklyPlanScreen() {
       </ThemedView>
       <ThemedView style={s.card}>
         <ThemedText type="subtitle">Selected jobs for {week} ({chosenRows.length})</ThemedText>
-        {chosenRows.length===0?<ThemedText>No jobs selected for this week with the current filters.</ThemedText>:chosenRows.map(r=><View key={r.key}><JobLine r={r} estimate={litresRemaining(r)} chosen selectedDisabled={!planReady||!!planSaving} onSelect={()=>toggleChosen(r)}/><ApprovalEditor r={r} week={week} approval={approvalByKey.get(clearedKey({...r,target_dap:r.target_dap!}))} editable={canClear} refresh={refresh}/></View>)}
+        {chosenRows.length===0?<ThemedText>No jobs selected for this week with the current filters.</ThemedText>:chosenRows.map(r=><View key={r.key}><JobLine r={r} estimate={litresRemaining(r)} chosen selectedDisabled={!planReady||!!planSaving} onSelect={()=>toggleChosen(r)}/><PlanningEditor r={r} week={week} approval={approvalByKey.get(clearedKey({...r,target_dap:r.target_dap!}))} editable={canClear} refresh={refresh}/></View>)}
       </ThemedView></>:<>
       <ThemedView style={s.card}>
         <ThemedText type="subtitle">All unfinished field jobs ({filtered.length})</ThemedText>
@@ -328,7 +330,7 @@ export default function FuelWeeklyPlanScreen() {
             onConfirm={()=>changeClear(r,true)}
             chosen={selectedKeys.has(key)} assignedWeek={elsewhere}
             selectedDisabled={!planReady||!!planSaving||!!elsewhere} onSelect={()=>toggleChosen(r)}/>
-            {selectedKeys.has(key)?<ApprovalEditor r={r} week={week} approval={approvalByKey.get(key)} editable={canClear} refresh={refresh}/>:null}
+            {selectedKeys.has(key)?<PlanningEditor r={r} week={week} approval={approvalByKey.get(key)} editable={canClear} refresh={refresh}/>:null}
           </View>;
         })}
       </ThemedView>
@@ -337,7 +339,7 @@ export default function FuelWeeklyPlanScreen() {
     </>}
   </ScrollView>;
 }
-function ApprovalEditor({r,week,approval,editable,refresh}:{r:Row;week:string;approval?:Approval;editable:boolean;refresh:()=>void}){
+function PlanningEditor({r,week,approval,editable,refresh}:{r:Row;week:string;approval?:Approval;editable:boolean;refresh:()=>void}){
  const [ha,setHa]=useState(""),[perDay,setPerDay]=useState(""),[litres,setLitres]=useState(""),[trips,setTrips]=useState(""),[tripLitres,setTripLitres]=useState(""),[travel,setTravel]=useState(false);
  const [busy,setBusy]=useState(false),[error,setError]=useState("");
  useEffect(()=>{
@@ -356,13 +358,13 @@ function ApprovalEditor({r,week,approval,editable,refresh}:{r:Row;week:string;ap
   setBusy(false);if(res.error)setError(res.error.message);else refresh();
  };
  return <View style={{padding:10,borderWidth:1,borderColor:"#16803C",borderRadius:8,gap:7,marginTop:8}}>
-  <ThemedText style={s.bold}>{approval?"Approved weekly allocation":"Approval required before fuel issue"}</ThemedText>
+  <ThemedText style={s.bold}>{approval?"Saved weekly planning estimate":"Adjust weekly work plan"}</ThemedText>
   <View style={{flexDirection:"row",flexWrap:"wrap",gap:8}}>
    {([["Area ha",ha,setHa],["Ha/day",perDay,setPerDay],["Work litres",litres,setLitres],["Trips",trips,setTrips],["Litres/trip",tripLitres,setTripLitres]] as [string,string,(v:string)=>void][]).map(([title,value,fn])=><View key={title} style={{width:120}}><ThemedText style={s.small}>{title}</ThemedText><TextInput editable={editable} keyboardType="numeric" value={value} onChangeText={fn} style={{borderWidth:1,borderColor:"#AAA",padding:7,borderRadius:6}}/></View>)}
   </View>
   <Pressable disabled={!editable} style={s.button} onPress={()=>setTravel(!travel)}><ThemedText>Include travel fuel: {travel?"Yes":"No"}</ThemedText></Pressable>
-  <ThemedText style={s.small}>Total approval: {fmt(Number(litres)+(travel?Number(trips)*Number(tripLitres):0))} L. Budget reference: {fmt(n(r.total_budget_litres))} L.</ThemedText>
-  {editable?<Pressable disabled={busy} style={s.button} onPress={save}><ThemedText style={s.bold}>{busy?"Saving…":"Approve allocation"}</ThemedText></Pressable>:<ThemedText>Only the fuel planning administrator can approve.</ThemedText>}
+  <ThemedText style={s.small}>Planned fuel: {fmt(Number(litres)+(travel?Number(trips)*Number(tripLitres):0))} L. Budget reference: {fmt(n(r.total_budget_litres))} L.</ThemedText>
+  {editable?<Pressable disabled={busy} style={s.button} onPress={save}><ThemedText style={s.bold}>{busy?"Saving…":"Save weekly plan"}</ThemedText></Pressable>:<ThemedText>Only the fuel planning administrator can approve.</ThemedText>}
   {error?<ThemedText style={s.error}>{error}</ThemedText>:null}
  </View>;
 }
