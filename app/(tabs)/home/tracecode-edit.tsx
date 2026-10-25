@@ -114,6 +114,7 @@ function LabeledInput(props: {
   keyboardType?: "default" | "numeric";
   placeholder?: string;
   editable?: boolean;
+  normalizeDate?: boolean;
 }) {
   return (
     <View style={{ marginTop: 10 }}>
@@ -121,6 +122,7 @@ function LabeledInput(props: {
       <TextInput
         value={props.value}
         onChangeText={props.onChangeText}
+        onBlur={props.normalizeDate ? () => { const iso = fuelDateISO(props.value); if(iso) props.onChangeText(isoToDDMMYYYY(iso)); } : undefined}
         keyboardType={props.keyboardType ?? "default"}
         autoCapitalize="none"
         autoCorrect={false}
@@ -853,12 +855,15 @@ export default function TracecodeEditScreen() {
               </Pressable>
             </Card>
             <Card title="Dates (DD/MM/YYYY)">
-              <LabeledInput label="Start date" value={startDate} onChangeText={setStartDate} placeholder="e.g. 09/02/2026" />
-              <LabeledInput label="End date" value={endDate} onChangeText={setEndDate} placeholder="e.g. 30/06/2026" />
+              <LabeledInput label="Start date" value={startDate} onChangeText={setStartDate}
+                normalizeDate placeholder="e.g. 09/02/2026" />
+              <LabeledInput label="End date" value={endDate} onChangeText={setEndDate}
+                normalizeDate placeholder="e.g. 30/06/2026" />
               <LabeledInput
                 label="Planned planting date"
                 value={plannedPlantingDate}
                 onChangeText={setPlannedPlantingDate}
+                normalizeDate
                 placeholder="e.g. 15/02/2026"
               />
             </Card>
@@ -870,6 +875,7 @@ export default function TracecodeEditScreen() {
             label="Actual planting date (DD/MM/YYYY)"
             value={actualPlantingDate}
             onChangeText={setActualPlantingDate}
+                normalizeDate
             placeholder="e.g. 18/02/2026"
             editable={isAdmin || isManager}
           />
@@ -877,6 +883,7 @@ export default function TracecodeEditScreen() {
             label="Germination date (DD/MM/YYYY)"
             value={germinationDate}
             onChangeText={setGerminationDate}
+                normalizeDate
             placeholder="e.g. 28/02/2026"
             editable={isAdmin || isManager}
           />
