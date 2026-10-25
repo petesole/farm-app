@@ -217,7 +217,7 @@ export default function FuelScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <JsplModuleHeader title="Fuel" />
+      <JsplModuleHeader title="Fuel" showMain={isAdmin} />
       <ThemedText type="title">Fuel Dashboard</ThemedText>
 
       {dash && (
