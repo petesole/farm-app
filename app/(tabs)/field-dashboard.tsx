@@ -306,9 +306,6 @@ export default function FieldDashboard() {
         </View>
 
         <View style={styles.actionsRight}>
-          {isAdmin && (
-            
-          )}
 
           {canNew && (
             <Pressable style={styles.newBtn} onPress={() => goToTracecodeEdit(null)}>
