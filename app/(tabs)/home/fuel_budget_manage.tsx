@@ -37,7 +37,7 @@ export default function FuelBudgetManage(){
  const [active,setActive]=useState(false);
  const [copyName,setCopyName]=useState("");
  const [copySource,setCopySource]=useState<Budget|null>(null);
- const [jobSort,setJobSort]=useState<"job"|"dap"|"class">("job");
+ const [jobSort,setJobSort]=useState<"job"|"dap"|"class">("dap");
  const [jobDescending,setJobDescending]=useState(false);
  const [jobFilter,setJobFilter]=useState<number|null>(null);
  const [dapFilter,setDapFilter]=useState<number|null>(null);
