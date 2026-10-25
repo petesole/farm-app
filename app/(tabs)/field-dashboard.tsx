@@ -249,9 +249,7 @@ export default function FieldDashboard() {
     }
   };
 
-  const goToControlPanel = () => {
-    router.push("/(tabs)/home/control-panel");
-  };
+
 
   if (!roleLoaded || redirecting) {
     return (
