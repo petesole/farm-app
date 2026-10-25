@@ -36,6 +36,7 @@ export default function WeighbridgeAdmin(){
  <View style={{backgroundColor:C.primaryDark,borderRadius:R.lg,padding:S.xl,flexDirection:"row",alignItems:"center",marginBottom:S.lg}}>
  <Image source={require("../assets/images/jspl_farm_logo.png")} resizeMode="contain" style={{width:80,height:80,marginRight:S.lg,borderRadius:R.md,backgroundColor:C.surface}}/>
  <View style={{flex:1}}><Text style={{color:C.surface,fontSize:29,fontWeight:"800"}}>Weighbridge Management</Text><Text style={{color:"#dce9dc",marginTop:4}}>John Sole (Private) Limited · Customer documents and dispatches</Text></View>
+ <Pressable accessibilityRole="button" onPress={()=>router.replace("/(tabs)/main-dashboard")} style={{borderWidth:1,borderColor:"#9cbbaa",borderRadius:R.sm,padding:12,marginRight:S.sm}}><Text style={{color:C.surface,fontWeight:"700"}}>Main</Text></Pressable>
  <WbLastSync refreshKey={syncRefresh}/>
  <Pressable onPress={load} disabled={busy} style={{borderWidth:1,borderColor:"#9cbbaa",borderRadius:R.sm,padding:12}}><Text style={{color:C.surface,fontWeight:"700"}}>{busy?"Loading…":"Refresh"}</Text></Pressable></View>
  <View style={{flexDirection:"row",marginBottom:S.xl}}>
