@@ -314,7 +314,7 @@ export default function FuelWeeklyPlanScreen() {
       </ThemedView>
       <ThemedView style={s.card}>
         <ThemedText type="subtitle">Selected jobs for {week} ({chosenRows.length})</ThemedText>
-        {chosenRows.length===0?<ThemedText>No jobs selected for this week with the current filters. Switch to Budget jobs to select them.</ThemedText>:chosenRows.map(r=><JobLine key={r.key} r={r} estimate={litresRemaining(r)} chosen selectedDisabled={!planReady||!!planSaving} onSelect={()=>toggleChosen(r)}/>)}
+        {chosenRows.length===0?<ThemedText>No jobs selected for this week with the current filters.</ThemedText>:chosenRows.map(r=><View key={r.key}><JobLine r={r} estimate={litresRemaining(r)} chosen selectedDisabled={!planReady||!!planSaving} onSelect={()=>toggleChosen(r)}/><ApprovalEditor r={r} week={week} approval={approvalByKey.get(clearedKey({...r,target_dap:r.target_dap!}))} editable={canClear} refresh={refresh}/></View>)}
       </ThemedView></>:<>
       <ThemedView style={s.card}>
         <ThemedText type="subtitle">All unfinished field jobs ({filtered.length})</ThemedText>
@@ -322,12 +322,14 @@ export default function FuelWeeklyPlanScreen() {
         {filtered.length===0?<ThemedText>No unfinished budget jobs match these filters.</ThemedText>:filtered.map(r=>{
           const key=clearedKey({...r,target_dap:r.target_dap!});
           const elsewhere=otherWeekByKey.get(key);
-          return <JobLine key={r.key} r={r} estimate={litresRemaining(r)} admin={canClear}
+          return <View key={r.key}><JobLine r={r} estimate={litresRemaining(r)} admin={canClear}
             saving={savingKey===key} confirming={confirmKey===key}
             onComplete={()=>setConfirmKey(key)} onCancel={()=>setConfirmKey(null)}
             onConfirm={()=>changeClear(r,true)}
             chosen={selectedKeys.has(key)} assignedWeek={elsewhere}
-            selectedDisabled={!planReady||!!planSaving||!!elsewhere} onSelect={()=>toggleChosen(r)}/>;
+            selectedDisabled={!planReady||!!planSaving||!!elsewhere} onSelect={()=>toggleChosen(r)}/>
+            {selectedKeys.has(key)?<ApprovalEditor r={r} week={week} approval={approvalByKey.get(key)} editable={canClear} refresh={refresh}/>:null}
+          </View>;
         })}
       </ThemedView>
       </>}
