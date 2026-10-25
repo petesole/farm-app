@@ -27,6 +27,9 @@ type FieldReportRow = {
   growweeks: number | null;
   plant_population: number | null;
   fuel_budget_name?: string | null;
+  variety_name?: string | null;
+  planned_planting_date?: string | null;
+  actual_planting_date?: string | null;
 };
 
 type AppRole = "ADMIN" | "MANAGER" | "IRRIGATOR" | "VIEWER" | "UNKNOWN";
@@ -62,6 +65,8 @@ export default function FieldDashboard() {
   const [refreshing, setRefreshing] = useState(false);
 
   const [search, setSearch] = useState("");
+  const [sortColumn,setSortColumn]=useState<keyof FieldReportRow>("season_name");
+  const [sortDirection,setSortDirection]=useState<"asc"|"desc">("asc");
   const [cropFilter,setCropFilter] = useState<string|null>(null);
   const [showCont, setShowCont] = useState(false);
 
@@ -120,7 +125,7 @@ export default function FieldDashboard() {
     // Fuel budget belongs to the TraceCode, not the permanent field.
     // Fetch it separately so the existing field_report_v2 view needs no changes.
     const budgetRes=await supabase.from("tracecode")
-      .select("tracecode_id,fuel_budget:fuel_budget_id(fuel_budget_name)")
+      .select("tracecode_id,planned_planting_date,actual_planting_date,variety:variety_id(variety_name),fuel_budget:fuel_budget_id(fuel_budget_name)")
       .limit(10000);
     if(budgetRes.error){
       console.log("field fuel budget lookup error:",budgetRes.error.message);
@@ -131,9 +136,17 @@ export default function FieldDashboard() {
         (Array.isArray(r.fuel_budget)?r.fuel_budget[0]?.fuel_budget_name:r.fuel_budget?.fuel_budget_name)??null
       ])
     );
-    setRows(((data??[]) as FieldReportRow[]).map(r=>({
-      ...r,fuel_budget_name:r.tracecode_id==null?null:budgetNames.get(r.tracecode_id)??null
-    })));
+    const traceDetails=new Map<number,any>((budgetRes.data??[]).map((r:any)=>[Number(r.tracecode_id),r]));
+    setRows(((data??[]) as FieldReportRow[]).map(r=>{
+      const d=traceDetails.get(Number(r.tracecode_id));
+      const variety=Array.isArray(d?.variety)?d.variety[0]:d?.variety;
+      return {...r,
+        fuel_budget_name:r.tracecode_id==null?null:budgetNames.get(r.tracecode_id)??null,
+        variety_name:variety?.variety_name??null,
+        planned_planting_date:d?.planned_planting_date??null,
+        actual_planting_date:d?.actual_planting_date??null
+      };
+    }));
     setLoading(false);
   }, []);
 
@@ -193,6 +206,20 @@ export default function FieldDashboard() {
       return hay.includes(q);
     });
   }, [seasonRows,search,cropFilter]);
+
+  const sortedRows=useMemo(()=>[...filtered].sort((a,b)=>{
+    const av=a[sortColumn],bv=b[sortColumn];
+    const result=av==null||av==="" ? (bv==null||bv===""?0:1) : bv==null||bv==="" ? -1 :
+      typeof av==="number"&&typeof bv==="number"?av-bv:String(av).localeCompare(String(bv),undefined,{numeric:true,sensitivity:"base"});
+    return (av==null||av==="")||(bv==null||bv==="")?result:(sortDirection==="asc"?result:-result);
+  }),[filtered,sortColumn,sortDirection]);
+  const displayDate=(value:string|null|undefined)=>value?value.slice(0,10).split("-").reverse().join("/"):"";
+  const sortHeader=(label:string,key:keyof FieldReportRow,style:any)=>(
+    <Pressable onPress={()=>{if(sortColumn===key)setSortDirection(d=>d==="asc"?"desc":"asc");else{setSortColumn(key);setSortDirection("asc");}}}
+      style={[styles.cell,styles.headerText,style]}>
+      <Text style={styles.headerText}>{label} {sortColumn===key?(sortDirection==="asc"?"▲":"▼"):"↕"}</Text>
+    </Pressable>
+  );
 
   const totalHa = useMemo(() => {
     return filtered.reduce((sum, r) => sum + (Number(r.tracecode_size) || 0), 0);
@@ -317,54 +344,37 @@ export default function FieldDashboard() {
         <ScrollView horizontal>
           <View>
             <View style={[styles.row, styles.headerRow]}>
-              <Text style={[styles.cell, styles.headerText, styles.cEdit]}></Text>
-              <Text style={[styles.cell, styles.headerText, styles.cSeason]}>Season</Text>
-              <Text style={[styles.cell, styles.headerText, styles.cCrop]}>Crop</Text>
-              <Text style={[styles.cell, styles.headerText, styles.cFuelBudget]}>Fuel Budget</Text>
-              <Text style={[styles.cell, styles.headerText, styles.cTraceId]}>Trace ID</Text>
-              <Text style={[styles.cell, styles.headerText, styles.cTrace]}>Tracecode</Text>
-              <Text style={[styles.cell, styles.headerText, styles.cSize]}>Size</Text>
-              <Text style={[styles.cell, styles.headerText, styles.cPlantPop]}>Plant Pop</Text>
-              <Text style={[styles.cell, styles.headerText, styles.cIrr]}>Irr</Text>
-              <Text style={[styles.cell, styles.headerText, styles.cField]}>Field</Text>
-              <Text style={[styles.cell, styles.headerText, styles.cFarm]}>Farm</Text>
-              <Text style={[styles.cell, styles.headerText, styles.cDap]}>DAP</Text>
-              <Text style={[styles.cell, styles.headerText, styles.cGrow]}>Grow</Text>
-
+              {sortHeader("Season","season_name",styles.cSeason)}
+              {sortHeader("Trace ID","tracecode_id",styles.cTraceId)}
+              {sortHeader("TraceCode","tracecode_name",styles.cTrace)}
+              {sortHeader("Size","tracecode_size",styles.cSize)}
+              {sortHeader("Irr","irrigation_type",styles.cIrr)}
+              {sortHeader("Farm","farm_name",styles.cFarm)}
+              {sortHeader("Crop","crop_name",styles.cCrop)}
+              {sortHeader("Variety","variety_name",styles.cVariety)}
+              {sortHeader("PPD","planned_planting_date",styles.cDate)}
+              {sortHeader("APD","actual_planting_date",styles.cDate)}
+              {sortHeader("DAP","dap",styles.cDap)}
+              {sortHeader("Grow","growdays",styles.cGrow)}
+              {sortHeader("Plant Pop","plant_population",styles.cPlantPop)}
+              <Text style={[styles.cell,styles.headerText,styles.cEdit]}>Edit</Text>
             </View>
-
-            {filtered.map((r, idx) => (
-              <View key={r.tracecode_id ?? idx} style={[styles.row, idx % 2 === 1 && styles.rowAlt]}>
-                <View style={[styles.cell, styles.cEdit]}>
-                  {canEdit && (
-                    <Pressable
-                      style={styles.editBtn}
-                      onPress={() => goToTracecodeEdit(r.tracecode_id)}
-                    >
-                      <Text style={styles.editBtnText}>Edit</Text>
-                    </Pressable>
-                  )}
-                </View>
-                <Text style={[styles.cell, styles.cSeason]}>{r.season_name ?? ""}</Text>
-                <Text style={[styles.cell, styles.cCrop]}>{r.crop_name ?? ""}</Text>
-                <Text style={[styles.cell, styles.cFuelBudget]}>{r.fuel_budget_name ?? "—"}</Text>
-                <Text style={[styles.cell, styles.cTraceId]}>{r.tracecode_id ?? ""}</Text>
-                <Text style={[styles.cell, styles.cTrace]}>{r.tracecode_name ?? ""}</Text>
-                <Text style={[styles.cell, styles.cSize]}>{formatSize(r.tracecode_size)}</Text>
-                <Text style={[styles.cell, styles.cPlantPop]}>
-                  {formatPlantPop(r.plant_population)}
-                </Text>
-                <Text style={[styles.cell, styles.cIrr]}>{r.irrigation_type ?? ""}</Text>
-                <Text style={[styles.cell, styles.cField]}>{r.field_name ?? ""}</Text>
-                <Text style={[styles.cell, styles.cFarm]}>{r.farm_name ?? ""}</Text>
-                <Text style={[styles.cell, styles.cDap]}>{r.dap ?? ""}</Text>
-                <Text style={[styles.cell, styles.cGrow]}>
-                  {r.growdays != null && r.growweeks != null
-                    ? `${r.growdays}d / ${r.growweeks.toFixed(1)}w`
-                    : ""}
-                </Text>
-
-
+            {sortedRows.map((r,idx)=>(
+              <View key={r.tracecode_id??idx} style={[styles.row,idx%2===1&&styles.rowAlt]}>
+                <Text style={[styles.cell,styles.cSeason]}>{r.season_name??""}</Text>
+                <Text style={[styles.cell,styles.cTraceId]}>{r.tracecode_id??""}</Text>
+                <Text style={[styles.cell,styles.cTrace]}>{r.tracecode_name??""}</Text>
+                <Text style={[styles.cell,styles.cSize]}>{formatSize(r.tracecode_size)}</Text>
+                <Text style={[styles.cell,styles.cIrr]}>{r.irrigation_type??""}</Text>
+                <Text style={[styles.cell,styles.cFarm]}>{r.farm_name??""}</Text>
+                <Text style={[styles.cell,styles.cCrop]}>{r.crop_name??""}</Text>
+                <Text style={[styles.cell,styles.cVariety]}>{r.variety_name??""}</Text>
+                <Text style={[styles.cell,styles.cDate]}>{displayDate(r.planned_planting_date)}</Text>
+                <Text style={[styles.cell,styles.cDate]}>{displayDate(r.actual_planting_date)}</Text>
+                <Text style={[styles.cell,styles.cDap]}>{r.dap??""}</Text>
+                <Text style={[styles.cell,styles.cGrow]}>{r.growdays!=null && r.growweeks!=null?`${r.growdays}d / ${r.growweeks.toFixed(1)}w`:""}</Text>
+                <Text style={[styles.cell,styles.cPlantPop]}>{formatPlantPop(r.plant_population)}</Text>
+                <View style={[styles.cell,styles.cEdit]}>{canEdit&&<Pressable style={styles.editBtn} onPress={()=>goToTracecodeEdit(r.tracecode_id)}><Text style={styles.editBtnText}>Edit</Text></Pressable>}</View>
               </View>
             ))}
 
@@ -473,7 +483,9 @@ const styles = StyleSheet.create({
     color: "#111",
   },
 
-  cSeason: { width: 78 },
+  cSeason: { width: 95 },
+  cVariety: { width: 110 },
+  cDate: { width: 105 },
   cCrop: { width: 94 },
   cFuelBudget: { width: 170 },
   cTraceId: { width: 65 },
