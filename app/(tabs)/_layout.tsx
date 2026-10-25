@@ -6,6 +6,8 @@ import { ActivityIndicator, Platform, View } from "react-native";
 export default function TabsLayout() {
   const [ready, setReady] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [canFuel, setCanFuel] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -21,7 +23,12 @@ export default function TabsLayout() {
         }
         const { data: roles, error: rolesError } = await supabase.rpc("my_farm_app_roles");
         if (!alive) return;
-        setLoggedIn(!rolesError && Array.isArray(roles) && roles.length > 0);
+        const assigned = !rolesError && Array.isArray(roles) ? roles.map((r: string) => String(r).trim().toLowerCase()) : [];
+        const admin = assigned.includes('admin');
+        const fuelAccess = admin || assigned.includes('manager') || assigned.includes('fuel');
+        setIsAdmin(admin);
+        setCanFuel(fuelAccess);
+        setLoggedIn(admin || fuelAccess);
       } catch {
         if (!alive) return;
         setLoggedIn(false);
@@ -50,18 +57,18 @@ export default function TabsLayout() {
   }
 
   return (
-    <Tabs initialRouteName="field-dashboard" screenOptions={{ headerShown: false }}>
+    <Tabs initialRouteName={isAdmin ? "field-dashboard" : "fuel"} screenOptions={{ headerShown: false }}>
       <Tabs.Screen name="home" options={{ href: null }} />
-      <Tabs.Screen name="field-dashboard" options={{ title: "Fields" }} />
-      <Tabs.Screen name="wb-admin" options={{ title: "Weighbridge", href: Platform.OS === "web" ? "/wb-admin" : null }} />
-      <Tabs.Screen name="fuel" options={{ title: "Fuel" }} />
-      <Tabs.Screen name="stock-test" options={{ title: "Stock V2", href: Platform.OS === "web" ? "/stock-test" : null }} />
-      <Tabs.Screen name="cashbook" options={{ title: "Cashbook", href: Platform.OS === "web" ? "/cashbook" : null }} />
+      <Tabs.Screen name="field-dashboard" options={{ title: "Fields", href: isAdmin ? "/field-dashboard" : null }} />
+      <Tabs.Screen name="wb-admin" options={{ title: "Weighbridge", href: isAdmin && Platform.OS === "web" ? "/wb-admin" : null }} />
+      <Tabs.Screen name="fuel" options={{ title: "Fuel", href: canFuel ? "/fuel" : null }} />
+      <Tabs.Screen name="stock-test" options={{ href: null }} />
+      <Tabs.Screen name="cashbook" options={{ href: null }} />
       <Tabs.Screen
         name="irrigation_main_dashboard"
-        options={{ title: "Irrigation" }}
+        options={{ href: null }}
       />
-      <Tabs.Screen name="scouting" options={{ title: "Scouting" }} />
+      <Tabs.Screen name="scouting" options={{ href: null }} />
     </Tabs>
   );
 }
