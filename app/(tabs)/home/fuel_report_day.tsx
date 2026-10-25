@@ -1,3 +1,4 @@
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 // app/(tabs)/fuel-report-day.tsx
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -125,6 +126,7 @@ export default function FuelReportDayScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      <JsplModuleHeader title="Daily Fuel Report" />
       <ThemedView style={styles.headerRow}>
         <Pressable
            onPress={() => router.replace("/(tabs)/home/fuel_report")}
