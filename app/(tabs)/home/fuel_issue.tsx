@@ -69,6 +69,9 @@ export default function FuelIssueScreen() {
   const [saving, setSaving] = useState(false);
 
   const [vehicles, setVehicles] = useState<VehicleRow[]>([]);
+  const [vehicleTypes, setVehicleTypes] = useState<{vehicle_type_id:number;type_name:string}[]>([]);
+  const [typeFilter, setTypeFilter] = useState<number | null>(null);
+  const visibleVehicles = useMemo(() => vehicles.filter(v => typeFilter === null || Number(v.vehicle_type_id) === typeFilter), [vehicles,typeFilter]);
   const [vehicleId, setVehicleId] = useState<number | null>(null);
 
   const [litres, setLitres] = useState<string>('');
@@ -172,6 +175,9 @@ export default function FuelIssueScreen() {
   }, [meterReading, lastMeterReading, selectedVehicle]);
 
   const loadVehicles = async () => {
+    const {data:types,error:typeError} = await supabase.from('vehicle_type')
+      .select('vehicle_type_id,type_name').order('sort_order');
+    if (!typeError) setVehicleTypes((types??[]) as {vehicle_type_id:number;type_name:string}[]);
     setLoading(true);
 
     const { data, error } = await supabase
@@ -385,7 +391,7 @@ export default function FuelIssueScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <JsplModuleHeader title="Fuel Issue" />
+      <JsplModuleHeader title="Fuel Issue" backLabel="Fuel" backHref="/(tabs)/fuel" />
       <ThemedText type="title">Fuel Issue</ThemedText>
 
       <ThemedView style={styles.card}>
@@ -396,6 +402,19 @@ export default function FuelIssueScreen() {
       <ThemedView style={styles.card}>
         <ThemedText type="subtitle">Vehicle</ThemedText>
 
+        <View style={{flexDirection:'row',flexWrap:'wrap',gap:8,marginVertical:8}}>
+          {[{vehicle_type_id:null,type_name:'All'},...vehicleTypes.filter(t=>vehicles.some(v=>Number(v.vehicle_type_id)===Number(t.vehicle_type_id)))].map(t=>(
+            <Pressable key={t.vehicle_type_id??'all'} disabled={saving} onPress={()=>{
+              const next=t.vehicle_type_id==null?null:Number(t.vehicle_type_id);
+              setTypeFilter(next);
+              const match=vehicles.filter(v=>next===null||Number(v.vehicle_type_id)===next);
+              if(!match.some(v=>Number(v.vehicle_id)===Number(vehicleId)))
+                setVehicleId(match.length?Number(match[0].vehicle_id):null);
+            }} style={{borderWidth:1,borderColor:typeFilter===t.vehicle_type_id?'#25633A':'#BCC9C0',backgroundColor:typeFilter===t.vehicle_type_id?'#25633A':'#FFFFFF',paddingHorizontal:15,paddingVertical:9,borderRadius:20}}>
+              <ThemedText style={{color:typeFilter===t.vehicle_type_id?'#FFFFFF':'#25633A',fontWeight:'700'}}>{t.type_name}</ThemedText>
+            </Pressable>
+          ))}
+        </View>
         {vehicles.length === 0 ? (
           <ThemedText style={styles.small}>No active vehicles found.</ThemedText>
         ) : (
@@ -405,7 +424,8 @@ export default function FuelIssueScreen() {
               onValueChange={(val) => setVehicleId(val == null ? null : Number(val))}
               enabled={!saving}
             >
-              {vehicles.map((v) => (
+              <Picker.Item label="Select vehicle..." value={null} />
+              {visibleVehicles.map((v) => (
                 <Picker.Item
                   key={v.vehicle_id}
                   label={v.vehicle_name}
