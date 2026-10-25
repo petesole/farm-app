@@ -697,7 +697,7 @@ export default function TracecodeEditScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <JsplModuleHeader title="Tracecode Management" />
+      <JsplModuleHeader title="Trace Control" backLabel="Trace Control" backHref="/(tabs)/field-dashboard" />
       <ThemedText style={{ opacity: 0.55, marginBottom: 6 }}>
         params: mode={String(mode ?? "")} tracecodeIdRaw={String(tidRaw ?? "")}
       </ThemedText>
