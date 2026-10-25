@@ -1,5 +1,4 @@
 import { supabase } from "../../supabase";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Redirect, Tabs } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Platform, View } from "react-native";
@@ -13,11 +12,16 @@ export default function TabsLayout() {
 
     async function checkAuth() {
       try {
-        const raw = await AsyncStorage.getItem("app_user");
-        const role = await AsyncStorage.getItem("role");
-
+        // A cached UI role is not proof of authentication.
+        const { data: session, error: userError } = await supabase.auth.getUser();
         if (!alive) return;
-        if (Platform.OS === "web") { const {data: session} = await supabase.auth.getUser(); if (!alive) return; setLoggedIn(!!session.user); } else { setLoggedIn(!!raw && !!role); }
+        if (userError || !session.user) {
+          setLoggedIn(false);
+          return;
+        }
+        const { data: roles, error: rolesError } = await supabase.rpc("my_farm_app_roles");
+        if (!alive) return;
+        setLoggedIn(!rolesError && Array.isArray(roles) && roles.length > 0);
       } catch {
         if (!alive) return;
         setLoggedIn(false);
