@@ -1,6 +1,6 @@
 import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 import { supabase } from "@/supabase";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -157,9 +157,12 @@ export default function FieldDashboard() {
     await fetchRowsForRole(nextRole);
   }, [loadRole, fetchRowsForRole]);
 
-  useEffect(() => {
-    reloadAll();
-  }, [reloadAll]);
+  // Refresh whenever returning from Trace Edit; the tab screen stays mounted.
+  useFocusEffect(
+    useCallback(() => {
+      void reloadAll();
+    }, [reloadAll])
+  );
 
   
 
