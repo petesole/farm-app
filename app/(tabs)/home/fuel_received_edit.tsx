@@ -1,3 +1,4 @@
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 import {fuelDateDisplay,fuelDateISO} from "./fuel_admin_dates";
 import {useEffect,useState} from "react";
 import {ActivityIndicator,Pressable,ScrollView,StyleSheet,TextInput,View} from "react-native";
@@ -30,6 +31,13 @@ export default function FuelReceivedEdit(){
  function choose(r:Received|null){setEditing(r);setSupplierId(r?.supplier_id??null);setLitres(r?String(r.fuel_received):"");setInvoice(r?.invoice_no??"");setError("");setNotice("");}
  async function save(){
   if(editing===undefined)return;
+  // Frontend safeguard only. Real permission enforcement must also be in RLS.
+  const {data: identity,error: identityError}=await supabase.auth.getUser();
+  if(identityError||!identity.user){setError("Please sign in again.");return;}
+  const {data: roles,error: rolesError}=await supabase.rpc("my_farm_app_roles");
+  if(rolesError||!Array.isArray(roles)||!roles.some((role: string)=>["admin","manager"].includes(String(role).trim().toLowerCase()))){
+   setError("Only an administrator or manager can correct fuel records.");return;
+  }
   const qty=Number(litres.replace(/,/g,"").trim());
   if(!supplierId){setError("Select a supplier.");return;}
   if(!Number.isFinite(qty)||qty<=0){setError("Enter a valid positive quantity of litres.");return;}
@@ -44,6 +52,7 @@ export default function FuelReceivedEdit(){
   setNotice(editing===null?"Missing delivery added.":"Fuel delivery updated.");await load(date);
  }
  return <ScrollView contentContainerStyle={s.page}>
+ <JsplModuleHeader title="Fuel Received Corrections" />
   <ThemedText type="title">Fuel Received Edit / Add</ThemedText>
   <Pressable style={s.btn} onPress={()=>router.back()}><ThemedText>← Fuel Admin</ThemedText></Pressable>
   <View style={s.card}><ThemedText type="subtitle">Select date</ThemedText><View style={s.row}>
