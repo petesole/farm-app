@@ -62,6 +62,9 @@ export default function TabsLayout() {
       <Tabs.Screen name="control-panel" options={{ href: null }} />
       <Tabs.Screen name="vehicle-management" options={{ href: null }} />
       <Tabs.Screen name="vehicle-detail" options={{ href: null }} />
+      <Tabs.Screen name="fields-control" options={{ href: null }} />
+      <Tabs.Screen name="field-control-list" options={{ href: null }} />
+      <Tabs.Screen name="field-control-detail" options={{ href: null }} />
       <Tabs.Screen name="main-dashboard" options={{ title: "Main", href: isAdmin ? "/main-dashboard" : null }} />
       <Tabs.Screen name="field-dashboard" options={{ title: "Fields", href: isAdmin ? "/field-dashboard" : null }} />
       <Tabs.Screen name="wb-admin" options={{ title: "Weighbridge", href: isAdmin && Platform.OS === "web" ? "/wb-admin" : null }} />
