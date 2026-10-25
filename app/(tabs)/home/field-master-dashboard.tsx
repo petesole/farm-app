@@ -286,6 +286,7 @@ export default function FieldMasterDashboardScreen() {
   return (
     <ThemedView style={styles.container}>
       <JsplModuleHeader title="Field Management" />
+      <Pressable onPress={()=>router.replace("/(tabs)/fields-control")} style={{padding:10}}><Text style={{color:"#25633A",fontWeight:"700"}}>← Fields Control</Text></Pressable>
       <FlatList
         data={filtered}
         keyExtractor={(item) => String(item.field_id)}
