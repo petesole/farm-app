@@ -1,3 +1,4 @@
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 // app/(tabs)/home/fuel_admin_home.tsx
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
@@ -55,6 +56,7 @@ export default function FuelAdminHomeScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      <JsplModuleHeader title="Fuel Administration" />
       <ThemedText type="title">Fuel Admin</ThemedText>
 
       <ThemedView style={styles.card}>
