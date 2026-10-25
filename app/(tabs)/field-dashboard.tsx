@@ -355,6 +355,7 @@ export default function FieldDashboard() {
               {sortHeader("DAP","dap",styles.cDap)}
               {sortHeader("Grow","growdays",styles.cGrow)}
               {sortHeader("Plant Pop","plant_population",styles.cPlantPop)}
+              {sortHeader("Fuel Budget","fuel_budget_name",styles.cFuelBudget)}
               <Text style={[styles.cell,styles.headerText,styles.cEdit]}>Edit</Text>
             </View>
             {sortedRows.map((r,idx)=>(
@@ -372,6 +373,7 @@ export default function FieldDashboard() {
                 <Text style={[styles.cell,styles.cDap]}>{r.dap??""}</Text>
                 <Text style={[styles.cell,styles.cGrow]}>{r.growdays!=null && r.growweeks!=null?`${r.growdays}d / ${r.growweeks.toFixed(1)}w`:""}</Text>
                 <Text style={[styles.cell,styles.cPlantPop]}>{formatPlantPop(r.plant_population)}</Text>
+                <Text style={[styles.cell,styles.cFuelBudget]}>{r.fuel_budget_name??"—"}</Text>
                 <View style={[styles.cell,styles.cEdit]}>{canEdit&&<Pressable style={styles.editBtn} onPress={()=>goToTracecodeEdit(r.tracecode_id)}><Text style={styles.editBtnText}>Edit</Text></Pressable>}</View>
               </View>
             ))}
