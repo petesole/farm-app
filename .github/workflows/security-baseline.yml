@@ -1,0 +1,13 @@
+name: JSPL Security Baseline
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [dev, main]
+jobs:
+  authentication-source-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify basic auth safeguards
+        run: node scripts/check-security-baseline.cjs
