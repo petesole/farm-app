@@ -10,7 +10,7 @@ export default function FieldControlList(){
  const def=controlFor(kind);
  const [allowed,setAllowed]=useState<boolean|null>(null),[rows,setRows]=useState<Record<string,any>[]>([]),[showInactive,setShowInactive]=useState(false),[error,setError]=useState("");
  useEffect(()=>{(async()=>{const {data:u,error:ue}=await supabase.auth.getUser();if(ue||!u.user){setAllowed(false);return;}const {data:r,error:e}=await supabase.rpc("my_farm_app_roles");setAllowed(!e&&Array.isArray(r)&&r.some((x:string)=>String(x).trim().toLowerCase()==="admin"));})()},[]);
- useEffect(()=>{if(!allowed||!def)return;let valid=true;(async()=>{const {data,error:e}=await supabase.from(def.table).select("*").order(def.name);if(!valid)return;if(e)setError(e.message);else{setError("");setRows(data||[]);}})();return()=>{valid=false};},[allowed,kind]);
+ useEffect(()=>{if(!allowed||!def)return;let valid=true;(async()=>{const {data,error:e}=await supabase.from(def.table).select("*").order(def.name);if(!valid)return;if(e)setError(e.message);else{setError("");setRows((data||[]).filter((item:Record<string,any>) => item != null && item[def.id] != null && typeof item[def.name] === "string" && item[def.name].trim().length > 0));}})();return()=>{valid=false};},[allowed,kind]);
  if(!def)return <Redirect href="/(tabs)/fields-control"/>;
  if(allowed===null)return <ActivityIndicator/>;
  if(!allowed)return <Redirect href="/(tabs)/fuel"/>;
@@ -21,7 +21,7 @@ export default function FieldControlList(){
   if(e||!data?.length){setError(e?.message??"Could not change status.");return;}
   setRows(old=>old.map(x=>x[def.id]===item[def.id]?{...x,active:next}:x));
  }
- const filtered=rows.filter(x=>showInactive||x.active!==false);
+ const filtered=rows.filter(x=>x != null && x[def.id] != null && typeof x[def.name] === "string" && x[def.name].trim().length > 0 && (showInactive||x.active!==false));
  return <ScrollView contentContainerStyle={s.page}>
   <JsplModuleHeader title={def.title} showMain/>
   <Pressable onPress={()=>router.replace("/(tabs)/fields-control")} style={s.back}><Text style={s.link}>← Fields Control</Text></Pressable>
@@ -31,7 +31,7 @@ export default function FieldControlList(){
   <Text style={s.muted}>{filtered.length} of {rows.length} records</Text>
   <View style={s.listHeader}><Text style={s.listHeaderTitle}>{def.title}</Text><Text style={s.listHeaderStatus}>Active</Text><Text style={s.listHeaderEdit}> </Text></View>
   {filtered.map(x=><View key={String(x[def.id])} style={s.item}>
-   <Text style={s.title} numberOfLines={2}>{String(x[def.name] ?? "").trim() || `${def.title} #${x[def.id]} (name missing)`}</Text>
+   <Text style={s.title} numberOfLines={2}>{String(x[def.name]).trim()}</Text>
    <Switch value={x.active!==false} onValueChange={()=>void toggleActive(x)}/>
    <Pressable style={s.edit} onPress={()=>router.push({pathname:"/(tabs)/field-control-detail",params:{kind:def.table,id:String(x[def.id]),mode:"edit"}})}><Text style={s.link}>Edit</Text></Pressable>
   </View>)}
