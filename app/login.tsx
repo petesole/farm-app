@@ -6,7 +6,6 @@ import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Platform,
   Pressable,
   StyleSheet,
   TextInput,
@@ -47,51 +46,37 @@ export default function LoginScreen() {
 
       const u = norm(username);
       const p = password;
-      if (Platform.OS === "web") {
-        const { data: auth, error: authError } = await supabase.auth.signInWithPassword({ email: u, password: p });
-        if (authError || !auth.user) { setStatus(authError?.message || "Unable to sign in."); return; }
-        const { data: access, error: accessError } = await supabase.rpc("my_farm_app_roles");
-        if (accessError) { await supabase.auth.signOut(); setStatus("Unable to verify access: " + accessError.message); return; }
-        const roles = (access || []).map((r: string) => norm(r));
-        if (!roles.length) { await supabase.auth.signOut(); setStatus("Your account has no assigned FarmingMainLive role."); return; }
-        const role = ["admin","manager","fuel","irrigation","scouting","scout","scouter","viewer"].find(r => roles.includes(r)) || roles[0];
-        await AsyncStorage.setItem("app_user", JSON.stringify({ user_id: auth.user.id, username: auth.user.email, role }));
-        await AsyncStorage.setItem("role", role);
-        router.replace(landingForRole(role));
+      // Shared web/native authentication: never query the legacy public.login table.
+      const { data: auth, error: authError } = await supabase.auth.signInWithPassword({
+        email: u,
+        password: p,
+      });
+      if (authError || !auth.user) {
+        setStatus(authError?.message || "Unable to sign in.");
         return;
       }
 
-      const { data, error } = await supabase
-        .from("login")
-        .select("user_id, username, role, active")
-        .eq("username", u)
-        .eq("password", p)
-        .eq("active", true)
-        .maybeSingle();
-
-      if (error) {
-        setStatus(`Login error: ${error.message}`);
+      // Roles must come from the server; local storage is UI-only, not authorization.
+      const { data: access, error: accessError } = await supabase.rpc("my_farm_app_roles");
+      if (accessError) {
+        await supabase.auth.signOut();
+        setStatus("Unable to verify access: " + accessError.message);
         return;
       }
-
-      if (!data) {
-        setStatus("Invalid username or password.");
+      const roles = (access || []).map((r: string) => norm(r));
+      if (!roles.length) {
+        await supabase.auth.signOut();
+        setStatus("Your account has no assigned FarmingMainLive role.");
         return;
       }
-
-      const role = norm(data.role);
-
+      const role =
+        ["admin", "manager", "fuel", "irrigation", "scouting", "scout", "scouter", "viewer"]
+          .find((r) => roles.includes(r)) || roles[0];
       await AsyncStorage.setItem(
         "app_user",
-        JSON.stringify({
-          user_id: data.user_id,
-          username: data.username,
-          role,
-        })
+        JSON.stringify({ user_id: auth.user.id, username: auth.user.email, role })
       );
-
       await AsyncStorage.setItem("role", role);
-
       router.replace(landingForRole(role));
     } catch (e: any) {
       setStatus(`Login exception: ${e?.message ?? "Unknown error"}`);
@@ -106,14 +91,14 @@ export default function LoginScreen() {
 
       <View style={{ height: 14 }} />
 
-      <ThemedText style={styles.label}>{Platform.OS === "web" ? "Email" : "Username"}</ThemedText>
+      <ThemedText style={styles.label}>{"Email"}</ThemedText>
       <TextInput
         value={username}
         onChangeText={setUsername}
         autoCapitalize="none"
         autoCorrect={false}
         style={styles.input}
-        placeholder={Platform.OS === "web" ? "email@example.com" : "username"}
+        placeholder={"email@example.com"}
       />
 
       <View style={{ height: 10 }} />
