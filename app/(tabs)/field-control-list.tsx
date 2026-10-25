@@ -24,7 +24,7 @@ export default function FieldControlList(){
  const filtered=rows.filter(x=>x != null && x[def.id] != null && typeof x[def.name] === "string" && x[def.name].trim().length > 0 && (showInactive||x.active!==false));
  return <ScrollView contentContainerStyle={s.page}>
   <JsplModuleHeader title={def.title} showMain/>
-  <Pressable onPress={()=>router.replace(def.table==="crop"?"/(tabs)/control-panel":"/(tabs)/fields-control")} style={s.back}><Text style={s.link}>{def.table==="crop"?"← Control Panel":"← Fields Control"}</Text></Pressable>
+  <Pressable onPress={()=>router.replace((def.table==="crop"||def.table==="contract")?"/(tabs)/control-panel":"/(tabs)/fields-control")} style={s.back}><Text style={s.link}>{(def.table==="crop"||def.table==="contract")?"← Control Panel":"← Fields Control"}</Text></Pressable>
   <Pressable style={s.primary} onPress={()=>router.push({pathname:"/(tabs)/field-control-detail",params:{kind:def.table,mode:"new"}})}><Text style={s.primaryText}>+ Add New {def.title}</Text></Pressable>
   <View style={s.row}><Text style={s.label}>Show inactive</Text><Switch value={showInactive} onValueChange={setShowInactive}/></View>
   {!!error&&<Text style={{color:C.danger}}>{error}</Text>}
