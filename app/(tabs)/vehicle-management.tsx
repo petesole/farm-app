@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import { Redirect, router } from "expo-router";
 import { supabase } from "@/supabase";
 import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
@@ -57,17 +57,22 @@ export default function VehicleManagement() {
     if (!response.data?.length) { setError("No vehicle saved. Check access permissions."); return; }
     edit(null); await load();
   }
+  async function persistStatus(v: Vehicle) {
+    setBusy(true);
+    const { data, error: e } = await supabase.from("vehicle")
+      .update({ vehicle_discontinued: !v.vehicle_discontinued }).eq("vehicle_id", v.vehicle_id).select("vehicle_id");
+    setBusy(false);
+    if (e || !data?.length) setError(e?.message ?? "Could not update vehicle.");
+    else await load();
+  }
   function changeStatus(v: Vehicle) {
+    if (Platform.OS === "web") {
+      if (typeof window !== "undefined" && window.confirm(v.vehicle_discontinued ? "Reactivate this vehicle?" : "Discontinue this vehicle? Its fuel history will be retained.")) void persistStatus(v);
+      return;
+    }
     Alert.alert(v.vehicle_discontinued ? "Reactivate vehicle?" : "Discontinue vehicle?",
       v.vehicle_discontinued ? "Return this vehicle to Fuel Issue selection?" : "Hide this vehicle from new Fuel Issue selection? Its fuel history will remain intact.",
-      [{ text: "Cancel", style: "cancel" }, { text: "Confirm", onPress: async () => {
-        setBusy(true);
-        const { data, error: e } = await supabase.from("vehicle")
-          .update({ vehicle_discontinued: !v.vehicle_discontinued }).eq("vehicle_id", v.vehicle_id).select("vehicle_id");
-        setBusy(false);
-        if (e || !data?.length) setError(e?.message ?? "Could not update vehicle.");
-        else await load();
-      }}]);
+      [{ text: "Cancel", style: "cancel" }, { text: "Confirm", onPress: () => { void persistStatus(v); }}]);
   }
   if (allowed === null) return <ActivityIndicator />;
   if (!allowed) return <Redirect href="/(tabs)/fuel" />;
