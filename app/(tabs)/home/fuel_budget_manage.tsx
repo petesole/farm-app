@@ -39,6 +39,7 @@ export default function FuelBudgetManage(){
  const [copyOpen,setCopyOpen]=useState(false);
  const [creating,setCreating]=useState(false);
  const [editing,setEditing]=useState<number|null>(null);
+ const [removingId,setRemovingId]=useState<number|null>(null);
  const [draft,setDraft]=useState<Partial<Activity>>({});
  const [newJob,setNewJob]=useState<number|null>(null);
  const [newClass,setNewClass]=useState<number|null>(null);
@@ -120,6 +121,20 @@ export default function FuelBudgetManage(){
   setBusy(false);
   if(result.error)setError(result.error.message);else{setEditing(null);setMessage("Budget job saved.");if(selected)loadDetail(selected);}
  };
+ const removeJob=async(a:Activity)=>{
+  if(selected==null||busy)return;
+  setBusy(true);setError(null);setMessage(null);
+  const result=await supabase.from("fuel_budget_activity").delete()
+    .eq("fuel_budget_activity_id",a.fuel_budget_activity_id)
+    .eq("fuel_budget_id",selected)
+    .select("fuel_budget_activity_id");
+  setBusy(false);setRemovingId(null);
+  if(result.error){setError("Could not remove job: "+result.error.message);return;}
+  if(!result.data?.length){setError("Job was not removed. Check your access permissions.");return;}
+  if(editing===a.fuel_budget_activity_id)setEditing(null);
+  setMessage("Job removed from this budget. Other budgets are unchanged.");
+  await loadDetail(selected);
+ };
  const addJob=async()=>{
   if(selected==null||newJob==null){setError("Choose a job to add.");return;}
   setBusy(true);setError(null);
@@ -179,7 +194,17 @@ export default function FuelBudgetManage(){
       <Pressable style={[s.button,draft.include_trip_fuel&&s.selected]} onPress={()=>updateField("include_trip_fuel",!draft.include_trip_fuel)}><ThemedText>Include travel fuel: {draft.include_trip_fuel?"Yes":"No"}</ThemedText></Pressable>
       <ThemedText>Notes</ThemedText><TextInput style={s.input} value={draft.notes||""} onChangeText={v=>updateField("notes",v)}/>
       <View style={s.line}><Pressable style={s.button} disabled={busy} onPress={saveJob}><ThemedText style={s.bold}>Save Job</ThemedText></Pressable><Pressable style={s.button} onPress={()=>setEditing(null)}><ThemedText>Cancel</ThemedText></Pressable></View>
-     </>:<Pressable style={s.button} onPress={()=>startEdit(a)}><ThemedText>Edit Job</ThemedText></Pressable>}
+     </>:<View style={s.line}>
+      <Pressable style={s.button} disabled={busy} onPress={()=>startEdit(a)}><ThemedText>Edit Job</ThemedText></Pressable>
+      <Pressable style={s.button} disabled={busy} onPress={()=>setRemovingId(a.fuel_budget_activity_id)}><ThemedText style={s.error}>Remove Job</ThemedText></Pressable>
+     </View>}
+     {removingId===a.fuel_budget_activity_id?<View style={s.block}>
+      <ThemedText>Remove {jobName(a.vehicle_job_id)} from this budget? This cannot be undone.</ThemedText>
+      <View style={s.line}>
+       <Pressable style={s.button} disabled={busy} onPress={()=>removeJob(a)}><ThemedText style={s.error}>Yes, Remove Job</ThemedText></Pressable>
+       <Pressable style={s.button} disabled={busy} onPress={()=>setRemovingId(null)}><ThemedText>Cancel</ThemedText></Pressable>
+      </View>
+     </View>:null}
     </View>)}
     <ThemedText type="subtitle">Add Job</ThemedText>
     <View style={s.picker}><Picker selectedValue={newJob} onValueChange={setNewJob}><Picker.Item label="Select job" value={null}/>{jobs.map(j=><Picker.Item key={j.vehicle_job_id} label={j.vehicle_job_name} value={j.vehicle_job_id}/>)}</Picker></View>
