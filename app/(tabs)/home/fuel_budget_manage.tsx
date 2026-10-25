@@ -17,8 +17,8 @@ type Activity={
  input_tonnes_per_ha:number|null;hectares_per_trip:number|null;people_per_ha:number|null;
  people_per_load:number|null;area_fraction:number|null;
 };
-const numericFields=["target_dap","sequence_no","planned_operations","budget_qty","load_capacity_tonnes","input_tonnes_per_ha","hectares_per_trip","people_per_ha","people_per_load","area_fraction"] as const;
-const labels:Record<string,string>={target_dap:"DAP",sequence_no:"Sequence",planned_operations:"Operations / passes",budget_qty:"Budget quantity",load_capacity_tonnes:"Load capacity (t)",input_tonnes_per_ha:"Inputs (t/ha)",hectares_per_trip:"Hectares per trip",people_per_ha:"People per ha",people_per_load:"People per load",area_fraction:"Area fraction"};
+const numericFields=["target_dap","planned_operations","budget_qty","load_capacity_tonnes","input_tonnes_per_ha","hectares_per_trip","people_per_ha","people_per_load","area_fraction"] as const;
+const labels:Record<string,string>={target_dap:"DAP",planned_operations:"Operations / passes",budget_qty:"Budget quantity",load_capacity_tonnes:"Load capacity (t)",input_tonnes_per_ha:"Inputs (t/ha)",hectares_per_trip:"Hectares per trip",people_per_ha:"People per ha",people_per_load:"People per load",area_fraction:"Area fraction"};
 
 export default function FuelBudgetManage(){
  const [budgets,setBudgets]=useState<Budget[]>([]);
@@ -37,7 +37,7 @@ export default function FuelBudgetManage(){
  const [active,setActive]=useState(false);
  const [copyName,setCopyName]=useState("");
  const [copySource,setCopySource]=useState<Budget|null>(null);
- const [jobSort,setJobSort]=useState<"sequence"|"job"|"dap"|"class">("sequence");
+ const [jobSort,setJobSort]=useState<"job"|"dap"|"class">("job");
  const [jobDescending,setJobDescending]=useState(false);
  const [jobFilter,setJobFilter]=useState<number|null>(null);
  const [dapFilter,setDapFilter]=useState<number|null>(null);
@@ -159,8 +159,8 @@ export default function FuelBudgetManage(){
  const visibleJobs=useMemo(()=>{
   const list=rows.filter(a=>(jobFilter==null||a.vehicle_job_id===jobFilter)&&(dapFilter==null||a.target_dap===dapFilter)&&(classFilter==null||a.tractor_class_id===classFilter));
   list.sort((a,b)=>{
-   const va=jobSort==="job"?jobs.find(j=>j.vehicle_job_id===a.vehicle_job_id)?.vehicle_job_name??"":jobSort==="class"?tractors.find(t=>t.tractor_class_id===a.tractor_class_id)?.class_name??"":jobSort==="dap"?a.target_dap:a.sequence_no;
-   const vb=jobSort==="job"?jobs.find(j=>j.vehicle_job_id===b.vehicle_job_id)?.vehicle_job_name??"":jobSort==="class"?tractors.find(t=>t.tractor_class_id===b.tractor_class_id)?.class_name??"":jobSort==="dap"?b.target_dap:b.sequence_no;
+   const va=jobSort==="job"?jobs.find(j=>j.vehicle_job_id===a.vehicle_job_id)?.vehicle_job_name??"":jobSort==="class"?tractors.find(t=>t.tractor_class_id===a.tractor_class_id)?.class_name??"":a.target_dap;
+   const vb=jobSort==="job"?jobs.find(j=>j.vehicle_job_id===b.vehicle_job_id)?.vehicle_job_name??"":jobSort==="class"?tractors.find(t=>t.tractor_class_id===b.tractor_class_id)?.class_name??"":b.target_dap;
    const cmp=typeof va==="number"&&typeof vb==="number"?va-vb:String(va??"").localeCompare(String(vb??""),undefined,{numeric:true,sensitivity:"base"});
    return jobDescending?-cmp:cmp;
   });
@@ -203,7 +203,7 @@ export default function FuelBudgetManage(){
     <ThemedText type="subtitle">Budget Jobs ({visibleJobs.length} of {rows.length})</ThemedText>
     <View style={s.filterLine}>
       <View style={s.compactPicker}><Picker selectedValue={jobSort} onValueChange={v=>{setJobSort(v);setJobDescending(false);}}>
-       <Picker.Item label="Sort: Sequence" value="sequence"/><Picker.Item label="Sort: Job A–Z" value="job"/><Picker.Item label="Sort: DAP" value="dap"/><Picker.Item label="Sort: Tractor class" value="class"/>
+       <Picker.Item label="Sort: Job A–Z" value="job"/><Picker.Item label="Sort: DAP" value="dap"/><Picker.Item label="Sort: Tractor class" value="class"/>
       </Picker></View>
       <Pressable style={s.button} onPress={()=>setJobDescending(v=>!v)}><ThemedText>{jobDescending?"Z–A / High–Low":"A–Z / Low–High"} ⇅</ThemedText></Pressable>
       <View style={s.compactPicker}><Picker selectedValue={dapFilter} onValueChange={setDapFilter}><Picker.Item label="All DAP" value={null}/>{[...new Set(rows.map(a=>a.target_dap).filter((x):x is number=>x!=null))].sort((a,b)=>a-b).map(v=><Picker.Item key={v} label={String(v)} value={v}/>)}</Picker></View>
@@ -289,7 +289,7 @@ const s=StyleSheet.create({
  compactPicker:{minWidth:145,flexGrow:1,maxWidth:215,borderWidth:1,borderColor:"#D1D5DB",borderRadius:6},
  jobRow:{borderBottomWidth:1,borderBottomColor:"#D1D5DB",paddingVertical:5},
  jobSummary:{flexDirection:"row",alignItems:"center",gap:9,flexWrap:"wrap"},
- jobSeq:{width:30},jobName:{minWidth:130,flex:1},jobData:{minWidth:72,fontSize:13},jobDescription:{flex:1,minWidth:110,fontSize:12},
+ jobName:{minWidth:130,flex:1},jobData:{minWidth:72,fontSize:13},jobDescription:{flex:1,minWidth:110,fontSize:12},
  tinyButton:{borderWidth:1,borderColor:"#CBD5E1",paddingVertical:5,paddingHorizontal:9,borderRadius:6},
  budgetCrop:{width:120,fontSize:13},
  budgetTitle:{flex:1,fontSize:14},
