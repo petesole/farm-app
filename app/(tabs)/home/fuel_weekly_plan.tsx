@@ -36,6 +36,7 @@ export default function FuelWeeklyPlanScreen() {
   const [actuals,setActuals]=useState<Actual[]>([]);
   const [cleared,setCleared]=useState<Cleared[]>([]);
   const [chosen,setChosen]=useState<SelectedJob[]>([]);
+  const [allChosen,setAllChosen]=useState<SelectedJob[]>([]);
   const [planReady,setPlanReady]=useState(false);
   const [planMessage,setPlanMessage]=useState<string|null>(null);
   const [planSaving,setPlanSaving]=useState<string|null>(null);
@@ -66,7 +67,7 @@ export default function FuelWeeklyPlanScreen() {
         supabase.from("fuel_historical_completion").select("tracecode_id,vehicle_job_id,target_dap,sequence_no").limit(10000),
         supabase.from("fuel_plan_admin").select("user_id").limit(1),
         supabase.from("crop").select("crop_id,crop_name").order("crop_name"),
-        supabase.from("fuel_weekly_selected_job").select("week_start,tracecode_id,vehicle_job_id,target_dap,sequence_no").eq("week_start",week).limit(10000),
+        supabase.from("fuel_weekly_selected_job").select("week_start,tracecode_id,vehicle_job_id,target_dap,sequence_no").limit(10000),
         supabase.from("fuel_budget_activity").select("fuel_budget_activity_id,description").limit(10000),
       ]);
       // Description lives on the budget activity, not the calculation view.
@@ -76,7 +77,8 @@ export default function FuelWeeklyPlanScreen() {
       if(!active)return;
       setPlanReady(!sel.error);
       setPlanMessage(sel.error?("Weekly selection unavailable: "+sel.error.message+". Run the weekly selected jobs Supabase migration."):null);
-      setChosen(sel.error?[]:(sel.data??[]) as SelectedJob[]);
+      setAllChosen(sel.error?[]:(sel.data??[]) as SelectedJob[]);
+      setChosen(sel.error?[]:((sel.data??[]) as SelectedJob[]).filter(r=>r.week_start===week));
       setCanClear(!m.error && (m.data?.length??0)>0);
       setClearError(h.error?.message??m.error?.message??null);
       setCleared(h.error?[]:(h.data??[]) as Cleared[]);
@@ -105,6 +107,8 @@ export default function FuelWeeklyPlanScreen() {
     if(!planReady||planSaving)return;
     const k=clearedKey({...r,target_dap:r.target_dap!});
     const existing=chosen.some(j=>clearedKey(j)===k);
+    const selectedElsewhere=allChosen.find(j=>clearedKey(j)===k&&j.week_start!==week);
+    if(!existing&&selectedElsewhere){setPlanMessage(`This job is already in the week starting ${selectedElsewhere.week_start}. Remove it from that week first.`);return;}
     const record={week_start:week,tracecode_id:r.tracecode_id,vehicle_job_id:r.vehicle_job_id,
       target_dap:r.target_dap!,sequence_no:r.sequence_no};
     setPlanSaving(k);setPlanMessage(null);
@@ -114,6 +118,7 @@ export default function FuelWeeklyPlanScreen() {
     setPlanSaving(null);
     if(result.error){setPlanMessage("Unable to save weekly job: "+result.error.message);return;}
     setChosen(previous=>existing?previous.filter(j=>clearedKey(j)!==k):[...previous,record]);
+    setAllChosen(previous=>existing?previous.filter(j=>!(clearedKey(j)===k&&j.week_start===week)):[...previous,record]);
   };
   const weekEnd=shift(week,6);
   const scheduled=useMemo(()=>{
@@ -130,9 +135,8 @@ export default function FuelWeeklyPlanScreen() {
     const grouped=new Map<string,{p:Programme;date:string;index:number}[]>();
     programmes.forEach((p,index)=>{
       const start=dateMap.get(p.tracecode_id);
-      if(!fieldMap.has(p.tracecode_id)||!start||p.target_dap==null)return;
-      const date=shift(start,p.target_dap);
-      if(date>weekEnd)return;
+      if(!fieldMap.has(p.tracecode_id)||p.target_dap==null)return;
+      const date=start?shift(start,p.target_dap):"—";
       const k=`${p.tracecode_id}:${p.vehicle_job_id}`;
       grouped.set(k,[...(grouped.get(k)||[]),{p,date,index}]);
     });
@@ -151,11 +155,11 @@ export default function FuelWeeklyPlanScreen() {
         rows.push({...p,key:`${k}:${p.target_dap}:${index}`,
           cropId:cropMap.get(p.tracecode_id)??null,fieldName:field.tracecode_name,fieldHa:n(field.tracecode_size),
           scheduledDate:date,actualLitres:actualMap.get(k)||0,
-          remainingOperations:remaining,overdue:date<week});
+          remainingOperations:remaining,overdue:date!=="—"&&date<week});
       }
     }
     return rows;
-  },[fields,programmes,schedules,actuals,cleared,weekEnd]);
+  },[fields,programmes,schedules,actuals,cleared,week]);
   // Every option list reflects the other selected dimensions.
   const matches=(r:Row,skip:"crop"|"trace"|"job"|"class"|null=null)=>
     (skip==="crop"||cropFilter===null||r.cropId===cropFilter)&&
@@ -180,6 +184,7 @@ export default function FuelWeeklyPlanScreen() {
         return Number(b.overdue)-Number(a.overdue)||a.scheduledDate.localeCompare(b.scheduledDate);
       }),[scheduled,cropFilter,traceFilter,jobFilter,classFilter,sortBy]);
   const selectedKeys=new Set(chosen.map(clearedKey));
+  const otherWeekByKey=new Map(allChosen.filter(j=>j.week_start!==week).map(j=>[clearedKey(j),j.week_start]));
   const chosenRows=filtered.filter(r=>selectedKeys.has(clearedKey({...r,target_dap:r.target_dap!})));
   const remainingFraction=(r:Row)=>n(r.planned_operations)>0?r.remainingOperations/n(r.planned_operations):1;
   const hoursFor=(r:Row)=>{
@@ -202,8 +207,6 @@ export default function FuelWeeklyPlanScreen() {
   const chosenLitres=chosenRows.reduce((sum,r)=>sum+n(r.total_budget_litres)*(n(r.planned_operations)>0?r.remainingOperations/n(r.planned_operations):1),0);
   const litresRemaining=(r:Row)=>n(r.total_budget_litres)*remainingFraction(r);
   const total=filtered.reduce((sum,r)=>sum+litresRemaining(r),0);
-  const overdueRows=filtered.filter(r=>r.overdue);
-  const thisWeekRows=filtered.filter(r=>!r.overdue);
   const missingDates=useMemo(()=>{
     const dates=new Map(schedules.map(s=>[s.tracecode_id,s.actual_planting_date || s.planned_planting_date]));
     return fields.filter(f=>!dates.get(f.tracecode_id));
@@ -226,7 +229,7 @@ export default function FuelWeeklyPlanScreen() {
         <View style={s.dates}><ThemedText style={s.bold}>{week} to {weekEnd}</ThemedText><Pressable onPress={()=>setWeek(monday(iso(new Date())))}><ThemedText style={s.small}>Current week</ThemedText></Pressable></View>
         <Pressable style={s.button} onPress={()=>setWeek(v=>shift(v,7))}><ThemedText>Next →</ThemedText></Pressable>
       </View>
-      <ThemedText style={s.small}>Budget jobs are calculated from planting dates and DAP. Select the jobs you actually intend to do this week; your choices are saved for that week without changing the budget.</ThemedText>
+      <ThemedText style={s.small}>All unfinished budget jobs are available regardless of their DAP due date. Pick the jobs you intend to do in the displayed week. A job cannot be assigned to two weeks.</ThemedText>
     </ThemedView>
     <ThemedView style={s.card}>
       <ThemedText type="subtitle">Filter and sort</ThemedText>
@@ -263,16 +266,16 @@ export default function FuelWeeklyPlanScreen() {
         <Choice label="Budget jobs" selected={planView==="budget"} onPress={()=>setPlanView("budget")}/>
         <Choice label="My weekly plan" selected={planView==="chosen"} onPress={()=>setPlanView("chosen")}/>
       </View>
-      <ThemedText style={s.small}>Select jobs from the budget list, including overdue jobs. Job selection does not issue fuel or mark an operation complete. Change the week to maintain a separate plan for that week.</ThemedText>
+      <ThemedText style={s.small}>Select any uncompleted field job for the displayed week. DAP is a suggested date only. Jobs already allocated to another week must be removed there before reassignment. Selection does not issue fuel.</ThemedText>
       {planMessage?<ThemedText style={s.error}>{planMessage}</ThemedText>:null}
     </ThemedView>
     {loading?<ActivityIndicator/>:error?<ThemedView style={s.card}><ThemedText style={s.error}>{error}</ThemedText></ThemedView>:<>
       <ThemedView style={s.card}>
-        <ThemedText type="subtitle">Weekly requirement: {fmt(total)} L</ThemedText>
+        <ThemedText type="subtitle">Available budget jobs: {fmt(total)} L</ThemedText>
         <ThemedText>{scheduled.length} scheduled activity entries across {new Set(scheduled.map(r=>r.tracecode_id)).size} fields</ThemedText>
         {byClass.map(([name,v])=><View key={name} style={s.summary}><ThemedText>{name}</ThemedText><ThemedText style={s.bold}>{fmt(v.litres)} L · {v.jobs} jobs</ThemedText></View>)}
       </ThemedView>
-      {missingDates.length>0?<ThemedView style={s.card}><ThemedText style={s.error}>{missingDates.length} field(s) have neither a planned nor an actual planting date and cannot be scheduled.</ThemedText><ThemedText style={s.small}>{missingDates.map(f=>f.tracecode_name).join(", ")}</ThemedText></ThemedView>:null}
+      {missingDates.length>0?<ThemedView style={s.card}><ThemedText style={s.error}>{missingDates.length} field(s) have neither a planned nor an actual planting date; DAP due dates are unavailable but jobs can still be selected.</ThemedText><ThemedText style={s.small}>{missingDates.map(f=>f.tracecode_name).join(", ")}</ThemedText></ThemedView>:null}
       {saveMessage?<ThemedView style={s.card}><ThemedText>{saveMessage}</ThemedText></ThemedView>:null}
       {clearError?<ThemedView style={s.card}><ThemedText style={s.error}>Historical completion unavailable: {clearError}. The database migration and admin membership must be configured.</ThemedText></ThemedView>:null}
       {planView==="chosen"?<>
@@ -309,13 +312,18 @@ export default function FuelWeeklyPlanScreen() {
         {chosenRows.length===0?<ThemedText>No jobs selected for this week with the current filters. Switch to Budget jobs to select them.</ThemedText>:chosenRows.map(r=><JobLine key={r.key} r={r} estimate={litresRemaining(r)} chosen selectedDisabled={!planReady||!!planSaving} onSelect={()=>toggleChosen(r)}/>)}
       </ThemedView></>:<>
       <ThemedView style={s.card}>
-        <ThemedText type="subtitle">Overdue jobs carried forward ({overdueRows.length})</ThemedText>
-        <ThemedText style={s.small}>Unfinished jobs scheduled before this week. Fuel issued does not count as completion.</ThemedText>
-        {overdueRows.length===0?<ThemedText>No overdue jobs recorded.</ThemedText>:overdueRows.map(r=><JobLine key={r.key} r={r} estimate={litresRemaining(r)} admin={canClear} saving={savingKey===clearedKey({...r,target_dap:r.target_dap!})} confirming={confirmKey===clearedKey({...r,target_dap:r.target_dap!})} onComplete={()=>setConfirmKey(clearedKey({...r,target_dap:r.target_dap!}))} onCancel={()=>setConfirmKey(null)} onConfirm={()=>changeClear(r,true)} chosen={selectedKeys.has(clearedKey({...r,target_dap:r.target_dap!}))} selectedDisabled={!planReady||!!planSaving} onSelect={()=>toggleChosen(r)} />)}
-      </ThemedView>
-      <ThemedView style={s.card}>
-        <ThemedText type="subtitle">Jobs scheduled this week ({thisWeekRows.length})</ThemedText>
-        {thisWeekRows.length===0?<ThemedText>No scheduled jobs for this week.</ThemedText>:thisWeekRows.map(r=><JobLine key={r.key} r={r} estimate={litresRemaining(r)} chosen={selectedKeys.has(clearedKey({...r,target_dap:r.target_dap!}))} selectedDisabled={!planReady||!!planSaving} onSelect={()=>toggleChosen(r)} />)}
+        <ThemedText type="subtitle">All unfinished field jobs ({filtered.length})</ThemedText>
+        <ThemedText style={s.small}>Select a field above (e.g. HSCP1), then add whichever jobs you need to the displayed week. Due dates are reference only.</ThemedText>
+        {filtered.length===0?<ThemedText>No unfinished budget jobs match these filters.</ThemedText>:filtered.map(r=>{
+          const key=clearedKey({...r,target_dap:r.target_dap!});
+          const elsewhere=otherWeekByKey.get(key);
+          return <JobLine key={r.key} r={r} estimate={litresRemaining(r)} admin={canClear}
+            saving={savingKey===key} confirming={confirmKey===key}
+            onComplete={()=>setConfirmKey(key)} onCancel={()=>setConfirmKey(null)}
+            onConfirm={()=>changeClear(r,true)}
+            chosen={selectedKeys.has(key)} assignedWeek={elsewhere}
+            selectedDisabled={!planReady||!!planSaving||!!elsewhere} onSelect={()=>toggleChosen(r)}/>;
+        })}
       </ThemedView>
       </>}
       <ThemedText style={s.small}>Fuel actuals are cumulative for the job/field. Carry-forward uses recorded completed_operations (allocated to earliest passes first); manually completed or skipped jobs not captured there still need explicit status controls. Remaining litres are estimates proportional to unfinished operations.</ThemedText>
@@ -325,10 +333,10 @@ export default function FuelWeeklyPlanScreen() {
 function Choice({label,selected,onPress}:{label:string;selected:boolean;onPress:()=>void}){
   return <Pressable onPress={onPress} style={[s.button,selected&&s.selected]}><ThemedText style={selected?s.bold:undefined}>{label}</ThemedText></Pressable>;
 }
-function JobLine({r,estimate,admin=false,saving=false,confirming=false,onComplete,onCancel,onConfirm,chosen=false,selectedDisabled=false,onSelect}:{r:Row;estimate:number;admin?:boolean;saving?:boolean;confirming?:boolean;onComplete?:()=>void;onCancel?:()=>void;onConfirm?:()=>void;chosen?:boolean;selectedDisabled?:boolean;onSelect?:()=>void}){
+function JobLine({r,estimate,admin=false,saving=false,confirming=false,onComplete,onCancel,onConfirm,chosen=false,assignedWeek,selectedDisabled=false,onSelect}:{r:Row;estimate:number;admin?:boolean;saving?:boolean;confirming?:boolean;onComplete?:()=>void;onCancel?:()=>void;onConfirm?:()=>void;chosen?:boolean;assignedWeek?:string;selectedDisabled?:boolean;onSelect?:()=>void}){
   return <View style={s.job}>
-    <View style={s.line}><ThemedText style={s.bold}>{r.fieldName} · {r.vehicle_job_name}</ThemedText><ThemedText>{r.scheduledDate}{r.overdue?" · Overdue":""}</ThemedText></View>
-    {onSelect?<Pressable disabled={selectedDisabled} style={[s.button,chosen&&s.selected]} onPress={onSelect}><ThemedText style={chosen?s.bold:undefined}>{chosen?"✓ Selected for this week — tap to remove":"＋ Add to this week's actual plan"}</ThemedText></Pressable>:null}
+    <View style={s.line}><ThemedText style={s.bold}>{r.fieldName} · {r.vehicle_job_name}</ThemedText><ThemedText>{r.scheduledDate==="—"?"Date not set":`DAP due ${r.scheduledDate}`}{r.overdue?" · Overdue":""}</ThemedText></View>
+    {onSelect?<Pressable disabled={selectedDisabled} style={[s.button,chosen&&s.selected]} onPress={onSelect}><ThemedText style={chosen?s.bold:undefined}>{chosen?"✓ Selected for this week — tap to remove":assignedWeek?`Assigned to week ${assignedWeek}`:"＋ Add to this week's actual plan"}</ThemedText></Pressable>:null}
     {r.description?.trim()?<ThemedText>{r.description.trim()}</ThemedText>:null}
     <ThemedText style={s.small}>Field {fmt(r.fieldHa)} ha · DAP {r.target_dap} · {displayClass(r)} · {fmt(n(r.calculated_quantity))} {unit(r)}</ThemedText>
     <View style={s.fuelBreakdown}>
