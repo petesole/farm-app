@@ -1,3 +1,4 @@
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 // app/(tabs)/fuel.tsx
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
@@ -216,6 +217,7 @@ export default function FuelScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      <JsplModuleHeader title="Fuel" />
       <ThemedText type="title">Fuel Dashboard</ThemedText>
 
       {dash && (
