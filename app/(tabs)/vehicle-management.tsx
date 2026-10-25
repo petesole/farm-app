@@ -9,27 +9,33 @@ type Vehicle={vehicle_id:number;vehicle_name:string;vehicle_model:string|null;ve
 type Type={vehicle_type_id:number;type_name:string};
 export default function VehicleManagement(){
  const [allowed,setAllowed]=useState<boolean|null>(null),[rows,setRows]=useState<Vehicle[]>([]),[types,setTypes]=useState<Type[]>([]);
- const [typeFilter,setTypeFilter]=useState<number|null>(null),[showInactive,setShowInactive]=useState(false),[search,setSearch]=useState(""),[error,setError]=useState("");
+ const [typeFilter,setTypeFilter]=useState<number|null>(null),[statusFilter,setStatusFilter]=useState<"all"|"active"|"discontinued">("active"),[search,setSearch]=useState(""),[error,setError]=useState("");
  const load=useCallback(async()=>{
   const [v,t]=await Promise.all([supabase.from("vehicle").select("vehicle_id,vehicle_name,vehicle_model,vehicle_discontinued,vehicle_type_id").order("vehicle_name"),supabase.from("vehicle_type").select("vehicle_type_id,type_name").order("type_name")]);
   if(v.error||t.error){setError(v.error?.message||t.error?.message||"Loading failed");return;}
+  setError("");
   setRows((v.data||[]) as Vehicle[]);setTypes((t.data||[]) as Type[]);
  },[]);
  useEffect(()=>{(async()=>{const {data:u,error:ue}=await supabase.auth.getUser();if(ue||!u.user){setAllowed(false);return;}const {data:r,error:e}=await supabase.rpc("my_farm_app_roles");setAllowed(!e&&Array.isArray(r)&&r.some((x:string)=>String(x).trim().toLowerCase()==="admin"));})()},[]);
  useFocusEffect(useCallback(()=>{if(allowed)void load();},[allowed,load]));
  if(allowed===null)return <ActivityIndicator/>;
  if(!allowed)return <Redirect href="/(tabs)/fuel"/>;
- const filtered=rows.filter(v=>(showInactive||!v.vehicle_discontinued)&&(typeFilter===null||v.vehicle_type_id===typeFilter)&&v.vehicle_name.toLowerCase().includes(search.toLowerCase()));
+ const filtered=rows.filter(v=>(statusFilter==="all" || (statusFilter==="active" ? !v.vehicle_discontinued : v.vehicle_discontinued))&&(typeFilter===null||v.vehicle_type_id===typeFilter)&&v.vehicle_name.toLowerCase().includes(search.trim().toLowerCase()));
  return <ScrollView contentContainerStyle={styles.page}>
   <JsplModuleHeader title="Vehicle Management" showMain />
   <Pressable onPress={()=>router.replace("/(tabs)/control-panel")} style={styles.link}><Text style={styles.linkText}>← Control Panel</Text></Pressable>
   <Pressable style={styles.add} onPress={()=>router.push({pathname:"/(tabs)/vehicle-detail",params:{mode:"create"}})}><Text style={styles.addText}>+ Add Vehicle</Text></Pressable>
   <Text style={styles.label}>Filter by vehicle type</Text>
-  <View style={styles.picker}><Picker selectedValue={typeFilter} onValueChange={v=>setTypeFilter(v==null?null:Number(v))}><Picker.Item label="All vehicle types" value={null}/>{types.map(t=><Picker.Item key={t.vehicle_type_id} label={t.type_name} value={t.vehicle_type_id}/>)}</Picker></View>
+  <View style={styles.picker}><Picker selectedValue={typeFilter===null?"all":typeFilter} onValueChange={v=>setTypeFilter(v==null || v==="" || v==="all" ? null : Number(v))}><Picker.Item label="All vehicle types" value="all"/>{types.map(t=><Picker.Item key={t.vehicle_type_id} label={t.type_name} value={t.vehicle_type_id}/>)}</Picker></View>
   <TextInput style={styles.input} value={search} onChangeText={setSearch} placeholder="Search vehicles"/>
-  <View style={styles.row}><Text style={styles.label}>Show discontinued</Text><Switch value={showInactive} onValueChange={setShowInactive}/></View>
+  <Text style={styles.label}>Vehicle status</Text>
+  <View style={styles.picker}><Picker selectedValue={statusFilter} onValueChange={setStatusFilter}>
+    <Picker.Item label="Active vehicles" value="active"/>
+    <Picker.Item label="All vehicles (including discontinued)" value="all"/>
+    <Picker.Item label="Discontinued only" value="discontinued"/>
+  </Picker></View>
   {!!error&&<Text style={{color:C.danger}}>{error}</Text>}
-  <Text style={styles.count}>{filtered.length} vehicles</Text>
+  <Text style={styles.count}>{filtered.length} of {rows.length} vehicles</Text>
   {filtered.map(v=><View key={v.vehicle_id} style={styles.item}><View style={{flex:1}}><Text style={styles.name}>{v.vehicle_name}</Text><Text style={styles.info}>{types.find(t=>t.vehicle_type_id===v.vehicle_type_id)?.type_name||"Unassigned type"} · {v.vehicle_discontinued?"Discontinued":"Active"}</Text></View><Pressable style={styles.edit} onPress={()=>router.push({pathname:"/(tabs)/vehicle-detail",params:{mode:"edit",id:String(v.vehicle_id)}})}><Text style={styles.linkText}>Edit</Text></Pressable></View>)}
  </ScrollView>;
 }
