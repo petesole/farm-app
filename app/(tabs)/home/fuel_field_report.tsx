@@ -1,3 +1,4 @@
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 // app/(tabs)/home/fuel_field_report.tsx
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
@@ -122,6 +123,7 @@ export default function FuelFieldReport() {
   const difference = totalActual - totalBudget;
   return (
     <ScrollView contentContainerStyle={s.page}>
+      <JsplModuleHeader title="Fuel Field Report" />
       <View style={s.header}>
         <ThemedText type="title">Fuel Report per Field</ThemedText>
         <Pressable style={s.button} onPress={() => setRefreshKey(k => k + 1)}>
