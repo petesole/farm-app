@@ -24,6 +24,12 @@ export default function ControlPanelScreen() {
 
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
         <View style={styles.grid}>
+          <Tile
+            title="Contracts"
+            subtitle="Add, edit and activate contracts"
+            onPress={() => router.push({pathname:"/(tabs)/field-control-list",params:{kind:"contract"}})}
+          />
+
           {/* ✅ Users (Invite + Roles) */}
           <Tile
             title="Users"
