@@ -52,7 +52,7 @@ type PlannedJob = {
   budget: number | null; issued: number; tractor_class_id: number | null;
   effective_hectares: number | null; standard_l_per_ha: number | null;
   budget_work_litres: number | null; budget_trip_count: number | null;
-  trip_litres_per_trip: number | null; budget_trip_litres: number | null; approved_work_litres:number; approved_trips:number; approved_trip_litres:number; approved_travel:boolean; trips_issued: number; work_issued: number; trip_issued_litres: number;
+  trip_litres_per_trip: number | null; budget_trip_litres: number | null; trips_issued: number; work_issued: number; trip_issued_litres: number;
 };
 type SplitRow = { key: string; litres: string };
 const planKey = (j: PlannedJob) =>
@@ -80,6 +80,7 @@ export default function FuelIssueScreen() {
   const [notes, setNotes] = useState<string>('');
   const [plannedJobs,setPlannedJobs] = useState<PlannedJob[]>([]);
   const [splits,setSplits] = useState<SplitRow[]>([{key:'',litres:''}]);
+  const [unplanned,setUnplanned] = useState(false);
   const [issueMode,setIssueMode] = useState<'WORK'|'TRIP'>('WORK');
   const [planLoading,setPlanLoading] = useState(false);
   const splitTotal = splits.reduce((n,r)=>n+(Number(r.litres)||0),0);
@@ -95,22 +96,19 @@ export default function FuelIssueScreen() {
     const selection=selected.data??[];
     const traceIds=[...new Set(selection.map(j=>j.tracecode_id))];
     if(!traceIds.length){setPlannedJobs([]);setPlanLoading(false);return;}
-    const [budget,allocated,approvals]=await Promise.all([
+    const [budget,allocated]=await Promise.all([
       supabase.from('fuel_budget_activity_v')
         .select('tracecode_id,vehicle_job_id,target_dap,sequence_no,tracecode_name,vehicle_job_name,total_budget_litres,tractor_class_id,effective_hectares,standard_l_per_ha,budget_work_litres,budget_trip_count,trip_litres_per_trip,budget_trip_litres')
         .in('tracecode_id',traceIds),
       supabase.from('fuel_allocation')
         .select('tracecode_id,vehicle_job_id,planned_target_dap,planned_sequence_no,fuel_allocated,allocation_kind')
-        .not('planned_week_start','is',null).in('tracecode_id',traceIds),
-      supabase.from('fuel_weekly_approval').select('*').in('tracecode_id',traceIds)
+        .not('planned_week_start','is',null).in('tracecode_id',traceIds)
     ]);
-    if(budget.error||allocated.error||approvals.error){
-      Alert.alert('Planning load failed',budget.error?.message??allocated.error?.message??approvals.error?.message??'Unknown');
+    if(budget.error||allocated.error){
+      Alert.alert('Planning load failed',budget.error?.message??allocated.error?.message??'Unknown');
       setPlanLoading(false);return;
     }
-    const items: PlannedJob[]=selection.flatMap(j=>{
-      const approval=(approvals.data??[]).find(a=>a.week_start===j.week_start&&a.tracecode_id===j.tracecode_id&&a.vehicle_job_id===j.vehicle_job_id&&a.target_dap===j.target_dap&&a.sequence_no===j.sequence_no);
-      if(!approval)return [];
+    const items: PlannedJob[]=selection.map(j=>{
       const b=(budget.data??[]).find(x=>
         x.tracecode_id===j.tracecode_id&&x.vehicle_job_id===j.vehicle_job_id&&
         x.target_dap===j.target_dap&&x.sequence_no===j.sequence_no);
@@ -118,7 +116,7 @@ export default function FuelIssueScreen() {
         x.tracecode_id===j.tracecode_id&&x.vehicle_job_id===j.vehicle_job_id&&
         x.planned_target_dap===j.target_dap&&x.planned_sequence_no===j.sequence_no)
         .reduce((n,x)=>n+Number(x.fuel_allocated||0),0);
-      return [{...j,approved_work_litres:Number(approval.approved_work_litres),approved_trips:Number(approval.approved_trips),approved_trip_litres:Number(approval.trip_litres),approved_travel:!!approval.include_trip_fuel,tracecode_name:b?.tracecode_name??String(j.tracecode_id),
+      return {...j,tracecode_name:b?.tracecode_name??String(j.tracecode_id),
         vehicle_job_name:b?.vehicle_job_name??String(j.vehicle_job_id),
         budget:b?.total_budget_litres==null?null:Number(b.total_budget_litres),
         tractor_class_id:b?.tractor_class_id==null?null:Number(b.tractor_class_id),
@@ -130,7 +128,7 @@ export default function FuelIssueScreen() {
         budget_trip_litres:b?.budget_trip_litres==null?null:Number(b.budget_trip_litres),issued,
         work_issued:(allocated.data??[]).filter(x=>x.tracecode_id===j.tracecode_id&&x.vehicle_job_id===j.vehicle_job_id&&x.planned_target_dap===j.target_dap&&x.planned_sequence_no===j.sequence_no&&x.allocation_kind!=='TRIP').reduce((n,x)=>n+Number(x.fuel_allocated||0),0),
         trip_issued_litres:(allocated.data??[]).filter(x=>x.tracecode_id===j.tracecode_id&&x.vehicle_job_id===j.vehicle_job_id&&x.planned_target_dap===j.target_dap&&x.planned_sequence_no===j.sequence_no&&x.allocation_kind==='TRIP').reduce((n,x)=>n+Number(x.fuel_allocated||0),0),
-        trips_issued:(allocated.data??[]).filter(x=>x.tracecode_id===j.tracecode_id&&x.vehicle_job_id===j.vehicle_job_id&&x.planned_target_dap===j.target_dap&&x.planned_sequence_no===j.sequence_no&&x.allocation_kind==='TRIP').length}];
+        trips_issued:(allocated.data??[]).filter(x=>x.tracecode_id===j.tracecode_id&&x.vehicle_job_id===j.vehicle_job_id&&x.planned_target_dap===j.target_dap&&x.planned_sequence_no===j.sequence_no&&x.allocation_kind==='TRIP').length};
     });
     setPlannedJobs(items);setPlanLoading(false);
   };
@@ -153,7 +151,7 @@ export default function FuelIssueScreen() {
     if(vehicleType===2) return /tpt|transport|haul|cart|truck|produce/.test(jobName);
     return vehicleType===1 && Number(j.tractor_class_id)===tractorClass;
   });
-  const issueUnplanned = !planEligible;
+  const issueUnplanned = !planEligible || unplanned;
   const showMeter = !!selectedVehicle?.has_meter;
   const meterLabel =
     selectedVehicle?.meter_type === 'KM'
@@ -314,15 +312,14 @@ export default function FuelIssueScreen() {
     }
 
     if(!issueUnplanned){
-      if(issueMode==='TRIP' && (splits.length!==1 || !visiblePlannedJobs.some(j=>planKey(j)===splits[0].key && j.approved_travel && j.trips_issued<j.approved_trips && Math.abs(Number(splits[0].litres)-j.approved_trip_litres)<0.001))){
+      if(issueMode==='TRIP' && (splits.length!==1 || !visiblePlannedJobs.some(j=>planKey(j)===splits[0].key && j.budget_trip_count!==null && j.trips_issued<Math.floor(j.budget_trip_count) && j.trip_litres_per_trip!==null && Math.abs(Number(splits[0].litres)-j.trip_litres_per_trip)<0.001))){
         Alert.alert('One trip only','Select one job with a remaining trip and issue exactly its trip allowance.');return;
       }
-      if(issueMode==='WORK' && splits.some(x=>{const j=visiblePlannedJobs.find(j=>planKey(j)===x.key);return j && Number(x.litres)>j.approved_work_litres-j.work_issued+0.001;})){Alert.alert('Approved allocation exceeded','The work fuel requested exceeds the remaining planner-approved litres.');return;}
       if(splits.some(x=>!visiblePlannedJobs.some(j=>planKey(j)===x.key))){
         Alert.alert('Wrong vehicle class','Select a planned job valid for this vehicle.');return;
       }
       if(!splits.length||splits.some(x=>!x.key||!Number.isFinite(Number(x.litres))||Number(x.litres)<=0)){
-        Alert.alert('Planned jobs required','Select an approved job and litres for every row. Contact your planner for an increase.');return;
+        Alert.alert('Planned jobs required','Select a job and litres for every row, or mark issue as unplanned.');return;
       }
       if(new Set(splits.map(x=>x.key)).size!==splits.length){
         Alert.alert('Duplicate planned job','Combine litres into one row per job.');return;
@@ -444,12 +441,16 @@ export default function FuelIssueScreen() {
         <ThemedText type="subtitle">{planEligible ? 'Planned Job Allocation' : 'Unplanned Fuel Issue'}</ThemedText>
         <ThemedText style={styles.small}>Vehicle check: {selectedVehicle?.vehicle_name ?? 'No vehicle matched'} • Type {String(selectedVehicle?.vehicle_type_id ?? 'missing')} • Class {String(selectedVehicle?.tractor_class_id ?? 'missing')} • {planEligible ? 'PLANNED ELIGIBLE' : 'UNPLANNED ONLY'}</ThemedText>
         {planEligible ? <ThemedText style={styles.small}>Select jobs from weekly planning. Fuel may be divided across multiple jobs.</ThemedText> : null}
-        {planEligible ? <ThemedText style={styles.small}>Approved weekly jobs only. Extra fuel must be approved by the planner.</ThemedText> : <ThemedText style={styles.small}>Unplanned issue — this vehicle is not a tractor, harvester or truck.</ThemedText>}
         {planEligible ? (
+          <Pressable style={styles.secondaryBtn} disabled={saving} onPress={()=>setUnplanned(x=>!x)}>
+            <ThemedText>{unplanned?'Unplanned issue ✓ (tap for planned)':'Planned issue ✓ (tap for unplanned)'}</ThemedText>
+          </Pressable>
+        ) : <ThemedText style={styles.small}>Unplanned issue — this vehicle is not a tractor, harvester or truck.</ThemedText>}
+        {planEligible && !unplanned ? (
           <View style={{gap:10}}>
             {planLoading ? <ActivityIndicator/> : null}
             {!planLoading&&visiblePlannedJobs.length===0?
-              <ThemedText style={styles.small}>No selected weekly jobs in the current window. Ask the planner to select and approve the jobs in Weekly Planning.</ThemedText>:null}
+              <ThemedText style={styles.small}>No selected weekly jobs in the current window. Select work in Weekly Planning or mark this issue Unplanned.</ThemedText>:null}
             <View style={{flexDirection:'row',gap:8}}>
               <Pressable style={[styles.secondaryBtn,{flex:1}]} disabled={saving} onPress={()=>{setIssueMode('WORK');setSplits([{key:'',litres:''}]);setLitres('');}}>
                 <ThemedText>{issueMode==='WORK'?'✓ Field Work':'Field Work'}</ThemedText>
@@ -465,7 +466,7 @@ export default function FuelIssueScreen() {
                 <View style={styles.pickerBox}>
                   <Picker selectedValue={split.key} enabled={!saving} onValueChange={key=>{
                     const chosen=visiblePlannedJobs.find(j=>planKey(j)===key);
-                    const tripLitres=issueMode==='TRIP'&&chosen?.approved_travel?String(chosen.approved_trip_litres):'';
+                    const tripLitres=issueMode==='TRIP'&&chosen?.trip_litres_per_trip!=null?String(chosen.trip_litres_per_trip):'';
                     setSplits(old=>old.map((r,n)=>n===i?{...r,key,litres:issueMode==='TRIP'?tripLitres:r.litres}:r));
                     if(issueMode==='TRIP')setLitres(tripLitres);
                   }}>
@@ -477,12 +478,12 @@ export default function FuelIssueScreen() {
                 </View>
                 {job?<View style={{gap:4}}>
                   <ThemedText style={styles.small}>Area: {job.effective_hectares?.toFixed(2) ?? '—'} ha • Field rate: {job.standard_l_per_ha?.toFixed(2) ?? 'N/A'} L/ha</ThemedText>
-                  <ThemedText style={styles.small}>Approved field work: {job.approved_work_litres.toFixed(1)} L</ThemedText>
-                  <ThemedText style={styles.small}>Approved travel: {job.approved_travel?`${job.approved_trips} trips × ${job.approved_trip_litres.toFixed(2)} L/trip`:'Not approved'}</ThemedText>
-                  <ThemedText style={styles.small}>Trips issued: {job.trips_issued} • Remaining: {Math.max(0,job.approved_trips-job.trips_issued)}</ThemedText>
-                  <ThemedText style={styles.small}>Field work issued: {job.work_issued.toFixed(1)} L • Field work remaining: {Math.max(0,job.approved_work_litres-job.work_issued-(issueMode==='WORK'?(Number(split.litres)||0):0)).toFixed(1)+' L'}</ThemedText>
-                  <ThemedText style={styles.small}>Trip fuel issued: {job.trip_issued_litres.toFixed(1)} L • Trip fuel remaining: {Math.max(0,job.approved_trips*job.approved_trip_litres-job.trip_issued_litres-(issueMode==='TRIP'?(Number(split.litres)||0):0)).toFixed(1)+' L'}</ThemedText>
-                  <ThemedText style={styles.small}>Original budget: {job.budget?.toFixed(1) ?? '—'} L • Previously issued: {job.issued.toFixed(1)} L</ThemedText>
+                  <ThemedText style={styles.small}>Field work: {job.budget_work_litres?.toFixed(1) ?? '—'} L</ThemedText>
+                  <ThemedText style={styles.small}>Relocation / trips: {job.budget_trip_count?.toFixed(1) ?? '—'} trips × {job.trip_litres_per_trip?.toFixed(2) ?? '—'} L/trip = {job.budget_trip_litres?.toFixed(1) ?? '—'} L</ThemedText>
+                  <ThemedText style={styles.small}>Trips issued: {job.trips_issued} • Remaining: {Math.max(0,Math.floor(job.budget_trip_count??0)-job.trips_issued)}</ThemedText>
+                  <ThemedText style={styles.small}>Field work issued: {job.work_issued.toFixed(1)} L • Field work remaining: {job.budget_work_litres==null?'—':(job.budget_work_litres-job.work_issued-(issueMode==='WORK'?(Number(split.litres)||0):0)).toFixed(1)+' L'}</ThemedText>
+                  <ThemedText style={styles.small}>Trip fuel issued: {job.trip_issued_litres.toFixed(1)} L • Trip fuel remaining: {job.budget_trip_litres==null?'—':(job.budget_trip_litres-job.trip_issued_litres-(issueMode==='TRIP'?(Number(split.litres)||0):0)).toFixed(1)+' L'}</ThemedText>
+                  <ThemedText style={styles.small}>Total budget: {job.budget?.toFixed(1) ?? '—'} L • Previously issued: {job.issued.toFixed(1)} L</ThemedText>
                 </View>:null}
                 <TextInput style={styles.input} value={split.litres}
                   onChangeText={litres=>setSplits(old=>old.map((r,n)=>n===i?{...r,litres}:r))}
