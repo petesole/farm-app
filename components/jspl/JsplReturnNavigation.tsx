@@ -1,10 +1,11 @@
-import {usePathname,useRouter} from "expo-router";
+import {useLocalSearchParams,usePathname,useRouter} from "expo-router";
 import {Pressable,Text,View} from "react-native";
 
 /** One route-aware return bar for legacy and newer screens. No database or role operations. */
 export function JsplReturnNavigation(){
   const pathname=usePathname() ?? "";
   const router=useRouter();
+  const params=useLocalSearchParams<{kind?:string}>();
   const path=pathname.toLowerCase();
   if(!path || path==="/" || path.startsWith("/login") || path.startsWith("/pending-access") || path.startsWith("/modal"))return null;
   const isMain=path.endsWith("/main-dashboard") || path.endsWith("/field-dashboard") || path==="/fuel" || path.endsWith("/fuel") || path==="/weighbridge" || path.endsWith("/wb-admin");
@@ -16,6 +17,8 @@ export function JsplReturnNavigation(){
   }else if(path.includes("vehicle-detail")){
     label="Vehicle Management";target="/(tabs)/vehicle-management";
   }else if(path.includes("vehicle-management") || path.includes("fields-control")){
+    label="Control Panel";target="/(tabs)/control-panel";
+  }else if((path.includes("field-control-detail")||path.includes("field-control-list"))&&params.kind==="crop"){
     label="Control Panel";target="/(tabs)/control-panel";
   }else if(path.includes("field-control-detail")||path.includes("field-control-list")){
     label="Fields Control";target="/(tabs)/fields-control";
