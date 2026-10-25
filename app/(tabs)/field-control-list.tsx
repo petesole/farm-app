@@ -32,7 +32,7 @@ export default function FieldControlList(){
   <View style={s.listHeader}><Text style={s.listHeaderTitle}>{def.title}</Text><Text style={s.listHeaderStatus}>Active</Text><Text style={s.listHeaderEdit}> </Text></View>
   {filtered.map(x=><View key={String(x[def.id])} style={s.item}>
    <Text style={s.title} numberOfLines={2}>{String(x[def.name]).trim()}</Text>
-   <Switch value={x.active!==false} onValueChange={()=>void toggleActive(x)}/>
+   <Switch value={x.active!==false} onValueChange={()=>void toggleActive(x)} trackColor={{false:"#CBD5E1",true:"#16803C"}} thumbColor="#FFFFFF"/>
    <Pressable style={s.edit} onPress={()=>router.push({pathname:"/(tabs)/field-control-detail",params:{kind:def.table,id:String(x[def.id]),mode:"edit"}})}><Text style={s.link}>Edit</Text></Pressable>
   </View>)}
  </ScrollView>;
