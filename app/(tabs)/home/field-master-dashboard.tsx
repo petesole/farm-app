@@ -1,3 +1,4 @@
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { router } from "expo-router";
@@ -284,6 +285,7 @@ export default function FieldMasterDashboardScreen() {
 
   return (
     <ThemedView style={styles.container}>
+      <JsplModuleHeader title="Field Management" />
       <FlatList
         data={filtered}
         keyExtractor={(item) => String(item.field_id)}
