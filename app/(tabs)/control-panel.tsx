@@ -19,6 +19,7 @@ export default function ControlPanel() {
  return <ScrollView contentContainerStyle={{padding:S.xl,backgroundColor:C.background,flexGrow:1}}>
    <JsplModuleHeader title="Control Panel" subtitle="Admin settings" showMain />
    <View style={{flexDirection:"row",flexWrap:"wrap",gap:S.lg}}>
+     <View style={{width:250,maxWidth:"100%"}}><JsplDashboardButton title="Crop" description="Add, edit and activate crops" onPress={()=>router.push({pathname:"/(tabs)/field-control-list",params:{kind:"crop"}})}/></View>
      <View style={{width:250,maxWidth:"100%"}}><JsplDashboardButton title="Vehicles" description="Add, edit, discontinue or reactivate vehicles" onPress={()=>router.push("/(tabs)/vehicle-management")}/></View>
      <View style={{width:250,maxWidth:"100%"}}><JsplDashboardButton title="Fields & Tracecodes" description="Existing field controls" onPress={()=>router.push("/(tabs)/fields-control")}/></View>
    </View>
