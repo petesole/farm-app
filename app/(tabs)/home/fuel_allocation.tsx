@@ -1,3 +1,5 @@
+import { zimTodayISO } from "@/lib/zimDate";
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 // app/(tabs)/fuel_allocation.tsx
 import { Picker } from '@react-native-picker/picker';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -111,8 +113,8 @@ export default function FuelAllocationScreen() {
         .from('tracecode')
         .select('tracecode_id,tracecode_name,crop_id,start_date,end_date')
         .eq('crop_id', cropId)
-        .not('start_date', 'is', null)
-        .is('end_date', null)
+        .lte('start_date', zimTodayISO())
+        .or('end_date.is.null,end_date.gte.' + zimTodayISO())
         .order('tracecode_name', { ascending: true })
         .limit(3000);
 
@@ -183,8 +185,8 @@ export default function FuelAllocationScreen() {
     const tc = await supabase
       .from('tracecode')
       .select('crop_id, crop:crop_id (crop_id, crop_name)')
-      .not('start_date', 'is', null)
-      .is('end_date', null)
+      .lte('start_date', zimTodayISO())
+        .or('end_date.is.null,end_date.gte.' + zimTodayISO())
       .not('crop_id', 'is', null)
       .limit(5000);
 
@@ -427,6 +429,7 @@ if (newTotal > remaining) {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      <JsplModuleHeader title="Fuel Allocation" />
       <ThemedText type="title">Fuel Allocation</ThemedText>
 
       {/* Header */}
