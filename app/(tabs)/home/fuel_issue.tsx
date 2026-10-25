@@ -1,3 +1,4 @@
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 // app/(tabs)/fuel_issue.tsx
 import { Picker } from '@react-native-picker/picker';
 import { router } from 'expo-router';
@@ -383,6 +384,7 @@ export default function FuelIssueScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      <JsplModuleHeader title="Fuel Issue" />
       <ThemedText type="title">Fuel Issue</ThemedText>
 
       <ThemedView style={styles.card}>
