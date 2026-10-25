@@ -1,3 +1,4 @@
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 import { supabase } from "@/supabase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
@@ -250,6 +251,7 @@ export default function FieldDashboard() {
 
   return (
     <View style={styles.container}>
+      <JsplModuleHeader title="Fields" subtitle="John Sole (Private) Limited · Field Dashboard" />
       <View style={styles.headingRow}>
         <Text style={styles.heading}>Field Dashboard</Text>
       </View>
