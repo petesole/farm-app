@@ -30,6 +30,7 @@ type FieldReportRow = {
   variety_name?: string | null;
   planned_planting_date?: string | null;
   actual_planting_date?: string | null;
+  end_date?: string | null;
 };
 
 type AppRole = "ADMIN" | "MANAGER" | "IRRIGATOR" | "VIEWER" | "UNKNOWN";
@@ -125,7 +126,7 @@ export default function FieldDashboard() {
     // Fuel budget belongs to the TraceCode, not the permanent field.
     // Fetch it separately so the existing field_report_v2 view needs no changes.
     const budgetRes=await supabase.from("tracecode")
-      .select("tracecode_id,planned_planting_date,actual_planting_date,variety:variety_id(variety_name),fuel_budget:fuel_budget_id(fuel_budget_name)")
+      .select("tracecode_id,end_date,planned_planting_date,actual_planting_date,variety:variety_id(variety_name),fuel_budget:fuel_budget_id(fuel_budget_name)")
       .limit(10000);
     if(budgetRes.error){
       console.log("field fuel budget lookup error:",budgetRes.error.message);
@@ -144,7 +145,8 @@ export default function FieldDashboard() {
         fuel_budget_name:r.tracecode_id==null?null:budgetNames.get(r.tracecode_id)??null,
         variety_name:variety?.variety_name??null,
         planned_planting_date:d?.planned_planting_date??null,
-        actual_planting_date:d?.actual_planting_date??null
+        actual_planting_date:d?.actual_planting_date??null,
+        end_date:d?.end_date??null
       };
     }));
     setLoading(false);
@@ -180,7 +182,7 @@ export default function FieldDashboard() {
     setRefreshing(false);
   }, [reloadAll]);
 
-  const seasonRows = useMemo(()=>rows.filter(r=>showCont ? norm(r.season_name)==="cont" : norm(r.season_name)!=="cont"),[rows,showCont]);
+  const seasonRows = useMemo(()=>rows.filter(r=>!r.end_date && (showCont ? norm(r.season_name)==="cont" : norm(r.season_name)!=="cont")),[rows,showCont]);
   const activeCrops = useMemo(()=>[...new Set(seasonRows.map(r=>r.crop_name?.trim()).filter((x):x is string=>Boolean(x)))].sort((a,b)=>a.localeCompare(b)),[seasonRows]);
 
   const filtered = useMemo(() => {
@@ -276,7 +278,7 @@ export default function FieldDashboard() {
 
   return (
     <View style={styles.container}>
-      <JsplModuleHeader title="Fields" subtitle="John Sole (Private) Limited · Field Dashboard" showMain={isAdmin} />
+      <JsplModuleHeader title="Trace" subtitle="John Sole (Private) Limited · TraceCode Dashboard" showMain={isAdmin} />
       <View style={styles.headingRow}>
         <Text style={styles.heading}>Field Dashboard</Text>
       </View>
