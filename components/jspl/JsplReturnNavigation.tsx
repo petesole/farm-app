@@ -19,6 +19,8 @@ export function JsplReturnNavigation(){
     label="Control Panel";target="/(tabs)/control-panel";
   }else if(path.includes("field-control-detail")||path.includes("field-control-list")){
     label="Fields Control";target="/(tabs)/fields-control";
+  }else if(path.includes("/home/tracecode-edit")){
+    label="Trace Control";target="/(tabs)/field-dashboard";
   }else if(path.includes("/home/field-edit")){
     label="Fields List";target="/(tabs)/home/field-master-dashboard";
   }else if(path.includes("/home/") && /(farm-|field-|crop-|season-|variety-|zesa-point-|rain-gauge-|tracecode-|user-management|control-panel)/.test(path)){
