@@ -291,7 +291,7 @@ export default function TracecodeEditScreen() {
   const [tracecodeSize, setTracecodeSize] = useState("");
   const [cropStatus, setCropStatus] = useState<TracecodeRow["crop_status"]>("Planned");
   const [cropStatusModal, setCropStatusModal] = useState(false);
-  const cropStatusOptions: TracecodeRow["crop_status"][] = ["Planned", "Planted", "Not Planted", "Abandoned"];
+  const cropStatusOptions: TracecodeRow["crop_status"][] = ["Not Planted", "Abandoned"];
 
   const [farmId, setFarmId] = useState<number | null>(null);
   const [fieldId, setFieldId] = useState<number | null>(null);
@@ -832,10 +832,10 @@ export default function TracecodeEditScreen() {
             </Card>
 
             <Card title="Crop status">
-              <SelectorRow label="Status" valueText={cropStatus} onPress={() => setCropStatusModal(true)} />
-              <ThemedText style={{ opacity: 0.7, marginTop: 8 }}>
-                Not Planted is excluded from crop yield reporting while retaining field preparation and fuel costs.
-              </ThemedText>
+              <SelectorRow label="Status" valueText={cropStatus === "Planned" || cropStatus === "Planted" ? "Normal" : cropStatus} onPress={() => setCropStatusModal(true)} />
+              <Pressable onPress={() => setCropStatus("Planted")} style={{ marginTop: 8 }}>
+                <ThemedText style={{ opacity: 0.7 }}>Clear status (normal crop)</ThemedText>
+              </Pressable>
             </Card>
 
             <Card title="Location / Setup (names, not IDs)">
