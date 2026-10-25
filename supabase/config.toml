@@ -1,0 +1,22 @@
+# Local-only Supabase configuration for isolated combined GRV testing.
+# Requires Docker and Supabase CLI on the development computer.
+project_id = "jspl-stock-v2-grv-sandbox"
+
+[api]
+enabled = true
+port = 55421
+schemas = ["public", "graphql_public"]
+
+[db]
+port = 55422
+shadow_port = 55420
+major_version = 17
+
+[studio]
+enabled = true
+port = 55423
+
+[auth]
+enabled = true
+site_url = "http://localhost:8081"
+additional_redirect_urls = ["http://localhost:8081"]
