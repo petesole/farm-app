@@ -337,6 +337,35 @@ export default function FuelWeeklyPlanScreen() {
     </>}
   </ScrollView>;
 }
+function ApprovalEditor({r,week,approval,editable,refresh}:{r:Row;week:string;approval?:Approval;editable:boolean;refresh:()=>void}){
+ const [ha,setHa]=useState(""),[perDay,setPerDay]=useState(""),[litres,setLitres]=useState(""),[trips,setTrips]=useState(""),[tripLitres,setTripLitres]=useState(""),[travel,setTravel]=useState(false);
+ const [busy,setBusy]=useState(false),[error,setError]=useState("");
+ useEffect(()=>{
+  setHa(String(approval?.approved_hectares??r.effective_hectares??r.fieldHa));
+  setPerDay(String(approval?.approved_ha_per_day??r.standard_ha_per_day??0));
+  setLitres(String(approval?.approved_work_litres??r.budget_work_litres??0));
+  setTrips(String(approval?.approved_trips??Math.floor(n(r.budget_trip_count))));
+  setTripLitres(String(approval?.trip_litres??r.trip_litres_per_trip??0));
+  setTravel(approval?.include_trip_fuel??n(r.budget_trip_count)>0);
+ },[week,r.key,approval?.approved_work_litres,approval?.approved_trips]);
+ const save=async()=>{
+  const h=Number(ha),d=Number(perDay),w=Number(litres),t=Number(trips),tl=Number(tripLitres);
+  if(![h,d,w,t,tl].every(Number.isFinite)||h<0||d<=0||w<0||t<0||!Number.isInteger(t)||tl<0){setError("Invalid figures: ha/day must be positive and trips a whole number.");return;}
+  setBusy(true);setError("");
+  const res=await supabase.from("fuel_weekly_approval").upsert({week_start:week,tracecode_id:r.tracecode_id,vehicle_job_id:r.vehicle_job_id,target_dap:r.target_dap,sequence_no:r.sequence_no,approved_hectares:h,approved_ha_per_day:d,approved_work_litres:w,approved_trips:travel?t:0,trip_litres:travel?tl:0,include_trip_fuel:travel},{onConflict:"week_start,tracecode_id,vehicle_job_id,target_dap,sequence_no"});
+  setBusy(false);if(res.error)setError(res.error.message);else refresh();
+ };
+ return <View style={{padding:10,borderWidth:1,borderColor:"#16803C",borderRadius:8,gap:7,marginTop:8}}>
+  <ThemedText style={s.bold}>{approval?"Approved weekly allocation":"Approval required before fuel issue"}</ThemedText>
+  <View style={{flexDirection:"row",flexWrap:"wrap",gap:8}}>
+   {([["Area ha",ha,setHa],["Ha/day",perDay,setPerDay],["Work litres",litres,setLitres],["Trips",trips,setTrips],["Litres/trip",tripLitres,setTripLitres]] as [string,string,(v:string)=>void][]).map(([title,value,fn])=><View key={title} style={{width:120}}><ThemedText style={s.small}>{title}</ThemedText><TextInput editable={editable} keyboardType="numeric" value={value} onChangeText={fn} style={{borderWidth:1,borderColor:"#AAA",padding:7,borderRadius:6}}/></View>)}
+  </View>
+  <Pressable disabled={!editable} style={s.button} onPress={()=>setTravel(!travel)}><ThemedText>Include travel fuel: {travel?"Yes":"No"}</ThemedText></Pressable>
+  <ThemedText style={s.small}>Total approval: {fmt(Number(litres)+(travel?Number(trips)*Number(tripLitres):0))} L. Budget reference: {fmt(n(r.total_budget_litres))} L.</ThemedText>
+  {editable?<Pressable disabled={busy} style={s.button} onPress={save}><ThemedText style={s.bold}>{busy?"Saving…":"Approve allocation"}</ThemedText></Pressable>:<ThemedText>Only the fuel planning administrator can approve.</ThemedText>}
+  {error?<ThemedText style={s.error}>{error}</ThemedText>:null}
+ </View>;
+}
 function Choice({label,selected,onPress}:{label:string;selected:boolean;onPress:()=>void}){
   return <Pressable onPress={onPress} style={[s.button,selected&&s.selected]}><ThemedText style={selected?s.bold:undefined}>{label}</ThemedText></Pressable>;
 }
