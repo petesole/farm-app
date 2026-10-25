@@ -1,3 +1,4 @@
+import { formatJsplDate } from "@/constants/jspl-design";
 import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 // app/(tabs)/fuel_issue.tsx
 import { Picker } from '@react-native-picker/picker';
@@ -389,7 +390,7 @@ export default function FuelIssueScreen() {
 
       <ThemedView style={styles.card}>
         <ThemedText type="subtitle">Date</ThemedText>
-        <ThemedText style={styles.locked}>{todayISO} (today)</ThemedText>
+        <ThemedText style={styles.locked}>{formatJsplDate(todayISO)} (today)</ThemedText>
       </ThemedView>
 
       <ThemedView style={styles.card}>
