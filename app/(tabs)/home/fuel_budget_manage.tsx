@@ -36,7 +36,12 @@ export default function FuelBudgetManage(){
  const [cropId,setCropId]=useState<number|null>(null);
  const [active,setActive]=useState(false);
  const [copyName,setCopyName]=useState("");
- const [copyOpen,setCopyOpen]=useState(false);
+ const [copySource,setCopySource]=useState<Budget|null>(null);
+ const [jobSort,setJobSort]=useState<"sequence"|"job"|"dap"|"class">("sequence");
+ const [jobDescending,setJobDescending]=useState(false);
+ const [jobFilter,setJobFilter]=useState<number|null>(null);
+ const [dapFilter,setDapFilter]=useState<number|null>(null);
+ const [classFilter,setClassFilter]=useState<number|null>(null);
  const [creating,setCreating]=useState(false);
  const [editing,setEditing]=useState<number|null>(null);
  const [removingId,setRemovingId]=useState<number|null>(null);
@@ -68,7 +73,7 @@ export default function FuelBudgetManage(){
  },[]);
  const choose=(b:Budget)=>{
   setSelected(b.fuel_budget_id);setName(b.fuel_budget_name);setNotes(b.notes||"");setCropId(b.crop_id);setActive(b.active);
-  setCopyName(b.fuel_budget_name+" Copy");setCopyOpen(false);loadDetail(b.fuel_budget_id);
+  loadDetail(b.fuel_budget_id);
  };
  const onSaveHeader=async()=>{
   if(selected==null||!name.trim()){setError("Budget name is required.");return;}
@@ -78,14 +83,19 @@ export default function FuelBudgetManage(){
   if(r.error)setError(r.error.message);else{setMessage("Budget details saved.");reload();}
  };
  const copy=async()=>{
-  if(selected==null||!copyName.trim())return;
+  if(!copySource||!copyName.trim()||busy)return;
   setBusy(true);setError(null);setMessage(null);
-  const r=await supabase.rpc("copy_fuel_budget",{p_source_id:selected,p_new_name:copyName.trim()});
-  setBusy(false);
-  if(r.error){setError(r.error.message);return;}
-  const id=Number(r.data);setSelected(null);setCopyOpen(false);await reload();
-  const fresh=await supabase.from("fuel_budget").select("fuel_budget_id,fuel_budget_name,crop_id,active,notes").eq("fuel_budget_id",id).single();
-  if(fresh.data){choose(fresh.data as Budget);setMessage("Budget copied with its jobs. New copy is inactive until you enable it.");}
+  const r=await supabase.rpc("copy_fuel_budget",{p_source_id:copySource.fuel_budget_id,p_new_name:copyName.trim()});
+  if(r.error){setBusy(false);setError(r.error.message);return;}
+  const id=Number(r.data);
+  // The copy RPC creates the new budget inactive, without altering the source.
+  const check=await supabase.from("fuel_budget").select("fuel_budget_id,active").eq("fuel_budget_id",id).single();
+  if(check.error||check.data?.active!==false){
+   setBusy(false);setError(check.error?.message??"Could not verify that the copied budget is inactive.");return;
+  }
+  setCopySource(null);setCopyName("");setBusy(false);
+  await reload();
+  setMessage("Budget and all jobs copied. The new budget is inactive.");
  };
  const startCreate=()=>{
   setSelected(null);setCreating(true);setName("");setNotes("");setCropId(filterCrop);setActive(false);
@@ -146,6 +156,16 @@ export default function FuelBudgetManage(){
   setBusy(false);
   if(result.error)setError(result.error.message);else if(selected){setMessage("Job added; edit its details below.");await loadDetail(selected);if(result.data){const newRow=await supabase.from("fuel_budget_activity").select("*").eq("fuel_budget_activity_id",result.data.fuel_budget_activity_id).single();if(newRow.data)startEdit(newRow.data as Activity);}}
  };
+ const visibleJobs=useMemo(()=>{
+  const list=rows.filter(a=>(jobFilter==null||a.vehicle_job_id===jobFilter)&&(dapFilter==null||a.target_dap===dapFilter)&&(classFilter==null||a.tractor_class_id===classFilter));
+  list.sort((a,b)=>{
+   const va=jobSort==="job"?jobs.find(j=>j.vehicle_job_id===a.vehicle_job_id)?.vehicle_job_name??"":jobSort==="class"?tractors.find(t=>t.tractor_class_id===a.tractor_class_id)?.class_name??"":jobSort==="dap"?a.target_dap:a.sequence_no;
+   const vb=jobSort==="job"?jobs.find(j=>j.vehicle_job_id===b.vehicle_job_id)?.vehicle_job_name??"":jobSort==="class"?tractors.find(t=>t.tractor_class_id===b.tractor_class_id)?.class_name??"":jobSort==="dap"?b.target_dap:b.sequence_no;
+   const cmp=typeof va==="number"&&typeof vb==="number"?va-vb:String(va??"").localeCompare(String(vb??""),undefined,{numeric:true,sensitivity:"base"});
+   return jobDescending?-cmp:cmp;
+  });
+  return list;
+ },[rows,jobFilter,dapFilter,classFilter,jobSort,jobDescending,jobs,tractors]);
  const filtered=useMemo(()=>budgets.filter(b=>crops.some(c=>c.crop_id===b.crop_id&&c.active)&&(filterCrop==null||b.crop_id===filterCrop)),[budgets,crops,filterCrop]);
  const cropName=(id:number|null)=>crops.find(c=>c.crop_id===id)?.crop_name||"Crop not set";
  const jobName=(id:number)=>jobs.find(j=>j.vehicle_job_id===id)?.vehicle_job_name||String(id);
@@ -178,14 +198,29 @@ export default function FuelBudgetManage(){
     <ThemedText>Notes</ThemedText><TextInput style={s.input} value={notes} onChangeText={setNotes}/>
     <Pressable style={[s.button,active&&s.selected]} onPress={()=>setActive(!active)}><ThemedText>Active: {active?"Yes":"No"} (click to change)</ThemedText></Pressable>
     <Pressable style={s.button} disabled={busy} onPress={onSaveHeader}><ThemedText style={s.bold}>Save Budget Details</ThemedText></Pressable>
-    <Pressable style={s.button} onPress={()=>setCopyOpen(x=>!x)}><ThemedText style={s.bold}>Copy Budget</ThemedText></Pressable>
-    {copyOpen?<View style={s.block}><ThemedText>New budget name</ThemedText><TextInput style={s.input} value={copyName} onChangeText={setCopyName}/><ThemedText style={s.small}>Copies all jobs and their descriptions. The new budget starts inactive.</ThemedText><Pressable style={s.button} disabled={busy||!copyName.trim()} onPress={copy}><ThemedText style={s.bold}>Create Copy</ThemedText></Pressable></View>:null}
    </ThemedView>
    <ThemedView style={s.card}>
-    <ThemedText type="subtitle">Budget Jobs ({rows.length})</ThemedText>
-    {rows.map(a=><View key={a.fuel_budget_activity_id} style={s.block}>
-     <View style={s.line}><ThemedText style={s.bold}>{a.sequence_no}. {jobName(a.vehicle_job_id)}</ThemedText><ThemedText>DAP {a.target_dap} · {className(a.tractor_class_id)}</ThemedText></View>
-     {a.description?<ThemedText>{a.description}</ThemedText>:null}
+    <ThemedText type="subtitle">Budget Jobs ({visibleJobs.length} of {rows.length})</ThemedText>
+    <View style={s.filterLine}>
+      <View style={s.compactPicker}><Picker selectedValue={jobSort} onValueChange={v=>{setJobSort(v);setJobDescending(false);}}>
+       <Picker.Item label="Sort: Sequence" value="sequence"/><Picker.Item label="Sort: Job A–Z" value="job"/><Picker.Item label="Sort: DAP" value="dap"/><Picker.Item label="Sort: Tractor class" value="class"/>
+      </Picker></View>
+      <Pressable style={s.button} onPress={()=>setJobDescending(v=>!v)}><ThemedText>{jobDescending?"Z–A / High–Low":"A–Z / Low–High"} ⇅</ThemedText></Pressable>
+      <View style={s.compactPicker}><Picker selectedValue={dapFilter} onValueChange={setDapFilter}><Picker.Item label="All DAP" value={null}/>{[...new Set(rows.map(a=>a.target_dap).filter((x):x is number=>x!=null))].sort((a,b)=>a-b).map(v=><Picker.Item key={v} label={String(v)} value={v}/>)}</Picker></View>
+      <View style={s.compactPicker}><Picker selectedValue={jobFilter} onValueChange={setJobFilter}><Picker.Item label="All Jobs" value={null}/>{jobs.filter(j=>rows.some(a=>a.vehicle_job_id===j.vehicle_job_id)).map(j=><Picker.Item key={j.vehicle_job_id} label={j.vehicle_job_name} value={j.vehicle_job_id}/>)}</Picker></View>
+      <View style={s.compactPicker}><Picker selectedValue={classFilter} onValueChange={setClassFilter}><Picker.Item label="All Tractor Sizes" value={null}/>{tractors.filter(t=>rows.some(a=>a.tractor_class_id===t.tractor_class_id)).map(t=><Picker.Item key={t.tractor_class_id} label={t.class_name} value={t.tractor_class_id}/>)}</Picker></View>
+    </View>
+    {visibleJobs.map(a=><View key={a.fuel_budget_activity_id} style={s.jobRow}>
+     <View style={s.jobSummary}>
+      <ThemedText style={[s.bold,s.jobSeq]}>{a.sequence_no??"—"}</ThemedText>
+      <ThemedText style={[s.bold,s.jobName]} numberOfLines={1}>{jobName(a.vehicle_job_id)}</ThemedText>
+      <ThemedText style={s.jobData}>DAP {a.target_dap??"—"}</ThemedText>
+      <ThemedText style={s.jobData}>{className(a.tractor_class_id)}</ThemedText>
+      <ThemedText style={s.jobData}>Passes {a.planned_operations??"—"}</ThemedText>
+      <ThemedText style={s.jobDescription} numberOfLines={1}>{a.description??""}</ThemedText>
+      <Pressable style={s.tinyButton} disabled={busy} onPress={()=>startEdit(a)}><ThemedText>Edit</ThemedText></Pressable>
+      <Pressable style={s.tinyButton} disabled={busy} onPress={()=>setRemovingId(a.fuel_budget_activity_id)}><ThemedText style={s.error}>Remove</ThemedText></Pressable>
+     </View>
      {editing===a.fuel_budget_activity_id?<>
       <ThemedText>Job</ThemedText><View style={s.picker}><Picker selectedValue={draft.vehicle_job_id} onValueChange={v=>updateField("vehicle_job_id",v)}>{jobs.map(j=><Picker.Item key={j.vehicle_job_id} value={j.vehicle_job_id} label={j.vehicle_job_name}/>)}</Picker></View>
       <ThemedText>Tractor Class</ThemedText><View style={s.picker}><Picker selectedValue={draft.tractor_class_id??null} onValueChange={v=>updateField("tractor_class_id",v)}><Picker.Item label="None" value={null}/>{tractors.map(t=><Picker.Item key={t.tractor_class_id} value={t.tractor_class_id} label={t.class_name}/>)}</Picker></View>
@@ -194,10 +229,7 @@ export default function FuelBudgetManage(){
       <Pressable style={[s.button,draft.include_trip_fuel&&s.selected]} onPress={()=>updateField("include_trip_fuel",!draft.include_trip_fuel)}><ThemedText>Include travel fuel: {draft.include_trip_fuel?"Yes":"No"}</ThemedText></Pressable>
       <ThemedText>Notes</ThemedText><TextInput style={s.input} value={draft.notes||""} onChangeText={v=>updateField("notes",v)}/>
       <View style={s.line}><Pressable style={s.button} disabled={busy} onPress={saveJob}><ThemedText style={s.bold}>Save Job</ThemedText></Pressable><Pressable style={s.button} onPress={()=>setEditing(null)}><ThemedText>Cancel</ThemedText></Pressable></View>
-     </>:<View style={s.line}>
-      <Pressable style={s.button} disabled={busy} onPress={()=>startEdit(a)}><ThemedText>Edit Job</ThemedText></Pressable>
-      <Pressable style={s.button} disabled={busy} onPress={()=>setRemovingId(a.fuel_budget_activity_id)}><ThemedText style={s.error}>Remove Job</ThemedText></Pressable>
-     </View>}
+     </>:null}
      {removingId===a.fuel_budget_activity_id?<View style={s.block}>
       <ThemedText>Remove {jobName(a.vehicle_job_id)} from this budget? This cannot be undone.</ThemedText>
       <View style={s.line}>
@@ -218,13 +250,24 @@ export default function FuelBudgetManage(){
       <Pressable style={[s.cropButton,filterCrop===null&&s.selected]} onPress={()=>setFilterCrop(null)}><ThemedText style={s.bold}>All</ThemedText></Pressable>
       {crops.filter(c=>c.active).map(c=><Pressable key={c.crop_id} style={[s.cropButton,filterCrop===c.crop_id&&s.selected]} onPress={()=>setFilterCrop(c.crop_id)}><ThemedText style={s.bold}>{c.crop_name}</ThemedText></Pressable>)}
     </View>
+    {copySource?<View style={s.copyDialog}>
+      <ThemedText style={s.bold}>Copy {copySource.fuel_budget_name}</ThemedText>
+      <ThemedText style={s.small}>Crop: {cropName(copySource.crop_id)} · All budget jobs will be copied · New budget inactive</ThemedText>
+      <TextInput style={s.input} placeholder="New budget name" value={copyName} onChangeText={setCopyName}/>
+      <View style={s.line}>
+        <Pressable style={s.button} disabled={busy||!copyName.trim()} onPress={copy}><ThemedText style={s.bold}>{busy?"Copying…":"Confirm Copy"}</ThemedText></Pressable>
+        <Pressable style={s.button} disabled={busy} onPress={()=>setCopySource(null)}><ThemedText>Cancel</ThemedText></Pressable>
+      </View>
+    </View>:null}
     <View style={s.budgetList}>
-      {filtered.map(b=><Pressable key={b.fuel_budget_id} style={s.budgetRow} onPress={()=>choose(b)}>
-        <ThemedText style={s.budgetCrop}>{cropName(b.crop_id)}</ThemedText>
-        <ThemedText style={[s.budgetTitle,s.bold]} numberOfLines={1}>{b.fuel_budget_name}</ThemedText>
-        <ThemedText style={s.budgetStatus}>{b.active?"Active":"Inactive"}</ThemedText>
-        <ThemedText>›</ThemedText>
-      </Pressable>)}
+      {filtered.map(b=><View key={b.fuel_budget_id} style={s.budgetRow}>
+        <Pressable style={s.budgetOpen} onPress={()=>choose(b)}>
+          <ThemedText style={s.budgetCrop}>{cropName(b.crop_id)}</ThemedText>
+          <ThemedText style={[s.budgetTitle,s.bold]} numberOfLines={1}>{b.fuel_budget_name}</ThemedText>
+          <ThemedText style={s.budgetStatus}>{b.active?"Active":"Inactive"}</ThemedText>
+        </Pressable>
+        <Pressable style={s.tinyButton} onPress={()=>{setCopySource(b);setCopyName(b.fuel_budget_name+" Copy");setError(null);}}><ThemedText>Copy</ThemedText></Pressable>
+      </View>)}
     </View>
     {filtered.length===0?<ThemedText>No budgets found.</ThemedText>:null}
    </ThemedView>
@@ -235,7 +278,15 @@ const s=StyleSheet.create({
  cropFilters:{flexDirection:"row",flexWrap:"wrap",gap:6,marginVertical:2},
  cropButton:{borderWidth:1,borderColor:"rgba(120,120,120,.35)",borderRadius:7,paddingHorizontal:12,paddingVertical:7},
  budgetList:{gap:0},
- budgetRow:{flexDirection:"row",alignItems:"center",gap:10,paddingVertical:8,paddingHorizontal:9,borderBottomWidth:1,borderBottomColor:"rgba(120,120,120,.25)"},
+ budgetRow:{flexDirection:"row",alignItems:"center",gap:10,paddingVertical:7,paddingHorizontal:9,borderBottomWidth:1,borderBottomColor:"rgba(120,120,120,.25)"},
+ budgetOpen:{flex:1,flexDirection:"row",alignItems:"center",gap:10},
+ copyDialog:{padding:12,borderRadius:8,borderWidth:1,borderColor:"#99B7A1",gap:9,backgroundColor:"#F3F8F4"},
+ filterLine:{flexDirection:"row",flexWrap:"wrap",gap:8,alignItems:"center"},
+ compactPicker:{minWidth:145,flexGrow:1,maxWidth:215,borderWidth:1,borderColor:"#D1D5DB",borderRadius:6},
+ jobRow:{borderBottomWidth:1,borderBottomColor:"#D1D5DB",paddingVertical:5},
+ jobSummary:{flexDirection:"row",alignItems:"center",gap:9,flexWrap:"wrap"},
+ jobSeq:{width:30},jobName:{minWidth:130,flex:1},jobData:{minWidth:72,fontSize:13},jobDescription:{flex:1,minWidth:110,fontSize:12},
+ tinyButton:{borderWidth:1,borderColor:"#CBD5E1",paddingVertical:5,paddingHorizontal:9,borderRadius:6},
  budgetCrop:{width:120,fontSize:13},
  budgetTitle:{flex:1,fontSize:14},
  budgetStatus:{width:66,fontSize:12,opacity:0.7},
