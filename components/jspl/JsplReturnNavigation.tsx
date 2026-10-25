@@ -18,7 +18,7 @@ export function JsplReturnNavigation(){
     label="Vehicle Management";target="/(tabs)/vehicle-management";
   }else if(path.includes("vehicle-management") || path.includes("fields-control")){
     label="Control Panel";target="/(tabs)/control-panel";
-  }else if((path.includes("field-control-detail")||path.includes("field-control-list"))&&params.kind==="crop"){
+  }else if((path.includes("field-control-detail")||path.includes("field-control-list"))&&(params.kind==="crop"||params.kind==="contract")){
     label="Control Panel";target="/(tabs)/control-panel";
   }else if(path.includes("field-control-detail")||path.includes("field-control-list")){
     label="Fields Control";target="/(tabs)/fields-control";
