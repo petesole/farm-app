@@ -146,7 +146,7 @@ export default function FuelBudgetManage(){
   setBusy(false);
   if(result.error)setError(result.error.message);else if(selected){setMessage("Job added; edit its details below.");await loadDetail(selected);if(result.data){const newRow=await supabase.from("fuel_budget_activity").select("*").eq("fuel_budget_activity_id",result.data.fuel_budget_activity_id).single();if(newRow.data)startEdit(newRow.data as Activity);}}
  };
- const filtered=useMemo(()=>budgets.filter(b=>filterCrop==null||b.crop_id===filterCrop),[budgets,filterCrop]);
+ const filtered=useMemo(()=>budgets.filter(b=>crops.some(c=>c.crop_id===b.crop_id&&c.active)&&(filterCrop==null||b.crop_id===filterCrop)),[budgets,crops,filterCrop]);
  const cropName=(id:number|null)=>crops.find(c=>c.crop_id===id)?.crop_name||"Crop not set";
  const jobName=(id:number)=>jobs.find(j=>j.vehicle_job_id===id)?.vehicle_job_name||String(id);
  const className=(id:number|null)=>tractors.find(t=>t.tractor_class_id===id)?.class_code||"No class";
@@ -162,7 +162,7 @@ export default function FuelBudgetManage(){
     <ThemedText>Budget name</ThemedText>
     <TextInput style={s.input} value={name} onChangeText={setName} placeholder="e.g. 26 Seed Maize Standard"/>
     <ThemedText>Crop</ThemedText>
-    <View style={s.picker}><Picker selectedValue={cropId} onValueChange={setCropId}><Picker.Item label="Select crop" value={null}/>{crops.map(cr=><Picker.Item key={cr.crop_id} label={cr.crop_name} value={cr.crop_id}/>)}</Picker></View>
+    <View style={s.picker}><Picker selectedValue={cropId} onValueChange={setCropId}><Picker.Item label="Select crop" value={null}/>{crops.filter(cr=>cr.active).map(cr=><Picker.Item key={cr.crop_id} label={cr.crop_name} value={cr.crop_id}/>)}</Picker></View>
     <ThemedText>Notes</ThemedText><TextInput style={s.input} value={notes} onChangeText={setNotes} placeholder="Optional"/>
     <Pressable style={[s.button,active&&s.selected]} onPress={()=>setActive(v=>!v)}><ThemedText>Active: {active?"Yes":"No"} (click to change)</ThemedText></Pressable>
     <ThemedText style={s.small}>After creating the budget, you can add and edit its jobs.</ThemedText>
@@ -174,7 +174,7 @@ export default function FuelBudgetManage(){
     <ThemedText type="subtitle">Edit Budget #{selectedBudget.fuel_budget_id}</ThemedText>
     <ThemedText>Name</ThemedText><TextInput style={s.input} value={name} onChangeText={setName}/>
     <ThemedText>Crop</ThemedText>
-    <View style={s.picker}><Picker selectedValue={cropId} onValueChange={setCropId}><Picker.Item label="Select crop" value={null}/>{crops.map(c=><Picker.Item key={c.crop_id} label={c.crop_name} value={c.crop_id}/>)}</Picker></View>
+    <View style={s.picker}><Picker selectedValue={cropId} onValueChange={setCropId}><Picker.Item label="Select crop" value={null}/>{crops.filter(c=>c.active||c.crop_id===cropId).map(c=><Picker.Item key={c.crop_id} label={c.crop_name} value={c.crop_id}/>)}</Picker></View>
     <ThemedText>Notes</ThemedText><TextInput style={s.input} value={notes} onChangeText={setNotes}/>
     <Pressable style={[s.button,active&&s.selected]} onPress={()=>setActive(!active)}><ThemedText>Active: {active?"Yes":"No"} (click to change)</ThemedText></Pressable>
     <Pressable style={s.button} disabled={busy} onPress={onSaveHeader}><ThemedText style={s.bold}>Save Budget Details</ThemedText></Pressable>
