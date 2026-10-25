@@ -1,3 +1,4 @@
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 import { Picker } from "@react-native-picker/picker";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
@@ -135,6 +136,7 @@ export default function FuelBudgetManage(){
  const jobName=(id:number)=>jobs.find(j=>j.vehicle_job_id===id)?.vehicle_job_name||String(id);
  const className=(id:number|null)=>tractors.find(t=>t.tractor_class_id===id)?.class_code||"No class";
  return <ScrollView contentContainerStyle={s.page}>
+      <JsplModuleHeader title="Fuel Budget Management" />
   <View style={s.line}><ThemedText type="title">Fuel Budgets</ThemedText><Pressable style={s.button} onPress={reload}><ThemedText>Refresh</ThemedText></Pressable></View>
   {error?<ThemedView style={s.card}><ThemedText style={s.error}>{error}</ThemedText></ThemedView>:null}
   {message?<ThemedView style={s.card}><ThemedText>{message}</ThemedText></ThemedView>:null}
