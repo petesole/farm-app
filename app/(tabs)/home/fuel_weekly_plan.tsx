@@ -2,7 +2,7 @@ import { zimTodayISO } from "@/lib/zimDate";
 import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 // app/(tabs)/home/fuel_weekly_plan.tsx
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { supabase } from "../../../supabase";
@@ -14,6 +14,7 @@ type Crop = {crop_id:number;crop_name:string};
 type Actual = {tracecode_id:number;vehicle_job_id:number;actual_litres:number|null;completed_operations:number|null};
 type Cleared = {tracecode_id:number;vehicle_job_id:number;target_dap:number;sequence_no:number};
 type SelectedJob = Cleared & {week_start:string};
+type Approval=SelectedJob & {approved_hectares:number;approved_ha_per_day:number;approved_work_litres:number;approved_trips:number;trip_litres:number;include_trip_fuel:boolean};
 const clearedKey=(r:Cleared)=>`${r.tracecode_id}:${r.vehicle_job_id}:${r.target_dap}:${r.sequence_no}`;
 type Row = Programme & {key:string;cropId:number|null;fieldName:string;fieldHa:number;scheduledDate:string;actualLitres:number;remainingOperations:number;overdue:boolean};
 const toDate = (value:string) => {const parts=value.slice(0,10).split("-").map(Number);return new Date(Date.UTC(parts[0],parts[1]-1,parts[2]));};
@@ -37,6 +38,7 @@ export default function FuelWeeklyPlanScreen() {
   const [cleared,setCleared]=useState<Cleared[]>([]);
   const [chosen,setChosen]=useState<SelectedJob[]>([]);
   const [allChosen,setAllChosen]=useState<SelectedJob[]>([]);
+  const [approvals,setApprovals]=useState<Approval[]>([]);
   const [planReady,setPlanReady]=useState(false);
   const [planMessage,setPlanMessage]=useState<string|null>(null);
   const [planSaving,setPlanSaving]=useState<string|null>(null);
@@ -59,7 +61,7 @@ export default function FuelWeeklyPlanScreen() {
     let active=true;
     (async()=>{
       setLoading(true);setError(null);
-      const [f,p,s,a,h,m,cr,sel,descs]=await Promise.all([
+      const [f,p,s,a,h,m,cr,sel,descs,app]=await Promise.all([
         supabase.from("fuel_tracecode_budget_summary_v").select("tracecode_id,tracecode_name,tracecode_size,fuel_budget_name"),
         supabase.from("fuel_budget_activity_v").select("fuel_budget_activity_id,sequence_no,tracecode_id,vehicle_job_id,vehicle_job_name,target_dap,calculated_quantity,planned_operations,total_budget_litres,budget_work_litres,budget_trip_litres,trip_litres_per_trip,budget_trip_count,class_code,fuel_plan_method,fuel_plan_unit,standard_ha_per_day,effective_hectares").limit(10000),
         supabase.from("tracecode").select("tracecode_id,crop_id,planned_planting_date,actual_planting_date,start_date,end_date").lte("start_date",zimTodayISO()).or("end_date.is.null,end_date.gte."+zimTodayISO()).limit(10000),
@@ -69,6 +71,7 @@ export default function FuelWeeklyPlanScreen() {
         supabase.from("crop").select("crop_id,crop_name").order("crop_name"),
         supabase.from("fuel_weekly_selected_job").select("week_start,tracecode_id,vehicle_job_id,target_dap,sequence_no").limit(10000),
         supabase.from("fuel_budget_activity").select("fuel_budget_activity_id,description").limit(10000),
+        supabase.from("fuel_weekly_approval").select("*").eq("week_start",week).limit(10000),
       ]);
       // Description lives on the budget activity, not the calculation view.
       // Match by unique activity ID so multiple applications remain distinct.
@@ -79,6 +82,7 @@ export default function FuelWeeklyPlanScreen() {
       setPlanMessage(sel.error?("Weekly selection unavailable: "+sel.error.message+". Run the weekly selected jobs Supabase migration."):null);
       setAllChosen(sel.error?[]:(sel.data??[]) as SelectedJob[]);
       setChosen(sel.error?[]:((sel.data??[]) as SelectedJob[]).filter(r=>r.week_start===week));
+      setApprovals(app.error?[]:(app.data??[]) as Approval[]);
       setCanClear(!m.error && (m.data?.length??0)>0);
       setClearError(h.error?.message??m.error?.message??null);
       setCleared(h.error?[]:(h.data??[]) as Cleared[]);
@@ -184,6 +188,7 @@ export default function FuelWeeklyPlanScreen() {
         return Number(b.overdue)-Number(a.overdue)||a.scheduledDate.localeCompare(b.scheduledDate);
       }),[scheduled,cropFilter,traceFilter,jobFilter,classFilter,sortBy]);
   const selectedKeys=new Set(chosen.map(clearedKey));
+  const approvalByKey=new Map(approvals.map(a=>[clearedKey(a),a]));
   const otherWeekByKey=new Map(allChosen.filter(j=>j.week_start!==week).map(j=>[clearedKey(j),j.week_start]));
   const chosenRows=filtered.filter(r=>selectedKeys.has(clearedKey({...r,target_dap:r.target_dap!})));
   const remainingFraction=(r:Row)=>n(r.planned_operations)>0?r.remainingOperations/n(r.planned_operations):1;
