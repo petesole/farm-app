@@ -80,7 +80,6 @@ export default function FuelIssueScreen() {
   const [notes, setNotes] = useState<string>('');
   const [plannedJobs,setPlannedJobs] = useState<PlannedJob[]>([]);
   const [splits,setSplits] = useState<SplitRow[]>([{key:'',litres:''}]);
-  const [unplanned,setUnplanned] = useState(false);
   const [issueMode,setIssueMode] = useState<'WORK'|'TRIP'>('WORK');
   const [planLoading,setPlanLoading] = useState(false);
   const splitTotal = splits.reduce((n,r)=>n+(Number(r.litres)||0),0);
@@ -323,7 +322,7 @@ export default function FuelIssueScreen() {
         Alert.alert('Wrong vehicle class','Select a planned job valid for this vehicle.');return;
       }
       if(!splits.length||splits.some(x=>!x.key||!Number.isFinite(Number(x.litres))||Number(x.litres)<=0)){
-        Alert.alert('Planned jobs required','Select a job and litres for every row, or mark issue as unplanned.');return;
+        Alert.alert('Planned jobs required','Select an approved job and litres for every row. Contact your planner for an increase.');return;
       }
       if(new Set(splits.map(x=>x.key)).size!==splits.length){
         Alert.alert('Duplicate planned job','Combine litres into one row per job.');return;
