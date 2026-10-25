@@ -1,3 +1,5 @@
+import { zimTodayISO } from "@/lib/zimDate";
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 // app/(tabs)/home/fuel_weekly_plan.tsx
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
@@ -59,7 +61,7 @@ export default function FuelWeeklyPlanScreen() {
       const [f,p,s,a,h,m,cr,sel,descs]=await Promise.all([
         supabase.from("fuel_tracecode_budget_summary_v").select("tracecode_id,tracecode_name,tracecode_size,fuel_budget_name"),
         supabase.from("fuel_budget_activity_v").select("fuel_budget_activity_id,sequence_no,tracecode_id,vehicle_job_id,vehicle_job_name,target_dap,calculated_quantity,planned_operations,total_budget_litres,budget_work_litres,budget_trip_litres,trip_litres_per_trip,budget_trip_count,class_code,fuel_plan_method,fuel_plan_unit,standard_ha_per_day,effective_hectares").limit(10000),
-        supabase.from("tracecode").select("tracecode_id,crop_id,planned_planting_date,actual_planting_date").limit(10000),
+        supabase.from("tracecode").select("tracecode_id,crop_id,planned_planting_date,actual_planting_date,start_date,end_date").lte("start_date",zimTodayISO()).or("end_date.is.null,end_date.gte."+zimTodayISO()).limit(10000),
         supabase.from("fuel_tracecode_activity_summary_v").select("tracecode_id,vehicle_job_id,actual_litres,completed_operations").limit(10000),
         supabase.from("fuel_historical_completion").select("tracecode_id,vehicle_job_id,target_dap,sequence_no").limit(10000),
         supabase.from("fuel_plan_admin").select("user_id").limit(1),
@@ -80,7 +82,7 @@ export default function FuelWeeklyPlanScreen() {
       setCleared(h.error?[]:(h.data??[]) as Cleared[]);
       const err=f.error||planResult.error||s.error||a.error||cr.error||descs.error;
       if(err){setError(err.message);setFields([]);setProgrammes([]);setSchedules([]);setActuals([]);}
-      else{setFields((f.data??[]) as Field[]);setProgrammes(((planResult.data??[]) as Partial<Programme>[]).map(r=>({...r,description:descriptions.get(r.fuel_budget_activity_id!)??null})) as Programme[]);setSchedules((s.data??[]) as Schedule[]);setCrops((cr.data??[]) as Crop[]);setActuals((a.data??[]) as Actual[]);}
+      else{const activeIds=new Set((s.data??[]).map((r:any)=>r.tracecode_id));setFields(((f.data??[]) as Field[]).filter(r=>activeIds.has(r.tracecode_id)));setProgrammes(((planResult.data??[]) as Partial<Programme>[]).map(r=>({...r,description:descriptions.get(r.fuel_budget_activity_id!)??null})) as Programme[]);setSchedules((s.data??[]) as Schedule[]);setCrops((cr.data??[]) as Crop[]);setActuals((a.data??[]) as Actual[]);}
       setLoading(false);
     })();
     return()=>{active=false;};
@@ -212,6 +214,7 @@ export default function FuelWeeklyPlanScreen() {
     return [...grouped.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
   },[filtered]);
   return <ScrollView contentContainerStyle={s.page}>
+    <JsplModuleHeader title="Weekly Fuel Planning" />
     <View style={s.header}>
       <ThemedText type="title">Weekly Fuel Planning</ThemedText>
       <Pressable style={s.button} onPress={refresh}><ThemedText>Refresh</ThemedText></Pressable>

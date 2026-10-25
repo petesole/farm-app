@@ -1,5 +1,5 @@
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 import { supabase } from "@/supabase";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -72,27 +72,26 @@ export default function FieldDashboard() {
   const isAdmin = role === "ADMIN";
   const isManager = role === "MANAGER";
   const canNew = isAdmin;
-  const canEdit = isAdmin || isManager;
-  const canViewTab = isAdmin || isManager;
-
-  const readRole = useCallback(async (): Promise<AppRole> => {
-    try {
-      const storedRole = await AsyncStorage.getItem("role");
-      return mapStoredRole(storedRole);
-    } catch {
-      return "UNKNOWN";
-    }
-  }, []);
+  const canEdit = isAdmin;
+  const canViewTab = isAdmin;
 
   const loadRole = useCallback(async (): Promise<AppRole> => {
-    const nextRole = await readRole();
+    const { data: identity, error: identityError } = await supabase.auth.getUser();
+    if (identityError || !identity.user) {
+      setRole("UNKNOWN");
+      setRoleLoaded(true);
+      return "UNKNOWN";
+    }
+    const { data: roles, error: roleError } = await supabase.rpc("my_farm_app_roles");
+    const nextRole: AppRole = !roleError && Array.isArray(roles) &&
+      roles.some((role: string) => norm(role) === "admin") ? "ADMIN" : "UNKNOWN";
     setRole(nextRole);
     setRoleLoaded(true);
     return nextRole;
-  }, [readRole]);
+  }, []);
 
   const fetchRowsForRole = useCallback(async (nextRole: AppRole) => {
-    const allowed = nextRole === "ADMIN" || nextRole === "MANAGER";
+    const allowed = nextRole === "ADMIN";
 
     if (!allowed) {
       setRows([]);
@@ -250,6 +249,7 @@ export default function FieldDashboard() {
 
   return (
     <View style={styles.container}>
+      <JsplModuleHeader title="Fields" subtitle="John Sole (Private) Limited · Field Dashboard" />
       <View style={styles.headingRow}>
         <Text style={styles.heading}>Field Dashboard</Text>
       </View>
