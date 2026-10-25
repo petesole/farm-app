@@ -30,6 +30,13 @@ export default function FuelIssueEdit(){
  function choose(r:Issue|null){setEditing(r);setVehicleId(r?.vehicle_id??null);setLitres(r?String(r.fuel_issued):"");setMeter(r?.meter_reading==null?"":String(r.meter_reading));setNotes(r?.notes??"");setError("");setNotice("");}
  async function save(){
   if(editing===undefined)return;
+  // Frontend safeguard only. Real permission enforcement must also be in RLS.
+  const {data: identity,error: identityError}=await supabase.auth.getUser();
+  if(identityError||!identity.user){setError("Please sign in again.");return;}
+  const {data: roles,error: rolesError}=await supabase.rpc("my_farm_app_roles");
+  if(rolesError||!Array.isArray(roles)||!roles.some((role: string)=>["admin","manager"].includes(String(role).trim().toLowerCase()))){
+   setError("Only an administrator or manager can correct fuel records.");return;
+  }
   const qty=Number(litres.replace(/,/g,""));const meterValue=meter.trim()?Number(meter):null;
   if(!vehicleId){setError("Select a vehicle.");return;}
   if(!Number.isFinite(qty)||qty<=0){setError("Enter a positive fuel quantity.");return;}
