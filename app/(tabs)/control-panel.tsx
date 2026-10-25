@@ -20,7 +20,7 @@ export default function ControlPanel() {
    <JsplModuleHeader title="Control Panel" subtitle="Admin settings" showMain />
    <View style={{flexDirection:"row",flexWrap:"wrap",gap:S.lg}}>
      <View style={{width:250,maxWidth:"100%"}}><JsplDashboardButton title="Vehicles" description="Add, edit, discontinue or reactivate vehicles" onPress={()=>router.push("/(tabs)/vehicle-management")}/></View>
-     <View style={{width:250,maxWidth:"100%"}}><JsplDashboardButton title="Fields & Tracecodes" description="Existing field controls" onPress={()=>router.push("/(tabs)/home/field-master-dashboard")}/></View>
+     <View style={{width:250,maxWidth:"100%"}}><JsplDashboardButton title="Fields & Tracecodes" description="Existing field controls" onPress={()=>router.push("/(tabs)/fields-control")}/></View>
    </View>
  </ScrollView>;
 }
