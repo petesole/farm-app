@@ -1,3 +1,4 @@
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 import {fuelDateDisplay,fuelDateISO} from "./fuel_admin_dates";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
@@ -53,6 +54,7 @@ export default function FuelDipEdit(){
   setNotice(editing===null?"Missing dip added.":"Dip reading corrected.");await load(date);
  }
  return <ScrollView contentContainerStyle={styles.page}>
+      <JsplModuleHeader title="Fuel Dip Corrections" />
   <ThemedText type="title">Fuel Dip Edit / Add</ThemedText>
   <Pressable style={styles.btn} onPress={()=>router.back()}><ThemedText>← Fuel Admin</ThemedText></Pressable>
   <View style={styles.card}>
