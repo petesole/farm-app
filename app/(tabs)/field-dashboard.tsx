@@ -307,9 +307,7 @@ export default function FieldDashboard() {
 
         <View style={styles.actionsRight}>
           {isAdmin && (
-            <Pressable style={styles.controlBtn} onPress={goToControlPanel}>
-              <Text style={styles.controlBtnText}>CTRL</Text>
-            </Pressable>
+            
           )}
 
           {canNew && (
