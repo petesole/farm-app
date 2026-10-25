@@ -1,3 +1,4 @@
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 import {fuelDateISO} from "./fuel_admin_dates";
 // app/(tabs)/home/tracecode-edit.tsx
 import { ThemedText } from "@/components/themed-text";
@@ -694,6 +695,7 @@ export default function TracecodeEditScreen() {
 
   return (
     <ThemedView style={styles.container}>
+      <JsplModuleHeader title="Tracecode Management" />
       <ThemedText style={{ opacity: 0.55, marginBottom: 6 }}>
         params: mode={String(mode ?? "")} tracecodeIdRaw={String(tidRaw ?? "")}
       </ThemedText>
