@@ -52,7 +52,7 @@ type PlannedJob = {
   budget: number | null; issued: number; tractor_class_id: number | null;
   effective_hectares: number | null; standard_l_per_ha: number | null;
   budget_work_litres: number | null; budget_trip_count: number | null;
-  trip_litres_per_trip: number | null; budget_trip_litres: number | null; trips_issued: number; work_issued: number; trip_issued_litres: number;
+  trip_litres_per_trip: number | null; budget_trip_litres: number | null; approved_work_litres:number; approved_trips:number; approved_trip_litres:number; approved_travel:boolean; trips_issued: number; work_issued: number; trip_issued_litres: number;
 };
 type SplitRow = { key: string; litres: string };
 const planKey = (j: PlannedJob) =>
@@ -96,19 +96,22 @@ export default function FuelIssueScreen() {
     const selection=selected.data??[];
     const traceIds=[...new Set(selection.map(j=>j.tracecode_id))];
     if(!traceIds.length){setPlannedJobs([]);setPlanLoading(false);return;}
-    const [budget,allocated]=await Promise.all([
+    const [budget,allocated,approvals]=await Promise.all([
       supabase.from('fuel_budget_activity_v')
         .select('tracecode_id,vehicle_job_id,target_dap,sequence_no,tracecode_name,vehicle_job_name,total_budget_litres,tractor_class_id,effective_hectares,standard_l_per_ha,budget_work_litres,budget_trip_count,trip_litres_per_trip,budget_trip_litres')
         .in('tracecode_id',traceIds),
       supabase.from('fuel_allocation')
         .select('tracecode_id,vehicle_job_id,planned_target_dap,planned_sequence_no,fuel_allocated,allocation_kind')
-        .not('planned_week_start','is',null).in('tracecode_id',traceIds)
+        .not('planned_week_start','is',null).in('tracecode_id',traceIds),
+      supabase.from('fuel_weekly_approval').select('*').in('tracecode_id',traceIds)
     ]);
-    if(budget.error||allocated.error){
-      Alert.alert('Planning load failed',budget.error?.message??allocated.error?.message??'Unknown');
+    if(budget.error||allocated.error||approvals.error){
+      Alert.alert('Planning load failed',budget.error?.message??allocated.error?.message??approvals.error?.message??'Unknown');
       setPlanLoading(false);return;
     }
-    const items: PlannedJob[]=selection.map(j=>{
+    const items: PlannedJob[]=selection.flatMap(j=>{
+      const approval=(approvals.data??[]).find(a=>a.week_start===j.week_start&&a.tracecode_id===j.tracecode_id&&a.vehicle_job_id===j.vehicle_job_id&&a.target_dap===j.target_dap&&a.sequence_no===j.sequence_no);
+      if(!approval)return [];
       const b=(budget.data??[]).find(x=>
         x.tracecode_id===j.tracecode_id&&x.vehicle_job_id===j.vehicle_job_id&&
         x.target_dap===j.target_dap&&x.sequence_no===j.sequence_no);
@@ -116,7 +119,7 @@ export default function FuelIssueScreen() {
         x.tracecode_id===j.tracecode_id&&x.vehicle_job_id===j.vehicle_job_id&&
         x.planned_target_dap===j.target_dap&&x.planned_sequence_no===j.sequence_no)
         .reduce((n,x)=>n+Number(x.fuel_allocated||0),0);
-      return {...j,tracecode_name:b?.tracecode_name??String(j.tracecode_id),
+      return [{...j,approved_work_litres:Number(approval.approved_work_litres),approved_trips:Number(approval.approved_trips),approved_trip_litres:Number(approval.trip_litres),approved_travel:!!approval.include_trip_fuel,tracecode_name:b?.tracecode_name??String(j.tracecode_id),
         vehicle_job_name:b?.vehicle_job_name??String(j.vehicle_job_id),
         budget:b?.total_budget_litres==null?null:Number(b.total_budget_litres),
         tractor_class_id:b?.tractor_class_id==null?null:Number(b.tractor_class_id),
@@ -128,7 +131,7 @@ export default function FuelIssueScreen() {
         budget_trip_litres:b?.budget_trip_litres==null?null:Number(b.budget_trip_litres),issued,
         work_issued:(allocated.data??[]).filter(x=>x.tracecode_id===j.tracecode_id&&x.vehicle_job_id===j.vehicle_job_id&&x.planned_target_dap===j.target_dap&&x.planned_sequence_no===j.sequence_no&&x.allocation_kind!=='TRIP').reduce((n,x)=>n+Number(x.fuel_allocated||0),0),
         trip_issued_litres:(allocated.data??[]).filter(x=>x.tracecode_id===j.tracecode_id&&x.vehicle_job_id===j.vehicle_job_id&&x.planned_target_dap===j.target_dap&&x.planned_sequence_no===j.sequence_no&&x.allocation_kind==='TRIP').reduce((n,x)=>n+Number(x.fuel_allocated||0),0),
-        trips_issued:(allocated.data??[]).filter(x=>x.tracecode_id===j.tracecode_id&&x.vehicle_job_id===j.vehicle_job_id&&x.planned_target_dap===j.target_dap&&x.planned_sequence_no===j.sequence_no&&x.allocation_kind==='TRIP').length};
+        trips_issued:(allocated.data??[]).filter(x=>x.tracecode_id===j.tracecode_id&&x.vehicle_job_id===j.vehicle_job_id&&x.planned_target_dap===j.target_dap&&x.planned_sequence_no===j.sequence_no&&x.allocation_kind==='TRIP').length}];
     });
     setPlannedJobs(items);setPlanLoading(false);
   };
@@ -312,7 +315,7 @@ export default function FuelIssueScreen() {
     }
 
     if(!issueUnplanned){
-      if(issueMode==='TRIP' && (splits.length!==1 || !visiblePlannedJobs.some(j=>planKey(j)===splits[0].key && j.budget_trip_count!==null && j.trips_issued<Math.floor(j.budget_trip_count) && j.trip_litres_per_trip!==null && Math.abs(Number(splits[0].litres)-j.trip_litres_per_trip)<0.001))){
+      if(issueMode==='TRIP' && (splits.length!==1 || !visiblePlannedJobs.some(j=>planKey(j)===splits[0].key && j.approved_travel && j.trips_issued<j.approved_trips && Math.abs(Number(splits[0].litres)-j.approved_trip_litres)<0.001))){
         Alert.alert('One trip only','Select one job with a remaining trip and issue exactly its trip allowance.');return;
       }
       if(splits.some(x=>!visiblePlannedJobs.some(j=>planKey(j)===x.key))){
