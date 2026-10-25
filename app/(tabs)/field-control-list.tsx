@@ -14,6 +14,13 @@ export default function FieldControlList(){
  if(!def)return <Redirect href="/(tabs)/fields-control"/>;
  if(allowed===null)return <ActivityIndicator/>;
  if(!allowed)return <Redirect href="/(tabs)/fuel"/>;
+ async function toggleActive(item:Record<string,any>){
+  if(!def)return;
+  const next=item.active===false;
+  const {data,error:e}=await supabase.from(def.table).update({active:next}).eq(def.id,item[def.id]).select(def.id);
+  if(e||!data?.length){setError(e?.message??"Could not change status.");return;}
+  setRows(old=>old.map(x=>x[def.id]===item[def.id]?{...x,active:next}:x));
+ }
  const filtered=rows.filter(x=>showInactive||x.active!==false);
  return <ScrollView contentContainerStyle={s.page}>
   <JsplModuleHeader title={def.title} showMain/>
@@ -22,10 +29,10 @@ export default function FieldControlList(){
   <View style={s.row}><Text style={s.label}>Show inactive</Text><Switch value={showInactive} onValueChange={setShowInactive}/></View>
   {!!error&&<Text style={{color:C.danger}}>{error}</Text>}
   <Text style={s.muted}>{filtered.length} of {rows.length} records</Text>
-  <View style={s.listHeader}><Text style={s.listHeaderTitle}>{def.title}</Text><Text style={s.listHeaderEdit}>Edit</Text></View>
+  <View style={s.listHeader}><Text style={s.listHeaderTitle}>{def.title}</Text><Text style={s.listHeaderStatus}>Active</Text><Text style={s.listHeaderEdit}> </Text></View>
   {filtered.map(x=><View key={String(x[def.id])} style={s.item}>
    <View style={{flex:1}}><Text style={s.title}>{String(x[def.name]??"")}</Text></View>
-
+   <Switch value={x.active!==false} onValueChange={()=>void toggleActive(x)}/>
    <Pressable style={s.edit} onPress={()=>router.push({pathname:"/(tabs)/field-control-detail",params:{kind:def.table,id:String(x[def.id]),mode:"edit"}})}><Text style={s.link}>Edit</Text></Pressable>
   </View>)}
  </ScrollView>;
