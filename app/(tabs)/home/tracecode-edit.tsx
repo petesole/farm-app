@@ -43,6 +43,7 @@ type TracecodeRow = {
 
   plant_population: number | null;
   fuel_budget_id: number | null;
+  crop_status: "Planned" | "Planted" | "Not Planted" | "Abandoned";
 };
 
 type RoleName = "admin" | "manager" | "viewer" | "irrigation" | "unknown";
@@ -288,6 +289,9 @@ export default function TracecodeEditScreen() {
   // Form fields
   const [tracecodeName, setTracecodeName] = useState("");
   const [tracecodeSize, setTracecodeSize] = useState("");
+  const [cropStatus, setCropStatus] = useState<TracecodeRow["crop_status"]>("Planned");
+  const [cropStatusModal, setCropStatusModal] = useState(false);
+  const cropStatusOptions: TracecodeRow["crop_status"][] = ["Planned", "Planted", "Not Planted", "Abandoned"];
 
   const [farmId, setFarmId] = useState<number | null>(null);
   const [fieldId, setFieldId] = useState<number | null>(null);
@@ -429,6 +433,7 @@ export default function TracecodeEditScreen() {
 
           setTracecodeName("");
           setTracecodeSize("");
+          setCropStatus("Planned");
           setFarmId(null);
           setFieldId(null);
           setSeasonId(null);
@@ -461,6 +466,7 @@ export default function TracecodeEditScreen() {
 
           setTracecodeName(tc.tracecode_name ?? "");
           setTracecodeSize(tc.tracecode_size?.toString() ?? "");
+          setCropStatus(tc.crop_status ?? "Planted");
 
           setFieldId(tc.field_id ?? null);
           setSeasonId(tc.season_id ?? null);
@@ -643,6 +649,7 @@ export default function TracecodeEditScreen() {
 
         plant_population: toNumOrNull(plantPopulation),
         fuel_budget_id: fuelBudgetId,
+        crop_status: cropStatus,
       };
 
       if (isNew) {
@@ -713,6 +720,15 @@ export default function TracecodeEditScreen() {
 
       {allowFullAdminEdit && (
         <>
+          <SelectModal<TracecodeRow["crop_status"]>
+            visible={cropStatusModal}
+            title="Crop status"
+            items={cropStatusOptions}
+            getKey={(status) => status}
+            getLabel={(status) => status}
+            onPick={(status) => { setCropStatus(status); setCropStatusModal(false); }}
+            onClose={() => setCropStatusModal(false)}
+          />
           <SelectModal<FarmRow>
             visible={farmModal}
             title="Select Farm"
@@ -813,6 +829,13 @@ export default function TracecodeEditScreen() {
                 keyboardType="numeric"
                 placeholder="e.g. 12.5"
               />
+            </Card>
+
+            <Card title="Crop status">
+              <SelectorRow label="Status" valueText={cropStatus} onPress={() => setCropStatusModal(true)} />
+              <ThemedText style={{ opacity: 0.7, marginTop: 8 }}>
+                Not Planted is excluded from crop yield reporting while retaining field preparation and fuel costs.
+              </ThemedText>
             </Card>
 
             <Card title="Location / Setup (names, not IDs)">
