@@ -3,7 +3,7 @@ import { router } from "expo-router";
 import { jsplColors as C, jsplSpacing as S, jsplRadii as R } from "@/constants/jspl-design";
 
 /** Shared JSPL header: branding only; does not alter data or permissions. */
-export function JsplModuleHeader({ title, subtitle, showMain = false }: { title: string; subtitle?: string; showMain?: boolean }) {
+export function JsplModuleHeader({ title, subtitle, showMain = false, backLabel, backHref }: { title: string; subtitle?: string; showMain?: boolean; backLabel?: string; backHref?: string }) {
   return (
     <View style={styles.header}>
       <Image source={require("../../assets/images/jspl_farm_logo.png")} resizeMode="contain" style={styles.logo} />
@@ -11,6 +11,7 @@ export function JsplModuleHeader({ title, subtitle, showMain = false }: { title:
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.subtitle}>{subtitle || "John Sole (Private) Limited"}</Text>
       </View>
+      {backLabel && backHref && <Pressable accessibilityRole="button" onPress={() => router.replace(backHref as any)} style={styles.mainButton}><Text style={styles.mainText}>{backLabel}</Text></Pressable>}
       {showMain && <Pressable accessibilityRole="button" onPress={() => router.replace("/(tabs)/main-dashboard")} style={styles.mainButton}><Text style={styles.mainText}>Main</Text></Pressable>}
     </View>
   );
