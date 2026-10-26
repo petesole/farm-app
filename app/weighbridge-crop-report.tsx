@@ -65,26 +65,26 @@ export default function CropReport(){
  <Text style={{color:"#687488",marginTop:12}}>{busy?"Loading…":shown.length+" TraceCodes"} · Expected Yield apportions each crop pool by its harvested TraceCode share, provisionally. Only dispatches represented in the farm-slip delivery workflow are included. Delivered and Financial yields remain blank until stock allocations and customer moisture deductions are reconciled. Totals follow the current filters.</Text>
  </ScrollView>
  <View nativeID="wb-crop-print" style={{backgroundColor:"#fff",padding:0}}>
-  <View style={{flexDirection:"row",alignItems:"center",marginBottom:12,borderBottomWidth:2,borderBottomColor:"#1b5639",paddingBottom:9}}>
-   <Image source={require("../assets/images/jspl_farm_logo.png")} resizeMode="contain" style={{width:72,height:72,marginRight:14}}/>
-   <View><Text style={{fontWeight:"bold",fontSize:25,color:"#183d2b"}}>Crop Report {seasons.find(s=>String(s.season_id)===season)?.season_name||""}</Text><Text style={{fontSize:13}}>John Sole (Private) Limited</Text></View>
+  <View style={{flexDirection:"row",alignItems:"center",marginBottom:18,borderBottomWidth:2,borderBottomColor:"#1b5639",paddingBottom:13}}>
+   <Image source={require("../assets/images/jspl_farm_logo.png")} resizeMode="contain" style={{width:92,height:92,marginRight:16}}/>
+   <View><Text style={{fontWeight:"bold",fontSize:30,color:"#183d2b"}}>Crop Report {seasons.find(s=>String(s.season_id)===season)?.season_name||""}</Text><Text style={{fontSize:16}}>John Sole (Private) Limited</Text></View>
   </View>
-  <View style={{flexDirection:"row",marginBottom:13,gap:18}}>
-   <Text style={{fontWeight:"bold",fontSize:14}}>HA: {fmt(ha,1)}</Text>
-   <Text style={{fontWeight:"bold",fontSize:12}}>Harvested: {fmt(harvest)} t</Text>
-   <Text style={{fontWeight:"bold",fontSize:12}}>Harvest Yield: {ha>0?fmt(harvest/ha):"—"} t/ha</Text>
+  <View style={{flexDirection:"row",marginBottom:18,gap:17}}>
+   <Text style={{fontWeight:"bold",fontSize:16}}>HA: {fmt(ha,1)}</Text>
+   <Text style={{fontWeight:"bold",fontSize:16}}>Harvested: {fmt(harvest)} t</Text>
+   <Text style={{fontWeight:"bold",fontSize:16}}>Harvest Yield: {ha>0?fmt(harvest/ha):"—"} t/ha</Text>
   </View>
-  <View style={{flexDirection:"row",backgroundColor:"#dbeadd",paddingVertical:6,borderBottomWidth:1,borderBottomColor:"#889d8b"}}>
-   {(["Crop","Farm","Variety","TraceCode","Irrigation","Ha","Harvested","Harvest t/Ha"] as const).map((x,i)=><Text key={x} style={{width:(i===3?16:i===0||i===2?13:i===1?12:i===4?15:i===5?8:i===6?12:11)+"%",fontSize:11,fontWeight:"bold",paddingHorizontal:2,textAlign:i>=5?"right":"left"}}>{x}</Text>)}
+  <View style={{flexDirection:"row",backgroundColor:"#dbeadd",paddingVertical:10,borderBottomWidth:1,borderBottomColor:"#889d8b"}}>
+   {(["Crop","Farm","Variety","TraceCode","Irrigation","Ha","Harvested","Harvest t/Ha"] as const).map((x,i)=><Text key={x} style={{width:(i===3?16:i===0||i===2?13:i===1?12:i===4?15:i===5?8:i===6?12:11)+"%",fontSize:13,fontWeight:"bold",paddingHorizontal:2,textAlign:i>=5?"right":"left"}}>{x}</Text>)}
   </View>
-  {shown.map((r,i)=><View key={r.tracecode_id} style={{flexDirection:"row",paddingVertical:shown.length>38?1:2,borderBottomWidth:.5,borderBottomColor:"#dce4df",backgroundColor:i%2?"#f6f9f7":"#fff"}}>
-   {([r.crop_name||"",r.farm_name||"",r.variety_name||"",r.tracecode_name,r.irrigation_type||"",fmt(r.hectares,2),fmt(r.harvested_tonnes),fmt(r.harvest_yield_t_ha)] as string[]).map((v,j)=><Text key={j} numberOfLines={1} style={{width:(j===3?16:j===0||j===2?13:j===1?12:j===4?15:j===5?8:j===6?12:11)+"%",fontSize:shown.length>45?8:11,paddingHorizontal:2,textAlign:j>=5?"right":"left"}}>{v}</Text>)}
+  {shown.map((r,i)=><View key={r.tracecode_id} style={{flexDirection:"row",paddingVertical:shown.length>30?2:6,borderBottomWidth:.5,borderBottomColor:"#dce4df",backgroundColor:i%2?"#f6f9f7":"#fff"}}>
+   {([r.crop_name||"",r.farm_name||"",r.variety_name||"",r.tracecode_name,r.irrigation_type||"",fmt(r.hectares,2),fmt(r.harvested_tonnes),fmt(r.harvest_yield_t_ha)] as string[]).map((v,j)=><Text key={j} numberOfLines={1} style={{width:(j===3?16:j===0||j===2?13:j===1?12:j===4?15:j===5?8:j===6?12:11)+"%",fontSize:shown.length>45?9:13,paddingHorizontal:2,textAlign:j>=5?"right":"left"}}>{v}</Text>)}
   </View>)}
-  <View style={{flexDirection:"row",paddingTop:6,borderTopWidth:2,borderTopColor:"#1b5639"}}>
-   <Text style={{width:"69%",fontSize:12,fontWeight:"bold"}}>TOTAL</Text>
-   <Text style={{width:"8%",fontSize:12,textAlign:"right",fontWeight:"bold"}}>{fmt(ha,1)}</Text>
-   <Text style={{width:"12%",fontSize:12,textAlign:"right",fontWeight:"bold"}}>{fmt(harvest)}</Text>
-   <Text style={{width:"11%",fontSize:12,textAlign:"right",fontWeight:"bold"}}>{ha>0?fmt(harvest/ha):"—"}</Text>
+  <View style={{flexDirection:"row",paddingTop:10,borderTopWidth:2,borderTopColor:"#1b5639"}}>
+   <Text style={{width:"69%",fontSize:14,fontWeight:"bold"}}>TOTAL</Text>
+   <Text style={{width:"8%",fontSize:14,textAlign:"right",fontWeight:"bold"}}>{fmt(ha,1)}</Text>
+   <Text style={{width:"12%",fontSize:14,textAlign:"right",fontWeight:"bold"}}>{fmt(harvest)}</Text>
+   <Text style={{width:"11%",fontSize:14,textAlign:"right",fontWeight:"bold"}}>{ha>0?fmt(harvest/ha):"—"}</Text>
   </View>
  </View>
  </>;
