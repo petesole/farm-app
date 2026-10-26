@@ -6,6 +6,7 @@ import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   StyleSheet,
   TextInput,
@@ -46,38 +47,37 @@ export default function LoginScreen() {
 
       const u = norm(username);
       const p = password;
-
-      const { data, error } = await supabase
-        .from("login")
-        .select("user_id, username, role, active")
-        .eq("username", u)
-        .eq("password", p)
-        .eq("active", true)
-        .maybeSingle();
-
-      if (error) {
-        setStatus(`Login error: ${error.message}`);
+      // Shared web/native authentication: never query the legacy public.login table.
+      const { data: auth, error: authError } = await supabase.auth.signInWithPassword({
+        email: u,
+        password: p,
+      });
+      if (authError || !auth.user) {
+        setStatus(authError?.message || "Unable to sign in.");
         return;
       }
 
-      if (!data) {
-        setStatus("Invalid username or password.");
+      // Roles must come from the server; local storage is UI-only, not authorization.
+      const { data: access, error: accessError } = await supabase.rpc("my_farm_app_roles");
+      if (accessError) {
+        await supabase.auth.signOut();
+        setStatus("Unable to verify access: " + accessError.message);
         return;
       }
-
-      const role = norm(data.role);
-
+      const roles = (access || []).map((r: string) => norm(r));
+      if (!roles.some((r: string) => ["admin", "manager", "fuel", "viewer", "irrigation", "scouting", "scout", "scouter"].includes(r))) {
+        await supabase.auth.signOut();
+        setStatus("Your account has no assigned Farm Management role.");
+        return;
+      }
+      const role =
+        ["admin", "manager", "fuel", "irrigation", "scouting", "scout", "scouter", "viewer"]
+          .find((r) => roles.includes(r)) || roles[0];
       await AsyncStorage.setItem(
         "app_user",
-        JSON.stringify({
-          user_id: data.user_id,
-          username: data.username,
-          role,
-        })
+        JSON.stringify({ user_id: auth.user.id, username: auth.user.email, role })
       );
-
       await AsyncStorage.setItem("role", role);
-
       router.replace(landingForRole(role));
     } catch (e: any) {
       setStatus(`Login exception: ${e?.message ?? "Unknown error"}`);
@@ -88,18 +88,22 @@ export default function LoginScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <ThemedText type="title">Login</ThemedText>
+      <View style={styles.brand}>
+        <Image source={require("../assets/images/jspl_farm_logo.png")} resizeMode="contain" style={styles.logo} />
+        <ThemedText type="title">JSPL Farm Management</ThemedText>
+        <ThemedText style={styles.subheading}>John Sole (Private) Limited</ThemedText>
+      </View>
 
       <View style={{ height: 14 }} />
 
-      <ThemedText style={styles.label}>Username</ThemedText>
+      <ThemedText style={styles.label}>{"Email"}</ThemedText>
       <TextInput
         value={username}
         onChangeText={setUsername}
         autoCapitalize="none"
         autoCorrect={false}
         style={styles.input}
-        placeholder="username"
+        placeholder={"email@example.com"}
       />
 
       <View style={{ height: 10 }} />
@@ -140,6 +144,9 @@ const styles = StyleSheet.create({
     padding: 20,
     justifyContent: "center",
   },
+  brand: { alignItems: "center", marginBottom: 24 },
+  logo: { width: 116, height: 116, marginBottom: 14 },
+  subheading: { marginTop: 5, opacity: 0.7 },
   label: {
     opacity: 0.7,
     marginBottom: 6,
