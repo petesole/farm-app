@@ -3,7 +3,7 @@ import {wbParseDate,wbFormatDate,wbToday} from "../utils/wb-date";
 import {WbModuleHeader} from "../components/jspl/WbModuleHeader";
 import {jsplColors as C} from "../constants/jspl-design";
 import { useEffect,useMemo,useState } from "react";
-import { Platform,Pressable,ScrollView,Text,TextInput,View } from "react-native";
+import { Platform,Pressable,ScrollView,Text,TextInput,View,Image } from "react-native";
 import { supabase } from "../supabase";
 type CropRow={tracecode_id:number;tracecode_name:string;season_id:number;crop_id:number;season_name:string;crop_name:string|null;farm_name:string|null;variety_name:string|null;irrigation_type:string|null;plant_population:number|null;actual_planting_date:string|null;hectares:number|null;harvested_tonnes:number|null;harvest_yield_t_ha:number|null;delivered_yield_t_ha:number|null;financial_yield_t_ha:number|null};
 type Season={season_id:number;season_name:string};
@@ -19,6 +19,13 @@ export default function CropReport(){
  useEffect(()=>{if(Platform.OS!=="web"){setAuth(false);return;}let live=true;(async()=>{const {data:{user}}=await supabase.auth.getUser();if(!live)return;if(!user){setAuth(false);setErr("Sign in with your Admin account.");return;}const a=await supabase.rpc("wb_admin_allowed");if(!live)return;setAuth(a.data===true&&!a.error);if(a.error)setErr(a.error.message)})();return()=>{live=false}},[]);
  useEffect(()=>{if(!auth)return;let live=true;(async()=>{const [s,h]=await Promise.all([supabase.from("season").select("season_id,season_name").order("season_id",{ascending:false}),supabase.from("wb_crop_harvest_report_v").select("season_id").gt("harvested_tonnes",0).limit(5000)]);if(!live)return;if(s.error||h.error){setErr(s.error?.message||h.error?.message||"Failed to load seasons");return;}const productive=new Set((h.data||[]).map(r=>Number(r.season_id)));const available=((s.data||[]) as Season[]).filter(x=>productive.has(Number(x.season_id))&&x.season_name.trim().toLowerCase()!=="cont");setSeasons(available);setSeason(current=>available.some(x=>String(x.season_id)===current)?current:available.length?String(available[0].season_id):"");setErr("");})().catch(e=>{if(live)setErr(String(e))});return()=>{live=false}},[auth]);
  useEffect(()=>{if(!season)return;let live=true;(async()=>{setBusy(true);const [{data,error},{data:projection,error:projectionError}]=await Promise.all([supabase.from("wb_crop_harvest_report_v").select("*").eq("season_id",Number(season)).order("tracecode_name").limit(3000),supabase.from("wb_expected_yield_crop_v").select("*").eq("season_id",Number(season))]);if(!live)return;setBusy(false);if(error||projectionError){setErr(error?.message||projectionError?.message||"Query failed");return;}setErr("");setRows((data||[]) as CropRow[]);setExpected((projection||[]) as Expected[]);})();return()=>{live=false}},[season]);
+ useEffect(()=>{
+  if(typeof document==="undefined")return;
+  const style=document.createElement("style");
+  style.textContent="@media screen {#wb-crop-print{display:none !important}} @media print {@page{size:A4 landscape;margin:7mm} html,body,#root{margin:0!important;padding:0!important;width:100%!important;height:auto!important;background:white!important} #wb-crop-screen{display:none!important} #wb-crop-print{display:block!important;position:static!important;width:100%!important;overflow:visible!important} #wb-crop-print *{print-color-adjust:exact;-webkit-print-color-adjust:exact} }";
+  document.head.appendChild(style);
+  return()=>style.remove();
+ },[]);
  const shown=useMemo(()=>rows.filter(r=>(r.tracecode_name+" "+r.crop_name+" "+r.farm_name+" "+r.variety_name).toLowerCase().includes(filter.toLowerCase())),[rows,filter]);
  const ha=shown.reduce((s,r)=>s+Number(r.hectares||0),0),harvest=shown.reduce((s,r)=>s+Number(r.harvested_tonnes||0),0);
  const cropHarvest=new Map<number,number>();for(const r of rows)cropHarvest.set(r.crop_id,(cropHarvest.get(r.crop_id)||0)+Number(r.harvested_tonnes||0));
@@ -33,7 +40,7 @@ export default function CropReport(){
  if(Platform.OS!=="web")return <Text style={{padding:20}}>Crop Report is available on desktop web.</Text>;
  if(auth===null)return <Text style={{padding:20}}>Checking Admin access…</Text>;
  if(!auth)return <WbAdminSignIn onAuthenticated={()=>setAuth(true)}/>;
- return <ScrollView style={{flex:1,backgroundColor:C.background}} contentContainerStyle={{minWidth:1450,padding:18}}>
+ return <><ScrollView nativeID="wb-crop-screen" style={{flex:1,backgroundColor:C.background}} contentContainerStyle={{minWidth:1450,padding:18}}>
  <WbModuleHeader title="Crop Report"/>
  <View style={{flexDirection:"row",alignItems:"center",marginBottom:15,flexWrap:"wrap"}}>
  <Text style={{fontSize:29,fontWeight:"bold",color:"#1c2d40",marginRight:25}}>Crop Report {seasons.find(s=>String(s.season_id)===season)?.season_name||""}</Text>
@@ -56,5 +63,29 @@ export default function CropReport(){
  </View>)}
  </View>
  <Text style={{color:"#687488",marginTop:12}}>{busy?"Loading…":shown.length+" TraceCodes"} · Expected Yield apportions each crop pool by its harvested TraceCode share, provisionally. Only dispatches represented in the farm-slip delivery workflow are included. Delivered and Financial yields remain blank until stock allocations and customer moisture deductions are reconciled. Totals follow the current filters.</Text>
- </ScrollView>;
+ </ScrollView>
+ <View nativeID="wb-crop-print" style={{backgroundColor:"#fff",padding:4}}>
+  <View style={{flexDirection:"row",alignItems:"center",marginBottom:9,borderBottomWidth:2,borderBottomColor:"#1b5639",paddingBottom:6}}>
+   <Image source={require("../assets/images/jspl_farm_logo.png")} resizeMode="contain" style={{width:48,height:48,marginRight:12}}/>
+   <View><Text style={{fontWeight:"bold",fontSize:19,color:"#183d2b"}}>Crop Report {seasons.find(s=>String(s.season_id)===season)?.season_name||""}</Text><Text style={{fontSize:10}}>John Sole (Private) Limited</Text></View>
+  </View>
+  <View style={{flexDirection:"row",marginBottom:9,gap:24}}>
+   <Text style={{fontWeight:"bold",fontSize:12}}>HA: {fmt(ha,1)}</Text>
+   <Text style={{fontWeight:"bold",fontSize:12}}>Harvested: {fmt(harvest)} t</Text>
+   <Text style={{fontWeight:"bold",fontSize:12}}>Harvest Yield: {ha>0?fmt(harvest/ha):"—"} t/ha</Text>
+  </View>
+  <View style={{flexDirection:"row",backgroundColor:"#dbeadd",paddingVertical:5,borderBottomWidth:1,borderBottomColor:"#889d8b"}}>
+   {(["Crop","Farm","Variety","TraceCode","Irrigation","Ha","Harvested","Harvest t/Ha"] as const).map((x,i)=><Text key={x} style={{width:(i===3?18:i===0||i===2?13:i===1?12:i===4?15:i===5?8:i===6?11:10)+"%",fontSize:9,fontWeight:"bold",paddingHorizontal:3,textAlign:i>=5?"right":"left"}}>{x}</Text>)}
+  </View>
+  {shown.map((r,i)=><View key={r.tracecode_id} style={{flexDirection:"row",paddingVertical:shown.length>38?1:3,borderBottomWidth:.5,borderBottomColor:"#dce4df",backgroundColor:i%2?"#f6f9f7":"#fff"}}>
+   {([r.crop_name||"",r.farm_name||"",r.variety_name||"",r.tracecode_name,r.irrigation_type||"",fmt(r.hectares,2),fmt(r.harvested_tonnes),fmt(r.harvest_yield_t_ha)] as string[]).map((v,j)=><Text key={j} numberOfLines={1} style={{width:(j===3?18:j===0||j===2?13:j===1?12:j===4?15:j===5?8:j===6?11:10)+"%",fontSize:shown.length>45?7:9,paddingHorizontal:3,textAlign:j>=5?"right":"left"}}>{v}</Text>)}
+  </View>)}
+  <View style={{flexDirection:"row",paddingTop:6,borderTopWidth:2,borderTopColor:"#1b5639"}}>
+   <Text style={{width:"71%",fontSize:10,fontWeight:"bold"}}>TOTAL</Text>
+   <Text style={{width:"8%",fontSize:10,textAlign:"right",fontWeight:"bold"}}>{fmt(ha,1)}</Text>
+   <Text style={{width:"11%",fontSize:10,textAlign:"right",fontWeight:"bold"}}>{fmt(harvest)}</Text>
+   <Text style={{width:"10%",fontSize:10,textAlign:"right",fontWeight:"bold"}}>{ha>0?fmt(harvest/ha):"—"}</Text>
+  </View>
+ </View>
+ </>;
 }
