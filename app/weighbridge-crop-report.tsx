@@ -22,7 +22,7 @@ export default function CropReport(){
  useEffect(()=>{
   if(typeof document==="undefined")return;
   const style=document.createElement("style");
-  style.textContent="@media screen {#wb-crop-print{display:none !important}} @media print {@page{size:210mm 297mm;margin:6mm} button,a,[role="button"]{display:none!important} html,body,#root{margin:0!important;padding:0!important;width:100%!important;height:auto!important;background:white!important} #wb-crop-screen{display:none!important} #wb-crop-print{display:block!important;position:static!important;width:198mm!important;max-width:198mm!important;overflow:visible!important;box-sizing:border-box!important} #wb-crop-print *{print-color-adjust:exact;-webkit-print-color-adjust:exact} }";
+  style.textContent="@media screen {#wb-crop-print{display:none !important}} @media print {@page{size:210mm 297mm;margin:6mm} button,a,[role=button]{display:none!important} html,body,#root{margin:0!important;padding:0!important;width:100%!important;height:auto!important;background:white!important} #wb-crop-screen{display:none!important} #wb-crop-print{display:block!important;position:static!important;width:198mm!important;max-width:198mm!important;overflow:visible!important;box-sizing:border-box!important} #wb-crop-print *{print-color-adjust:exact;-webkit-print-color-adjust:exact} }";
   document.head.appendChild(style);
   return()=>style.remove();
  },[]);
