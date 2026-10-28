@@ -20,7 +20,8 @@ function norm(s: string | null | undefined) {
 function landingForRole(roleName: string) {
   const r = norm(roleName);
 
-  if (r === "admin" || r === "manager") return "/(tabs)/field-dashboard";
+  if (r === "admin") return "/(tabs)/main-dashboard";
+  if (r === "manager") return "/(tabs)/fuel";
   if (r === "fuel" || r === "viewer") return "/(tabs)/fuel";
   if (r === "irrigation") return "/(tabs)/irrigation_main_dashboard";
   if (r === "scouting" || r === "scout" || r === "scouter") {
