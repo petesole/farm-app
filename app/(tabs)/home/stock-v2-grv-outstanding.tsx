@@ -39,7 +39,7 @@ export default function GRVOutstanding(){
  const pick=(row:Chosen)=>setChosen(old=>old[row.key]?Object.fromEntries(Object.entries(old).filter(([k])=>k!==row.key)):{...old,[row.key]:row});
  const edit=(key:string,field:"quantity"|"price",value:string)=>setChosen(old=>old[key]?{...old,[key]:{...old[key],[field]:value}}:old);
  const lines=Object.values(chosen);
- const valid=!!owner&&!!supplier&&!!type&&!!dateISO(date)&&!!number.trim()&&lines.length>0&&lines.every(x=>(type==="dnote"||Number.isFinite(Number(x.price))&&Number(x.price)>0)&&(x.kind==="DN"||Number.isFinite(Number(x.quantity))&&Number(x.quantity)>0&&Number(x.quantity)<=x.max))&&(type!=="dnote"||(noPO?lines.every(x=>x.kind==="DIRECT"):lines.every(x=>x.kind==="PO")&&new Set(lines.map(x=>x.source)).size===1));
+ const valid=!!owner&&!!supplier&&!!type&&!!dateISO(date)&&!!number.trim()&&lines.length>0&&lines.every(x=>(type==="dnote"||Number.isFinite(Number(x.price))&&Number(x.price)>0)&&(x.kind==="DN"||Number.isFinite(Number(x.quantity))&&Number(x.quantity)>0&&Number(x.quantity)<=x.max))&&(type!=="dnote"||(noPO?lines.every(x=>x.kind==="DIRECT"):lines.every(x=>x.kind==="PO")));
  const submitCombined=async()=>{if(!valid||busy||type!=="grv")return;setBusy(true);setError("");setSuccess("");try{
   const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");
   const grouped=new Map<string,{item_code:string;invoice_quantity:number;unit_price:number}>();
@@ -60,13 +60,14 @@ export default function GRVOutstanding(){
  }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
  const submitDNote=async()=>{if(!valid||busy||type!=="dnote")return;
   const selected=lines.filter(x=>x.kind==="PO"),poIds=[...new Set(selected.map(x=>x.source))];
-  if(!noPO&&(selected.length!==lines.length||poIds.length!==1)){setError("A PO-linked D-Note must use one purchase order.");return;}
+  if(!noPO&&selected.length!==lines.length){setError("Select valid outstanding PO lines.");return;}
   if(noPO&&!lines.every(x=>x.kind==="DIRECT")){setError("Choose unplanned receipt products only.");return;}
   setBusy(true);setError("");setSuccess("");
   try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");
    const id="xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,v=>{const n=Math.floor(Math.random()*16);return(v==="x"?n:(n&3)|8).toString(16)});
    const payload={owner_code:owner,supplier,...(!noPO?{order_id:poIds[0]}:{}),receipt_mode:"dnote",delivery_note:number.trim(),receipt_date:dateISO(date),lines:(noPO?lines:selected).map(x=>({item_code:x.item_code,quantity:Number(x.quantity)}))};
-   const response=await fetch(endpoint,{method:"POST",headers:{authorization:"Bearer "+session.access_token,"content-type":"application/json"},body:JSON.stringify({action:noPO?"direct_grv":"grv",request_id:id,payload})});
+   const multiPayload={owner_code:owner,supplier,delivery_note:number.trim(),receipt_date:dateISO(date),lines:selected.map(x=>({order_line_id:x.orderLineId,quantity:Number(x.quantity)}))};
+   const response=await fetch(endpoint,{method:"POST",headers:{authorization:"Bearer "+session.access_token,"content-type":"application/json"},body:JSON.stringify({action:noPO?"direct_grv":poIds.length>1?"multi_po_dnote":"grv",request_id:id,payload:!noPO&&poIds.length>1?multiPayload:payload})});
    const result=await response.json();if(!response.ok)throw Error(result.error||"D-Note posting failed");
    setChosen({});setNumber("");setSuccess("D-Note received into stock. Unit prices remain pending GRV.");await load();
   }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}
@@ -90,7 +91,7 @@ export default function GRVOutstanding(){
     <ThemedText>Delivered: {x.quantity} {x.base_unit} · Locked</ThemedText>
     {entry?<View><ThemedText style={s.label}>Required unit price</ThemedText><TextInput style={[s.input,s.required]} keyboardType="decimal-pad" value={entry.price} onChangeText={v=>edit(key,"price",v)}/></View>:null}
    </View>}):null}
-   {type==="dnote"&&!noPO?<ThemedText style={s.muted}>One D-Note may contain several products from one PO. For products without a PO, select No PO / Unplanned Delivery.</ThemedText>:null}
+   {type==="dnote"&&!noPO?<ThemedText style={s.muted}>Select delivered products from one or several POs for this supplier. For products without a PO, select No PO / Unplanned Delivery.</ThemedText>:null}
    {type==="dnote"&&noPO?products.map(x=>{const key="DIRECT:"+x.item_code,entry=chosen[key];return <View key={key} style={s.line}>
     {selection(key,(entry?"☑ ":"□ ")+x.item_name+" ("+x.base_unit+")",!!entry,()=>pick({kind:"DIRECT",key,item_code:x.item_code,quantity:"0",price:"0",source:0,max:100000}))}
     {entry?<View style={s.field}><ThemedText style={s.label}>Received quantity ({x.base_unit})</ThemedText><TextInput style={[s.input,s.required]} keyboardType="decimal-pad" value={entry.quantity} onChangeText={v=>edit(key,"quantity",v)}/></View>:null}
