@@ -94,7 +94,7 @@ export default function StockV2Workflow(){
   return [...map.entries()].map(([id,lines])=>({id,lines,trace:lines[0].tracecode_name,remaining:lines.reduce((s,x)=>s+Math.max(0,x.planned_quantity-x.issued_quantity),0)})).filter(x=>x.remaining>0);
  },[snapshot]);
  const selectedJob=jobs.find(x=>x.id===jobId);
- const activeTraces=traces.filter(t=>(cropId===null||t.crop_id===cropId)&&crops.some(c=>c.crop_id===t.crop_id)&&t.tracecode_name.toLowerCase().startsWith(search.trim().toLowerCase()));
+ const activeTraces=traces.filter(t=>(cropId===null||t.crop_id===cropId)&&(t.crop_id==null||crops.some(c=>c.crop_id===t.crop_id))&&t.tracecode_name.toLowerCase().startsWith(search.trim().toLowerCase()));
  const choosePO=(po:typeof orders[number])=>{setOrderId(po.id);setContractId(po.contract_id);setSupplier(po.supplier);setLines(po.lines.filter(x=>x.received_quantity<x.ordered_quantity).map((x,i)=>({...emptyLine(nextLine+i,x.item_code),quantity:String(x.ordered_quantity-x.received_quantity),unit_price:String(x.ordered_unit_price??"")})));setNextLine(n=>n+po.lines.length);setDropdown(null);resetEdit()};
  const chooseJob=(job:typeof jobs[number])=>{setJobId(job.id);setTraceId(job.lines[0].external_tracecode_id);setLines(job.lines.filter(x=>x.planned_quantity>x.issued_quantity).map((x,i)=>({...emptyLine(nextLine+i,x.item_code),quantity:String(Number((x.planned_quantity-x.issued_quantity).toFixed(4))),rate_per_ha:String(x.rate_per_ha)})));setNextLine(n=>n+job.lines.length);setDropdown(null);resetEdit()};
  const menu=(id:string,title:string,choices:{label:string;value:string;onSelect:()=>void}[],searchable=false)=> <View style={styles.dropdown}>
