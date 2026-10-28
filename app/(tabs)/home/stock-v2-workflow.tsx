@@ -163,7 +163,7 @@ export default function StockV2Workflow(){
   {tab===null?<View style={styles.home}>
     <View style={styles.homeGrid}>{tabs.map(x=><View key={x} style={styles.dashboardCard}>
       <JsplDashboardButton title={x}
-       count={x==="GRV"?snapshot?.pending_invoice_count:undefined}
+       description={x==="GRV"&&snapshot?.pending_invoice_count?String(snapshot.pending_invoice_count)+" pending":undefined}
        onPress={()=>x==="Spray Planning"?router.push("/stock-v2-spray-planning"):switchTab(x)}/>
      </View>)}</View>
    </View>:null}
