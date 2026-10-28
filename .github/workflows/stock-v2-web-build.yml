@@ -21,8 +21,7 @@ jobs:
         with:
           node-version: '20'
           cache: npm
-      - run: npm ci
-      - run: npm install --no-save pdf-lib@1.17.1
+      - run: npm install --no-audit --no-fund
       - name: TypeScript and web compilation
         id: compile
         shell: bash
