@@ -8,8 +8,8 @@ import {displayJsplDate} from "@/utils/jspl-input";
 import {jsplColors,jsplSpacing,jsplRadii} from "@/constants/jspl-design";
 const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
 type DLine={document_id:number;document_date:string;delivery_note:string;delivery_note_date:string|null;supplier_name:string;owner_code:string;item_code:string;item_name:string;base_unit:string;line_id:number;quantity:number;order_id?:number|null};
-type POLine={owner_code:string;order_id:number;order_number:string;supplier_name:string;item_code:string;item_name:string;base_unit:string;ordered_quantity:number;received_quantity:number;ordered_unit_price:number|null;status:string};
-type Chosen={kind:"DN"|"PO";key:string;item_code:string;quantity:string;price:string;source:number;max:number};
+type POLine={owner_code:string;order_id:number;order_number:string;supplier_name:string;item_code:string;item_name:string;base_unit:string;ordered_quantity:number;received_quantity:number;ordered_unit_price:number|null;status:string;order_line_id:number};
+type Chosen={kind:"DN"|"PO";key:string;item_code:string;quantity:string;price:string;source:number;max:number;orderLineId?:number};
 const dateISO=(v:string)=>{const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(v.trim());if(!m)return null;const iso=m[3]+"-"+m[2]+"-"+m[1];const d=new Date(iso+"T12:00:00Z");return !Number.isNaN(d.getTime())&&d.toISOString().slice(0,10)===iso?iso:null;};
 const money=(n:number)=>Number.isFinite(n)?n.toFixed(2):"0.00";
 export default function GRVOutstanding(){
@@ -35,7 +35,7 @@ export default function GRVOutstanding(){
  const pick=(row:Chosen)=>setChosen(old=>old[row.key]?Object.fromEntries(Object.entries(old).filter(([k])=>k!==row.key)):{...old,[row.key]:row});
  const edit=(key:string,field:"quantity"|"price",value:string)=>setChosen(old=>old[key]?{...old,[key]:{...old[key],[field]:value}}:old);
  const lines=Object.values(chosen);
- const valid=!!owner&&!!supplier&&type==="grv"&&!!dateISO(date)&&!!number.trim()&&lines.length>0&&lines.every(x=>Number(x.price)>0&&Number.isFinite(Number(x.price))&&(x.kind==="DN"||Number(x.quantity)>0&&Number(x.quantity)<=x.max));
+ const valid=!!owner&&!!supplier&&!!type&&!!dateISO(date)&&!!number.trim()&&lines.length>0&&lines.every(x=>(type==="dnote"||Number(x.price)>0&&Number.isFinite(Number(x.price)))&&(x.kind==="DN"||Number(x.quantity)>0&&Number(x.quantity)<=x.max));
  const canLegacy=type==="grv"&&lines.length>0&&lines.every(x=>x.kind==="DN")&&new Set(lines.map(x=>x.source)).size===1&&lines.length===dn.filter(x=>x.document_id===lines[0]?.source).length;
  const submitCombined=async()=>{if(!valid||busy)return;setBusy(true);setError("");setSuccess("");try{
   const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");
@@ -53,6 +53,36 @@ export default function GRVOutstanding(){
   const result=await response.json();if(!response.ok)throw Error(result.error||"Combined GRV rejected");
   setChosen({});setNumber("");setSuccess("GRV saved and valued. Existing D-Note quantities were not posted again.");await load();
  }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
+ const submitCombined=async()=>{if(!valid||busy||type!=="grv")return;setBusy(true);setError("");setSuccess("");try{
+  const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");
+  const grouped=new Map<string,{item_code:string;invoice_quantity:number;unit_price:number}>();
+  const receipts=new Map<string,{item_code:string;quantity:number}>();
+  for(const line of lines){const prior=grouped.get(line.item_code),price=Number(line.price),quantity=Number(line.quantity);
+   if(prior&&prior.unit_price!==price)throw Error("Use separate GRVs for different prices of the same product.");
+   grouped.set(line.item_code,{item_code:line.item_code,invoice_quantity:(prior?.invoice_quantity??0)+quantity,unit_price:price});
+   if(line.kind==="PO"){const v=receipts.get(line.item_code);receipts.set(line.item_code,{item_code:line.item_code,quantity:(v?.quantity??0)+quantity});}
+  }
+  const requestId="xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,v=>{const n=Math.floor(Math.random()*16);return(v==="x"?n:(n&3)|8).toString(16)});
+  const payload={owner_code:owner,supplier,invoice_number:number.trim(),invoice_date:dateISO(date),receipt_date:dateISO(date),
+   invoice_lines:[...grouped.values()],allocations:lines.filter(x=>x.kind==="DN").map(x=>({line_id:Number(x.key.slice(3)),quantity:Number(x.quantity)})),
+   new_receipts:[...receipts.values()],
+   po_allocations:lines.filter(x=>x.kind==="PO").map(x=>({order_line_id:x.orderLineId,item_code:x.item_code,quantity:Number(x.quantity)}))};
+  const response=await fetch(endpoint,{method:"POST",headers:{authorization:"Bearer "+session.access_token,"content-type":"application/json"},body:JSON.stringify({action:"combined_grv",request_id:requestId,payload})});
+  const result=await response.json();if(!response.ok)throw Error(result.error||"GRV posting failed");
+  setChosen({});setNumber("");setSuccess("Combined GRV saved and valued. Existing D-Note quantities were not posted again.");await load();
+ }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
+ const submitDNote=async()=>{if(!valid||busy||type!=="dnote")return;
+  const selected=lines.filter(x=>x.kind==="PO"),poIds=[...new Set(selected.map(x=>x.source))];
+  if(selected.length!==lines.length||poIds.length!==1){setError("A delivery note must use lines from one outstanding PO.");return;}
+  setBusy(true);setError("");setSuccess("");
+  try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");
+   const id="xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,v=>{const n=Math.floor(Math.random()*16);return(v==="x"?n:(n&3)|8).toString(16)});
+   const payload={owner_code:owner,supplier,order_id:poIds[0],receipt_mode:"dnote",delivery_note:number.trim(),receipt_date:dateISO(date),lines:selected.map(x=>({item_code:x.item_code,quantity:Number(x.quantity)}))};
+   const response=await fetch(endpoint,{method:"POST",headers:{authorization:"Bearer "+session.access_token,"content-type":"application/json"},body:JSON.stringify({action:"grv",request_id:id,payload})});
+   const result=await response.json();if(!response.ok)throw Error(result.error||"D-Note posting failed");
+   setChosen({});setNumber("");setSuccess("D-Note received into stock. Unit prices remain pending GRV.");await load();
+  }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}
+ };
  const submit=async()=>{if(!valid||!canLegacy||busy)return;setBusy(true);setError("");setSuccess("");try{
   const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");
   const payload={document_id:lines[0].source,invoice_number:number.trim(),invoice_date:dateISO(date),lines:lines.map(x=>({line_id:Number(x.key.slice(3)),unit_price:Number(x.price)}))};
@@ -80,15 +110,16 @@ export default function GRVOutstanding(){
     <ThemedText>Delivered: {x.quantity} {x.base_unit} · Locked</ThemedText>
     {entry?<View><ThemedText style={s.label}>Required unit price</ThemedText><TextInput style={[s.input,s.required]} keyboardType="decimal-pad" value={entry.price} onChangeText={v=>edit(key,"price",v)}/></View>:null}
    </View>}):null}
-   {outstandingPO.map(x=>{const key="PO:"+x.order_id+":"+x.item_code,entry=chosen[key],remaining=Math.max(0,x.ordered_quantity-x.received_quantity);return <View key={key} style={s.line}>
-    {selection(key,(entry?"☑ ":"□ ")+x.order_number+" · "+x.item_name+" ("+x.base_unit+")",!!entry,()=>pick({kind:"PO",key,item_code:x.item_code,quantity:"0",price:"0",source:x.order_id,max:remaining}))}
+   {outstandingPO.map(x=>{const key="PO:"+x.order_line_id,entry=chosen[key],remaining=Math.max(0,x.ordered_quantity-x.received_quantity);return <View key={key} style={s.line}>
+    {selection(key,(entry?"☑ ":"□ ")+x.order_number+" · "+x.item_name+" ("+x.base_unit+")",!!entry,()=>pick({kind:"PO",key,item_code:x.item_code,quantity:"0",price:"0",source:x.order_id,max:remaining,orderLineId:x.order_line_id}))}
     <ThemedText>Ordered {x.ordered_quantity} · Already received {x.received_quantity} · Available {remaining}</ThemedText>
     {entry?<View style={s.wrap}><View style={s.field}><ThemedText style={s.label}>Required qty (max {remaining})</ThemedText><TextInput style={[s.input,s.required]} keyboardType="decimal-pad" value={entry.quantity} onChangeText={v=>edit(key,"quantity",v)}/></View><View style={s.field}><ThemedText style={s.label}>Required unit price</ThemedText><TextInput style={[s.input,s.required]} keyboardType="decimal-pad" value={entry.price} onChangeText={v=>edit(key,"price",v)}/></View></View>:null}
    </View>})}
    {!outstandingDN.length&&!outstandingPO.length?<ThemedText>No outstanding lines for this supplier.</ThemedText>:null}
    <ThemedText style={s.label}>Selected: {lines.length} lines · Total value: USD {money(lines.reduce((a,x)=>a+Number(x.quantity)*Number(x.price),0))}</ThemedText>
-   {type==="dnote"?<ThemedText style={s.warning}>D-Note entry is preview-only on this screen until the PO-line receiving action is connected. No stock will be posted here.</ThemedText>:null}
+   {type==="dnote"?<Pressable disabled={!valid||busy} onPress={()=>void submitDNote()} style={[s.submit,(!valid||busy)&&s.disabled]}><ThemedText style={s.submitText}>Receive D-Note into Stock</ThemedText></Pressable>:null}
    {type==="grv"&&!canLegacy&&lines.some(x=>x.kind==="PO")?<ThemedText style={s.muted}>Direct GRV receipts create stock and apply the final unit price together.</ThemedText>:null}
+   {type==="grv"&&!canLegacy?<Pressable disabled={!valid||busy} onPress={()=>void submitCombined()} style={[s.submit,(!valid||busy)&&s.disabled]}><ThemedText style={s.submitText}>Save Combined GRV</ThemedText></Pressable>:null}
    {type==="grv"&&!canLegacy?<Pressable disabled={!valid||busy} onPress={()=>void submitCombined()} style={[s.submit,(!valid||busy)&&s.disabled]}><ThemedText style={s.submitText}>Save Combined GRV</ThemedText></Pressable>:null}
    {type==="grv"&&canLegacy?<Pressable disabled={!valid||busy} onPress={()=>void submit()} style={[s.submit,(!valid||busy)&&s.disabled]}><ThemedText style={s.submitText}>Save fully priced GRV</ThemedText></Pressable>:null}
   </View>:null}
