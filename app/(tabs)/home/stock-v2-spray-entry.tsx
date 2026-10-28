@@ -1,3 +1,4 @@
+import {StockV2Header} from "@/components/jspl/StockV2Header";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter,useLocalSearchParams } from "expo-router";
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from "react-native";
@@ -135,14 +136,7 @@ export default function StockV2SprayPlanningPreview() {
       <Image source={require("../../../assets/images/jspl_farm_watermark.png")} resizeMode="contain" style={[styles.watermark,{width:watermarkSize,height:watermarkSize}]}/>
     </View>
     <ScrollView style={styles.foreground} contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
-    <Pressable onPress={()=>router.replace("/stock-v2-spray-planning")} style={styles.stockHomeBack}><ThemedText style={styles.stockHomeBackText}>← Back to Stock Home</ThemedText></Pressable>
-    <View style={styles.header}>
-      <View style={styles.headerText}>
-        <ThemedText style={styles.brand}>JOHN SOLE (PVT) LTD</ThemedText>
-        <ThemedText type="title" style={styles.title}>{editing?"Edit Spray Mix":"New Spray Plan"}</ThemedText>
-      </View>
-      <Image source={require("../../../assets/images/jspl_farm_logo.png")} accessibilityLabel="John Sole (Pvt) Ltd" resizeMode="contain" style={styles.logo}/>
-    </View>
+    <StockV2Header title={editing?"Edit Spray Mix":"New Spray Plan"}/>
     <ThemedText style={styles.muted}>Stock V2 private test workflow • Saving a spray does not move stock. Transfer from the weekly register to issue inputs.</ThemedText>
     {loading?<ActivityIndicator/>:error?<ThemedText style={styles.error}>{error}</ThemedText>:<View style={styles.traces}>
       <JsplSearchCombo label="Filter by crop" selector="crop"
