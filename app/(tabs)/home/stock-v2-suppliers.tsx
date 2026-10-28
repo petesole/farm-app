@@ -1,3 +1,4 @@
+import {StockV2Header} from "@/components/jspl/StockV2Header";
 import {useEffect,useState} from "react";
 import {useRouter} from "expo-router";
 import {ActivityIndicator,Pressable,ScrollView,StyleSheet,TextInput,View} from "react-native";
@@ -17,7 +18,8 @@ export default function Suppliers(){
  const save=async(c:Supplier)=>{setBusy(true);setError("");setNotice("");try{await call("save_supplier",c);setCurrent(null);setNotice("Supplier saved");await refresh()}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
  const button=(label:string,click:()=>void)=><Pressable style={styles.button} onPress={click}><ThemedText>{label}</ThemedText></Pressable>;
  return <ThemedView style={styles.root}><ScrollView contentContainerStyle={styles.page}>
-  <View style={styles.line}>{button("← Stock Home",()=>router.replace("/(tabs)/stock-test"))}{button("Refresh",()=>void refresh())}{button("＋ Add Supplier",()=>setCurrent({supplier_id:0,supplier_name:"",active:true}))}</View>
+  <StockV2Header title="Stock Suppliers" onRefresh={()=>void refresh()}/> 
+  <View style={styles.line}>{button("＋ Add Supplier",()=>setCurrent({supplier_id:0,supplier_name:"",active:true}))}</View>
   <ThemedText style={styles.title}>Manage Suppliers</ThemedText><ThemedText>Editable Stock V2 supplier catalogue, initially copied from the existing supplier list. Existing public and Access supplier records are unchanged.</ThemedText>
   {busy?<ActivityIndicator/>:null}{error?<ThemedText style={styles.error}>{error}</ThemedText>:null}{notice?<ThemedText style={styles.success}>{notice}</ThemedText>:null}
   {current?<View style={styles.panel}>
