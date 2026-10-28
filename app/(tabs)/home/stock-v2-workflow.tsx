@@ -1,3 +1,4 @@
+import {StockV2Header} from "@/components/jspl/StockV2Header";
 import { JsplDashboardButton } from "@/components/jspl/JsplDashboardButton";
 import { JsplTable } from "@/components/jspl/JsplTable";
 import { ThemedText } from "@/components/themed-text";
@@ -158,11 +159,7 @@ export default function StockV2Workflow(){
    <Image source={require("../../../assets/images/jspl_farm_watermark.png")} resizeMode="contain" style={[styles.watermark,{width:watermarkSize,height:watermarkSize}]}/>
   </View>
   <ScrollView style={styles.foreground} contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
-  <View style={styles.brandHeader}><View style={styles.brandHeading}>
-   <ThemedText style={styles.brandName}>JOHN SOLE (PVT) LTD</ThemedText>
-  <ThemedText style={styles.title}>Stock Control — V2 Test</ThemedText>
-  </View><Image source={require("../../../assets/images/jspl_farm_logo.png")} accessibilityLabel="John Sole (Pvt) Ltd" resizeMode="contain" style={styles.logo}/></View>
-  <ThemedText style={styles.muted}>Isolated demo records only • TEST_JS • TEST_WH • No live Access changes</ThemedText>
+  <StockV2Header title={tab??"Stock Dashboard"} dashboard={tab===null} onStock={()=>switchTab(null)} onRefresh={tab===null?undefined:()=>void refresh()}/>
   {tab===null?<View style={styles.home}>
     <ThemedText style={styles.homeTitle}>Stock Home</ThemedText>
     <ThemedText style={styles.muted}>Choose a stock operation</ThemedText>
@@ -178,8 +175,7 @@ export default function StockV2Workflow(){
      </View>)}</View>
    </View>:null}
   <View style={styles.navActions}>
-   {tab!==null?<Pressable style={styles.back} onPress={()=>switchTab(null)}><ThemedText style={styles.backText}>← Back to Stock Home</ThemedText></Pressable>:null}
-   <Pressable style={styles.refresh} onPress={()=>refresh()}><ThemedText>↻ Refresh records</ThemedText></Pressable>
+
   </View>
   {busy?<ActivityIndicator/>:null}
   {status?<View style={styles.notice}><ThemedText>{status}</ThemedText></View>:null}
