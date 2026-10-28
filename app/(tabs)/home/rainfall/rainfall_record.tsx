@@ -26,8 +26,13 @@ function isoToDisplay(iso: string) {
 
 function displayToIso(display: string) { return fuelDateISO(display) ?? ""; }
 
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+function yesterdayISO() {
+  const now = new Date();
+  const localYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  const y = localYesterday.getFullYear();
+  const m = String(localYesterday.getMonth() + 1).padStart(2, "0");
+  const d = String(localYesterday.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 export default function RainfallRecordScreen() {
@@ -39,7 +44,8 @@ export default function RainfallRecordScreen() {
   // 👇 THIS is your “error / feedback”
   const [status, setStatus] = useState<string>("(status will show here)");
 
-  const [dateDisplay, setDateDisplay] = useState(isoToDisplay(todayISO()));
+  const [dateDisplay, setDateDisplay] = useState(isoToDisplay(yesterdayISO()));
+  const [isAdmin, setIsAdmin] = useState(false);
   const [gauges, setGauges] = useState<Gauge[]>([]);
   const [mmByGauge, setMmByGauge] = useState<Record<number, string>>({});
 
@@ -53,6 +59,24 @@ export default function RainfallRecordScreen() {
       params: { refresh: String(Date.now()) },
     });
   };
+
+  // Only admins may change the entry date to backfill missing rainfall.
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const { data: auth } = await supabase.auth.getUser();
+      const uid = auth.user?.id;
+      if (!uid) return;
+      const { data, error } = await supabase
+        .from("app_user_role")
+        .select("role_name")
+        .eq("user_id", uid);
+      if (active && !error) {
+        setIsAdmin((data ?? []).some((r) => r.role_name === "admin"));
+      }
+    })();
+    return () => { active = false; };
+  }, []);
 
   // Load gauges once
   useEffect(() => {
@@ -80,8 +104,10 @@ export default function RainfallRecordScreen() {
 
   // Load rainfall for date (only when date is valid)
   useEffect(() => {
+    // Never carry values from a previous selected day into the new date.
+    setMmByGauge({});
     if (!isoDate) return;
-
+    let active = true;
     (async () => {
       setStatus(`⏳ Loading rainfall for ${isoDate}…`);
 
@@ -101,9 +127,10 @@ export default function RainfallRecordScreen() {
         next[r.rain_gauge_id] = String(r.rainfall_received ?? "");
       }
 
-      setMmByGauge((prev) => ({ ...next, ...prev }));
+      if (active) setMmByGauge(next);
       setStatus(`✅ Loaded ${rows.length} existing values for ${isoDate}.`);
     })();
+    return () => { active = false; };
   }, [isoDate]);
 
   const setMm = (id: number, value: string) => {
@@ -117,6 +144,11 @@ export default function RainfallRecordScreen() {
     const iso = displayToIso(dateDisplay);
     if (!iso) {
       setStatus("❌ Invalid date. Use DD/MM/YYYY or D/M (e.g. 5/12).");
+      return;
+    }
+
+    if (!isAdmin && iso !== yesterdayISO()) {
+      setStatus("❌ Only admins may record or correct dates other than yesterday.");
       return;
     }
 
@@ -196,9 +228,14 @@ export default function RainfallRecordScreen() {
         <TextInput
           value={dateDisplay}
           onChangeText={setDateDisplay}
-          style={styles.input}
+          editable={isAdmin}
+          style={[styles.input, !isAdmin && { backgroundColor: "#f1f3f2" }]}
           keyboardType="numbers-and-punctuation"
         />
+
+        <Text style={{ marginBottom: 8, opacity: 0.7 }}>
+          {isAdmin ? "Admin: change the date to add missing historical rainfall or correct a day." : "Daily entry is for yesterday. Contact an admin to correct an earlier date."}
+        </Text>
 
         {/* Header row so it’s obvious + aligns widths */}
         <View style={styles.headerRow}>
