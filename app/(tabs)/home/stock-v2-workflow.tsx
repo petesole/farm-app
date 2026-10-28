@@ -63,7 +63,7 @@ export default function StockV2Workflow(){
  }catch(e){setStatus(e instanceof Error?e.message:String(e))}finally{if(show)setBusy(false)}};
  useEffect(()=>{refresh();(async()=>{
   const [t,c]=await Promise.all([
-   supabase.from("tracecode").select("tracecode_id,tracecode_name,tracecode_size,crop_id,end_date").or("end_date.is.null,end_date.gte."+new Date().toISOString().slice(0,10)).order("tracecode_name"),
+   supabase.from("tracecode").select("tracecode_id,tracecode_name,tracecode_size,crop_id,start_date,end_date").not("start_date","is",null).is("end_date",null).order("tracecode_name").limit(5000),
    supabase.from("crop").select("crop_id,crop_name").eq("active",true).order("crop_name")
   ]);
   setTraces((t.data??[]) as Trace[]);setCrops((c.data??[]) as Crop[]);
@@ -94,7 +94,7 @@ export default function StockV2Workflow(){
   return [...map.entries()].map(([id,lines])=>({id,lines,trace:lines[0].tracecode_name,remaining:lines.reduce((s,x)=>s+Math.max(0,x.planned_quantity-x.issued_quantity),0)})).filter(x=>x.remaining>0);
  },[snapshot]);
  const selectedJob=jobs.find(x=>x.id===jobId);
- const activeTraces=traces.filter(t=>(cropId===null||t.crop_id===cropId)&&(t.crop_id==null||crops.some(c=>c.crop_id===t.crop_id))&&t.tracecode_name.toLowerCase().startsWith(search.trim().toLowerCase()));
+ const activeTraces=traces.filter(t=>(cropId===null||(cropId===-1?t.crop_id==null:t.crop_id===cropId))&&(t.crop_id==null||crops.some(c=>c.crop_id===t.crop_id)));
  const choosePO=(po:typeof orders[number])=>{setOrderId(po.id);setContractId(po.contract_id);setSupplier(po.supplier);setLines(po.lines.filter(x=>x.received_quantity<x.ordered_quantity).map((x,i)=>({...emptyLine(nextLine+i,x.item_code),quantity:String(x.ordered_quantity-x.received_quantity),unit_price:String(x.ordered_unit_price??"")})));setNextLine(n=>n+po.lines.length);setDropdown(null);resetEdit()};
  const chooseJob=(job:typeof jobs[number])=>{setJobId(job.id);setTraceId(job.lines[0].external_tracecode_id);setLines(job.lines.filter(x=>x.planned_quantity>x.issued_quantity).map((x,i)=>({...emptyLine(nextLine+i,x.item_code),quantity:String(Number((x.planned_quantity-x.issued_quantity).toFixed(4))),rate_per_ha:String(x.rate_per_ha)})));setNextLine(n=>n+job.lines.length);setDropdown(null);resetEdit()};
  const menu=(id:string,title:string,choices:{label:string;value:string;onSelect:()=>void}[],searchable=false)=> <View style={styles.dropdown}>
@@ -240,7 +240,7 @@ export default function StockV2Workflow(){
    </>:null}
    {tab==="Planned Issue"?<>{menu("jobs",selectedJob?"Spray job #"+selectedJob.id+" — "+selectedJob.trace:"Choose outstanding spray programme",jobs.map(j=>({label:"Job #"+j.id+" · "+j.trace+" · "+j.lines.length+" products",value:String(j.id),onSelect:()=>chooseJob(j)})),true)}</>:null}
    {tab==="Direct Issue"?<View style={styles.filters}>
-    {menu("crops",crops.find(c=>c.crop_id===cropId)?.crop_name??"All crops",[{label:"All crops",value:"all",onSelect:()=>{setCropId(null);setTraceId(null)}},...crops.map(c=>({label:c.crop_name,value:String(c.crop_id),onSelect:()=>{setCropId(c.crop_id);setTraceId(null)}}))])}
+    {menu("crops",cropId===-1?"No Crop":crops.find(c=>c.crop_id===cropId)?.crop_name??"All crops",[{label:"All crops / No Crop",value:"all",onSelect:()=>{setCropId(null);setTraceId(null)}},{label:"No Crop",value:"no-crop",onSelect:()=>{setCropId(-1);setTraceId(null)}},...crops.map(c=>({label:c.crop_name,value:String(c.crop_id),onSelect:()=>{setCropId(c.crop_id);setTraceId(null)}}))])}
     {menu("traces",currentTrace?.tracecode_name??"Choose active tracecode",activeTraces.map(t=>({label:t.tracecode_name,value:String(t.tracecode_id),onSelect:()=>{setTraceId(t.tracecode_id);setArea(String(t.tracecode_size??""));setPart("");}})),true)}
    </View>:null}
    {((tab!=="Purchase Orders"&&tab!=="POs Outstanding")||(ownerReady&&(tab==="Purchase Orders"?contractReady:directGrv?contractReady:!!selectedPO)))?<><View style={styles.productSectionHeading}><ThemedText style={styles.section}>Product lines</ThemedText></View>
