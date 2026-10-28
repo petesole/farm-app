@@ -1,3 +1,4 @@
+import {StockV2Header} from "@/components/jspl/StockV2Header";
 import {useEffect,useMemo,useState} from "react";
 import {useLocalSearchParams,useRouter} from "expo-router";
 import {ActivityIndicator,Platform,Pressable,ScrollView,StyleSheet,TextInput,View} from "react-native";
@@ -56,7 +57,8 @@ export default function IssueSlip(){
   popup.document.open();popup.document.write(html);popup.document.close();popup.focus();
  };
  return <ThemedView style={styles.root}><ScrollView contentContainerStyle={styles.page}>
-  <Pressable style={styles.button} onPress={()=>router.back()}><ThemedText>← Back</ThemedText></Pressable>
+  <StockV2Header title="Stock Issue Slip"/>
+
   <ThemedText style={styles.heading}>Epson TM-T20H · Stock Issue Slip</ThemedText>
   {loading?<ActivityIndicator/>:error?<ThemedText style={styles.error}>{error}</ThemedText>:slip?<View style={styles.slipWrap}><View style={styles.sheet}>
    <ThemedText style={styles.title}>JOHN SOLE (PVT) LTD</ThemedText>
