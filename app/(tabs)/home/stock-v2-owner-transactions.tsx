@@ -1,3 +1,4 @@
+import {StockV2Header} from "@/components/jspl/StockV2Header";
 import {useEffect,useMemo,useState} from "react";
 import {useRouter} from "expo-router";
 import {ActivityIndicator,Pressable,ScrollView,StyleSheet,TextInput,View} from "react-native";
@@ -57,7 +58,8 @@ export default function OwnerTransactions(){
  const label=(v:string)=><ThemedText style={styles.label}>{v}</ThemedText>;
  const options=<View style={styles.options}>{(data?.owners??[]).filter(o=>o.active).map(o=>button(o.owner_code+" · "+o.owner_name,()=>chooseOwner(o.owner_code),ownerCode===o.owner_code))}</View>;
  return <ThemedView style={styles.root}><ScrollView contentContainerStyle={styles.page}>
-  <View style={styles.options}>{button("← Stock Home",()=>router.replace("/(tabs)/stock-test"))}{button("↻ Refresh",()=>void refresh())}{button("Manage Owners / Contracts",()=>router.push("/stock-v2-setup"))}</View>
+  <StockV2Header title="Stock Transfers" onRefresh={()=>void refresh()}/> 
+  <View style={styles.options}>{button("Manage Owners / Contracts",()=>router.push("/stock-v2-setup"))}</View>
   <ThemedText style={styles.title}>Stock V2 · Stock Transfer</ThemedText>
   <ThemedText>Private test warehouse and demo products only. Historical Access stock is untouched.</ThemedText>
 
