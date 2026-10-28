@@ -1,3 +1,4 @@
+import {StockV2Header} from "@/components/jspl/StockV2Header";
 import {useEffect,useState} from "react";
 import {useRouter} from "expo-router";
 import {ActivityIndicator,Pressable,ScrollView,StyleSheet,TextInput,View} from "react-native";
@@ -34,7 +35,8 @@ export default function StockSetup(){
   {contracts.filter(c=>c.active||c.contract_id===value).map(c=>button((c.contract_id===value?"✓ ":"")+c.contract_code,()=>onSelect(c.contract_id)))}
  </View>;
  return <ThemedView style={styles.root}><ScrollView contentContainerStyle={styles.page}>
-  <View style={styles.bar}>{button("← Stock Home",()=>router.replace("/(tabs)/stock-test"))}{button("↻ Refresh",()=>void reload())}</View>
+  <StockV2Header title="Stock Setup" onRefresh={()=>void reload()}/> 
+
   <ThemedText style={styles.title}>Stock V2 · Configuration</ThemedText>
   <ThemedText>Test owners and contracts only. Existing Access records are unchanged.</ThemedText>
   <View style={styles.bar}>{button("Stock Owners",()=>setMode("owners"),mode==="owners")}{button("Contracts",()=>setMode("contracts"),mode==="contracts")}</View>
