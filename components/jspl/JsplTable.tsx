@@ -1,5 +1,5 @@
 import React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   formatJsplNumber, jsplCellAlignment, jsplColors, jsplSizes,
   jsplSpacing, jsplType, type JsplCellKind,
@@ -12,6 +12,7 @@ export type JsplColumn<Row> = {
   width?: number;
   decimals?: number;
   unit?: string;
+  onPress?: (row: Row) => void;
   render?: (row: Row) => string | number | null | undefined;
   value?: (row: Row) => string | number | null | undefined;
 };
