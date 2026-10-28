@@ -30,7 +30,7 @@ export default function GRVOutstanding(){
   setSupplierNames((z.suppliers??[]).filter((s:{active:boolean})=>s.active).map((s:{supplier_name:string})=>s.supplier_name));
  }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
  useEffect(()=>{void load()},[]);
- const owners=useMemo(()=>[...new Set([...dn.map(x=>x.owner_code),...po.map(x=>x.owner_code)])].sort(),[dn,po]);
+ const owners=["JS","AO"];
  const suppliers=useMemo(()=>[...new Set([...dn,...po].filter(x=>x.owner_code===owner).map(x=>x.supplier_name).concat(supplierNames))].sort(),[dn,po,owner,supplierNames]);
  const outstandingDN=dn.filter(x=>x.owner_code===owner&&x.supplier_name===supplier);
  const supplierPO=po.filter(x=>x.owner_code===owner&&x.supplier_name===supplier&&x.status==="approved");
