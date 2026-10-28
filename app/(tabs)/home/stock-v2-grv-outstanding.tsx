@@ -1,3 +1,4 @@
+import {StockV2Header} from "@/components/jspl/StockV2Header";
 import {useEffect,useMemo,useState} from "react";
 import {useRouter} from "expo-router";
 import {ActivityIndicator,Pressable,ScrollView,StyleSheet,TextInput,View} from "react-native";
@@ -59,10 +60,10 @@ export default function GRVOutstanding(){
   const fresh=await fetch(endpoint+"?outstanding_dnotes=1",{headers:{authorization:"Bearer "+session.access_token}});const data=await fresh.json();if(fresh.ok)setRows(data.rows??[]);
  }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
  return <ThemedView style={styles.root}><ScrollView contentContainerStyle={styles.page}>
-  <Pressable onPress={()=>router.replace("/stock-test")}><ThemedText>← Stock Home</ThemedText></Pressable>
+  <StockV2Header title="GRV — Outstanding Invoices" onRefresh={()=>void load()}/>
   <ThemedText style={styles.heading}>GRV · Outstanding Invoices ({documents.length})</ThemedText>
   <ThemedText>Received delivery notes awaiting supplier invoices. Matching an invoice does not receive stock a second time.</ThemedText>
-  <Pressable style={styles.button} onPress={()=>void load()}><ThemedText>↻ Refresh</ThemedText></Pressable>
+
   {busy?<ActivityIndicator/>:null}{error?<ThemedText style={styles.error}>{error}</ThemedText>:null}{success?<ThemedText>{success}</ThemedText>:null}
   <View style={styles.pickerSection}>
    <ThemedText style={styles.bold}>Filter by Grower</ThemedText>
