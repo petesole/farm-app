@@ -219,7 +219,7 @@ export default function BatchScanner(){
  </View><View style={{flexDirection:"row",marginTop:10}}><Btn name={busy?"Working…":splitDocs.some(d=>d.file_id===f.file_id&&Number(startPage)<=d.page_end&&Number(endPage)>=d.page_start)?"Pages already saved":"Save these pages as separate document"} go={splitPdf} disabled={busy||splitDocs.some(d=>d.file_id===f.file_id&&Number(startPage)<=d.page_end&&Number(endPage)>=d.page_start)}/></View>
  </View>:null}
  {splitDocs.some(d=>d.file_id===f.file_id)?<Text style={{fontWeight:"bold",marginTop:6}}>Individual documents saved from this batch:</Text>:null}
- {splitDocs.filter(d=>tab==="test"&&d.file_id===f.file_id&&(tab!=="active"||d.extraction_status!=="reviewed"||!["customer_wb","grv"].includes(d.document_type))&&(tab!=="awaiting_match"||d.extraction_status==="reviewed"&&["customer_wb","grv"].includes(d.document_type)&&!receipts.some(r=>r.scan_document_id===d.scan_document_id&&r.source_id))).sort((a,b)=>a.page_start-b.page_start).map(d=><View key={d.scan_document_id} style={{padding:10,marginTop:5,backgroundColor:"#edf7ed",borderRadius:5}}>
+ {splitDocs.filter(d=>tab==="test"&&d.file_id===f.file_id).sort((a,b)=>a.page_start-b.page_start).map(d=><View key={d.scan_document_id} style={{padding:10,marginTop:5,backgroundColor:"#edf7ed",borderRadius:5}}>
  <Text style={{fontWeight:"bold"}}>Pages {d.page_start}–{d.page_end} · {d.document_type==="customer_wb"?"Customer WB":d.document_type==="grv"?"GRV":d.document_type==="customer_dnote"?"Customer DNote":d.document_type==="rejection_notice"?"Rejection Notice":"Unclassified"}</Text>
  <View style={{flexDirection:"row",alignItems:"center",flexWrap:"wrap",marginTop:7}}>
  <Btn name="Open individual PDF" go={()=>openSplit(d.storage_path)}/>
