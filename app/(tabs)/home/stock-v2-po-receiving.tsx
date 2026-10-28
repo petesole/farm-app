@@ -77,7 +77,7 @@ export default function GRVOutstanding(){
  const selection=(id:string,text:string,selected:boolean,onPress:()=>void)=><Pressable key={id} onPress={onPress} style={[s.option,selected&&s.active]}><ThemedText style={selected?s.activeText:undefined}>{text}</ThemedText></Pressable>;
  return <ThemedView style={s.root}><ScrollView contentContainerStyle={s.page}>
    <StockV2Header title="POs Outstanding — Receiving" onRefresh={()=>void load()}/>
-  <JsplModuleHeader title="Stock Receiving" backLabel="Stock Dashboard" backHref="/stock-test" showMain />
+
   {busy?<ActivityIndicator/>:null}{error?<ThemedText style={s.warning}>{error}</ThemedText>:null}{success?<ThemedText>{success}</ThemedText>:null}
   <View style={s.panel}><ThemedText style={s.label}>Stock Owner</ThemedText><View style={s.wrap}>{owners.map(x=>selection(x,x+" ("+ownerCount(x)+")",x===owner,()=>{setOwner(x);setSupplier("");setType("");setChosen({});setNoPO(false)}))}</View></View>
   {!!owner?<View style={s.panel}><ThemedText style={s.label}>Supplier</ThemedText><View style={s.wrap}>{suppliers.map(x=>selection(x,x,x===supplier,()=>{setSupplier(x);setType("");setChosen({})}))}</View></View>:null}
@@ -85,6 +85,12 @@ export default function GRVOutstanding(){
   {!!type?<View style={s.panel}><ThemedText style={s.label}>Date (DD/MM/YYYY)</ThemedText><TextInput style={[s.input,s.required]} value={date} onChangeText={setDate} placeholder="DD/MM/YYYY"/></View>:null}
   {!!type&&!!dateISO(date)?<View style={s.panel}><ThemedText style={s.label}>{type==="grv"?"Invoice GRV Number":"Delivery Note Number"}</ThemedText><TextInput style={[s.input,s.required]} value={number} onChangeText={setNumber} placeholder="Enter document number"/></View>:null}
   {!!type&&!!dateISO(date)&&!!number.trim()?<View style={s.panel}>
+  <ThemedText style={s.label}>Complete the highlighted product fields below, then save.</ThemedText>
+  <Pressable accessibilityRole="button" disabled={!valid||busy} onPress={()=>{if(type==="grv")void submitCombined();else void submitDNote()}} style={[s.submit,(!valid||busy)&&s.disabled]}>
+    <ThemedText style={s.submitText}>{type==="grv"?"Save Invoice GRV":"Receive Delivery Note"}</ThemedText>
+  </Pressable>
+ </View>:null}
+ {!!type&&!!dateISO(date)&&!!number.trim()?<View style={s.panel}>
    <ThemedText style={s.label}>{type==="grv"?"Received D-Notes awaiting prices, and undelivered PO lines":"Outstanding Purchase Order lines"}</ThemedText>
    <ThemedText style={s.muted}>Supplier summary: {outstandingDN.length} unpriced D-Note lines ({receivedPending} units across products) · {outstandingPO.length} PO lines not fully delivered.</ThemedText>
    <ThemedText style={s.muted}>{type==="dnote"?"Select the PO products physically delivered. Enter received quantity only; pricing is NOT required.":"Select the supplier lines to include. D-Note quantities are locked and require final prices; direct PO receipts require quantity and price."}</ThemedText>
