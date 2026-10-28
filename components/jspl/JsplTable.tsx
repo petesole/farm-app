@@ -45,14 +45,17 @@ export function JsplTable<Row>({
                 const display = kind === 'number' && typeof raw === 'number'
                   ? formatJsplNumber(raw, column.decimals ?? 2)
                   : raw == null ? '—' : String(raw);
-                return <Text key={column.key} numberOfLines={1} selectable
-                  style={[styles.cell, {
-                    width: column.width ?? 144,
-                    textAlign: jsplCellAlignment(kind),
-                    fontVariant: kind === 'number' ? ['tabular-nums'] : undefined,
-                  }]}>
-                  {display}{column.unit && raw != null ? ` ${column.unit}` : ''}
-                </Text>;
+                const cellStyle = [styles.cell, {
+                  width: column.width ?? 144,
+                  textAlign: jsplCellAlignment(kind),
+                  fontVariant: kind === 'number' ? ['tabular-nums'] as const : undefined,
+                }];
+                const label = `${display}${column.unit && raw != null ? ` ${column.unit}` : ''}`;
+                return column.onPress
+                  ? <Pressable key={column.key} accessibilityRole="button" accessibilityLabel={`${column.title}: ${label}`} onPress={() => column.onPress?.(row)} style={[styles.actionCell,{width:column.width??144}]}>
+                      <Text style={styles.actionLabel}>{label}</Text>
+                    </Pressable>
+                  : <Text key={column.key} numberOfLines={1} selectable style={cellStyle}>{label}</Text>;
               })}
             </View>
           ))}
@@ -68,5 +71,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', minHeight: jsplSizes.tableRowMinHeight, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: jsplColors.border },
   alternate: { backgroundColor: '#FAFBFA' },
   cell: { paddingHorizontal: jsplSpacing.md, paddingVertical: jsplSpacing.sm, fontSize: jsplType.body, color: jsplColors.text },
+  actionCell: { minHeight: 38, paddingHorizontal: jsplSpacing.sm, justifyContent: 'center' },
+  actionLabel: { backgroundColor: jsplColors.primary, color: '#fff', fontWeight: '700', textAlign: 'center', borderRadius: 6, paddingVertical: 8, paddingHorizontal: 5, overflow: 'hidden' },
   empty: { padding: jsplSpacing.xl, textAlign: 'center', color: jsplColors.textSecondary },
 });
