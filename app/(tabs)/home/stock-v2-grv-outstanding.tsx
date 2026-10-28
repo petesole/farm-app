@@ -31,7 +31,7 @@ export default function GRVOutstanding(){
  const owners=useMemo(()=>[...new Set([...dn.map(x=>x.owner_code),...po.map(x=>x.owner_code)])].sort(),[dn,po]);
  const suppliers=useMemo(()=>[...new Set([...dn,...po].filter(x=>x.owner_code===owner).map(x=>x.supplier_name))].sort(),[dn,po,owner]);
  const outstandingDN=dn.filter(x=>x.owner_code===owner&&x.supplier_name===supplier);
- const outstandingPO=po.filter(x=>x.owner_code===owner&&x.supplier_name===supplier&&x.ordered_quantity>x.received_quantity);
+ const outstandingPO=po.filter(x=>x.owner_code===owner&&x.supplier_name===supplier&&x.status==="approved"&&x.ordered_quantity>x.received_quantity);
  const pick=(row:Chosen)=>setChosen(old=>old[row.key]?Object.fromEntries(Object.entries(old).filter(([k])=>k!==row.key)):{...old,[row.key]:row});
  const edit=(key:string,field:"quantity"|"price",value:string)=>setChosen(old=>old[key]?{...old,[key]:{...old[key],[field]:value}}:old);
  const lines=Object.values(chosen);
