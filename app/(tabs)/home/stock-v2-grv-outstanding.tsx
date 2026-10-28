@@ -14,7 +14,7 @@ type Chosen={kind:"DN"|"PO"|"DIRECT";key:string;item_code:string;quantity:string
 const dateISO=(v:string)=>{const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(v.trim());if(!m)return null;const iso=m[3]+"-"+m[2]+"-"+m[1];const d=new Date(iso+"T12:00:00Z");return !Number.isNaN(d.getTime())&&d.toISOString().slice(0,10)===iso?iso:null;};
 const money=(n:number)=>Number.isFinite(n)?n.toFixed(2):"0.00";
 export default function GRVOutstanding(){
- const [dn,setDn]=useState<DLine[]>([]),[po,setPo]=useState<POLine[]>([]),[products,setProducts]=useState<Product[]>([]),[supplierNames,setSupplierNames]=useState<string[]>([]);
+ const [dn,setDn]=useState<DLine[]>([]),[po,setPo]=useState<POLine[]>([]),[products,setProducts]=useState<Product[]>([]);
  const [noPO,setNoPO]=useState(false);
  const [owner,setOwner]=useState(""),[supplier,setSupplier]=useState(""),[type,setType]=useState<""|"dnote"|"grv">("");
  const [date,setDate]=useState(new Date().toLocaleDateString("en-GB")),[number,setNumber]=useState("");
@@ -23,15 +23,15 @@ export default function GRVOutstanding(){
  const load=async()=>{setBusy(true);setError("");try{
   const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");
   const headers={authorization:"Bearer "+session.access_token};
-  const [a,b,d]=await Promise.all([fetch(endpoint+"?outstanding_dnotes=1",{headers}),fetch(endpoint,{headers}),fetch(endpoint+"?supplier_list=1",{headers})]);
-  const [x,y,z]=await Promise.all([a.json(),b.json(),d.json()]);
-  if(!a.ok||!b.ok||!d.ok)throw Error(x.error||y.error||z.error||"Unable to load supplier lines");
+  const [a,b]=await Promise.all([fetch(endpoint+"?outstanding_dnotes=1",{headers}),fetch(endpoint,{headers})]);
+  const [x,y]=await Promise.all([a.json(),b.json()]);
+  if(!a.ok||!b.ok)throw Error(x.error||y.error||"Unable to load supplier lines");
   setDn(x.rows??[]);setPo(y.orders??[]);setProducts((y.items??[]).map((i:Product)=>({item_code:i.item_code,item_name:i.item_name,base_unit:i.base_unit})));
   setSupplierNames((z.suppliers??[]).filter((s:{active:boolean})=>s.active).map((s:{supplier_name:string})=>s.supplier_name));
  }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
  useEffect(()=>{void load()},[]);
  const owners=["JS","AO"];
- const suppliers=useMemo(()=>[...new Set([...dn,...po].filter(x=>x.owner_code===owner).map(x=>x.supplier_name).concat(supplierNames).filter((name):name is string=>typeof name==="string"&&name.trim().length>0))].sort(),[dn,po,owner,supplierNames]);
+ const suppliers=useMemo(()=>[...new Set(po.filter(x=>x.owner_code===owner&&x.status==="approved"&&Number(x.ordered_quantity)>Number(x.received_quantity)).map(x=>x.supplier_name).filter(name=>typeof name==="string"&&name.trim().length>0))].sort(),[po,owner]);
  const outstandingDN=dn.filter(x=>x.owner_code===owner&&x.supplier_name===supplier);
  const supplierPO=po.filter(x=>x.owner_code===owner&&x.supplier_name===supplier&&x.status==="approved");
  const outstandingPO=supplierPO.filter(x=>x.ordered_quantity>x.received_quantity);
