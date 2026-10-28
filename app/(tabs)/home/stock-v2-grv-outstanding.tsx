@@ -67,7 +67,7 @@ export default function GRVOutstanding(){
    const id="xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,v=>{const n=Math.floor(Math.random()*16);return(v==="x"?n:(n&3)|8).toString(16)});
    const payload={owner_code:owner,supplier,...(!noPO?{order_id:poIds[0]}:{}),receipt_mode:"dnote",delivery_note:number.trim(),receipt_date:dateISO(date),lines:(noPO?lines:selected).map(x=>({item_code:x.item_code,quantity:Number(x.quantity)}))};
    const multiPayload={owner_code:owner,supplier,delivery_note:number.trim(),receipt_date:dateISO(date),lines:selected.map(x=>({order_line_id:x.orderLineId,quantity:Number(x.quantity)}))};
-   const response=await fetch(endpoint,{method:"POST",headers:{authorization:"Bearer "+session.access_token,"content-type":"application/json"},body:JSON.stringify({action:noPO?"direct_grv":poIds.length>1?"multi_po_dnote":"grv",request_id:id,payload:!noPO&&poIds.length>1?multiPayload:payload})});
+   const response=await fetch(endpoint,{method:"POST",headers:{authorization:"Bearer "+session.access_token,"content-type":"application/json"},body:JSON.stringify({action:noPO?"direct_grv":"multi_po_dnote",request_id:id,payload:noPO?payload:multiPayload})});
    const result=await response.json();if(!response.ok)throw Error(result.error||"D-Note posting failed");
    setChosen({});setNumber("");setSuccess("D-Note received into stock. Unit prices remain pending GRV.");await load();
   }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}
