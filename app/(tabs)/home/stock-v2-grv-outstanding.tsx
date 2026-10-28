@@ -3,6 +3,7 @@ import {useRouter} from "expo-router";
 import {ActivityIndicator,Pressable,ScrollView,StyleSheet,TextInput,View} from "react-native";
 import {ThemedText} from "@/components/themed-text";
 import {ThemedView} from "@/components/themed-view";
+import {JsplModuleHeader} from "@/components/jspl/JsplModuleHeader";
 import {supabase} from "../../../supabase";
 import {displayJsplDate} from "@/utils/jspl-input";
 import {jsplColors,jsplSpacing,jsplRadii} from "@/constants/jspl-design";
@@ -68,18 +69,15 @@ export default function GRVOutstanding(){
  };
  const selection=(id:string,text:string,selected:boolean,onPress:()=>void)=><Pressable key={id} onPress={onPress} style={[s.option,selected&&s.active]}><ThemedText style={selected?s.activeText:undefined}>{text}</ThemedText></Pressable>;
  return <ThemedView style={s.root}><ScrollView contentContainerStyle={s.page}>
-  <Pressable onPress={()=>router.replace("/stock-test")}><ThemedText>← Back to Stock Dashboard</ThemedText></Pressable>
-  <ThemedText style={s.heading}>Stock Receiving · Progressive Entry</ThemedText>
-  <ThemedText>Choose each field in order. D-Notes receive physical stock; GRVs assign final prices, or receive and price stock directly.</ThemedText>
-  <Pressable onPress={()=>void load()} style={s.option}><ThemedText>↻ Refresh outstanding lines</ThemedText></Pressable>
+  <JsplModuleHeader title="Stock Receiving" backLabel="Stock Dashboard" backHref="/stock-test" showMain />
   {busy?<ActivityIndicator/>:null}{error?<ThemedText style={s.warning}>{error}</ThemedText>:null}{success?<ThemedText>{success}</ThemedText>:null}
-  <View style={s.panel}><ThemedText style={s.label}>1 · Stock Owner</ThemedText><View style={s.wrap}>{owners.map(x=>selection(x,x,x===owner,()=>{setOwner(x);setSupplier("");setType("");setChosen({})}))}</View></View>
-  {!!owner?<View style={s.panel}><ThemedText style={s.label}>2 · Supplier</ThemedText><View style={s.wrap}>{suppliers.map(x=>selection(x,x,x===supplier,()=>{setSupplier(x);setType("");setChosen({})}))}</View></View>:null}
-  {!!supplier?<View style={s.panel}><ThemedText style={s.label}>3 · Document Type</ThemedText><View style={s.wrap}>{selection("dnote","Delivery Note",type==="dnote",()=>{setType("dnote");setChosen({})})}{selection("grv","GRV — Final Valuation",type==="grv",()=>{setType("grv");setChosen({})})}</View></View>:null}
-  {!!type?<View style={s.panel}><ThemedText style={s.label}>4 · Date (DD/MM/YYYY)</ThemedText><TextInput style={s.input} value={date} onChangeText={setDate} placeholder="DD/MM/YYYY"/></View>:null}
-  {!!type&&!!dateISO(date)?<View style={s.panel}><ThemedText style={s.label}>5 · {type==="grv"?"Supplier Invoice / Delivery Reference":"Delivery Note Number"}</ThemedText><TextInput style={s.input} value={number} onChangeText={setNumber} placeholder="Enter document number"/></View>:null}
+  <View style={s.panel}><ThemedText style={s.label}>Stock Owner</ThemedText><View style={s.wrap}>{owners.map(x=>selection(x,x,x===owner,()=>{setOwner(x);setSupplier("");setType("");setChosen({})}))}</View></View>
+  {!!owner?<View style={s.panel}><ThemedText style={s.label}>Supplier</ThemedText><View style={s.wrap}>{suppliers.map(x=>selection(x,x,x===supplier,()=>{setSupplier(x);setType("");setChosen({})}))}</View></View>:null}
+  {!!supplier?<View style={s.panel}><ThemedText style={s.label}>Document Type</ThemedText><View style={s.wrap}>{selection("dnote","Delivery Note",type==="dnote",()=>{setType("dnote");setChosen({})})}{selection("grv","GRV — Final Valuation",type==="grv",()=>{setType("grv");setChosen({})})}</View></View>:null}
+  {!!type?<View style={s.panel}><ThemedText style={s.label}>Date (DD/MM/YYYY)</ThemedText><TextInput style={s.input} value={date} onChangeText={setDate} placeholder="DD/MM/YYYY"/></View>:null}
+  {!!type&&!!dateISO(date)?<View style={s.panel}><ThemedText style={s.label}>{type==="grv"?"Supplier Invoice / Delivery Reference":"Delivery Note Number"}</ThemedText><TextInput style={s.input} value={number} onChangeText={setNumber} placeholder="Enter document number"/></View>:null}
   {!!type&&!!dateISO(date)&&!!number.trim()?<View style={s.panel}>
-   <ThemedText style={s.label}>6 · {type==="grv"?"Outstanding D-Note and PO lines":"Outstanding Purchase Order lines"}</ThemedText>
+   <ThemedText style={s.label}>{type==="grv"?"Outstanding D-Note and PO lines":"Outstanding Purchase Order lines"}</ThemedText>
    <ThemedText style={s.muted}>{type==="dnote"?"Select the PO products physically delivered. Enter received quantity only; pricing is NOT required.":"Select the supplier lines to include. D-Note quantities are locked and require final prices; direct PO receipts require quantity and price."}</ThemedText>
    {type==="grv"?outstandingDN.map(x=>{const key="DN:"+x.line_id,entry=chosen[key];return <View key={key} style={s.line}>
     {selection(key,(entry?"☑ ":"□ ")+x.delivery_note+" · "+displayJsplDate(x.delivery_note_date||x.document_date)+" · "+x.item_name+" ("+x.base_unit+")",!!entry,()=>pick({kind:"DN",key,item_code:x.item_code,quantity:String(x.quantity),price:"0",source:x.document_id,max:x.quantity}))}
@@ -94,7 +92,7 @@ export default function GRVOutstanding(){
    {!outstandingDN.length&&!outstandingPO.length?<ThemedText>No outstanding lines for this supplier.</ThemedText>:null}
    <ThemedText style={s.label}>Selected: {lines.length} lines {type==="grv"?" · Total value: USD "+money(lines.reduce((a,x)=>a+Number(x.quantity)*Number(x.price),0)):""}</ThemedText>
    {type==="dnote"?<Pressable disabled={!valid||busy} onPress={()=>void submitDNote()} style={[s.submit,(!valid||busy)&&s.disabled]}><ThemedText style={s.submitText}>Receive D-Note into Stock</ThemedText></Pressable>:null}
-   {type==="grv"&&lines.some(x=>x.kind==="PO")?<ThemedText style={s.muted}>Direct GRV receipts create stock and apply the final unit price together.</ThemedText>:null}
+
    {type==="grv"?<Pressable disabled={!valid||busy} onPress={()=>void submitCombined()} style={[s.submit,(!valid||busy)&&s.disabled]}><ThemedText style={s.submitText}>Save Combined GRV</ThemedText></Pressable>:null}
   </View>:null}
  </ScrollView></ThemedView>;
