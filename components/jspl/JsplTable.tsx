@@ -48,7 +48,7 @@ export function JsplTable<Row>({
                 const cellStyle = [styles.cell, {
                   width: column.width ?? 144,
                   textAlign: jsplCellAlignment(kind),
-                  fontVariant: kind === 'number' ? ['tabular-nums'] as const : undefined,
+                  fontVariant: kind === 'number' ? ['tabular-nums'] : undefined,
                 }];
                 const label = `${display}${column.unit && raw != null ? ` ${column.unit}` : ''}`;
                 return column.onPress
