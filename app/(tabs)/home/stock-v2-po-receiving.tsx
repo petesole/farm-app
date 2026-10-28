@@ -35,7 +35,7 @@ export default function GRVOutstanding(){
  useEffect(()=>{void load()},[]);
  const owners=["JS","AO"];
  const ownerCount=(code:string)=>new Set(po.filter(x=>x.owner_code===code&&x.status==="approved"&&Number(x.ordered_quantity)>Number(x.received_quantity)).map(x=>x.order_id)).size;
- const suppliers=useMemo(()=>[...new Set([...po.filter(x=>x.owner_code===owner&&x.status==="approved"&&Number(x.ordered_quantity)>Number(x.received_quantity)).map(x=>x.supplier_name),...dn.filter(x=>x.owner_code===owner).map(x=>x.supplier_name)].filter(x=>typeof x==="string"&&x.trim()!==""))].sort(),[po,dn,owner]);
+ const suppliers=useMemo(()=>[...new Set(po.filter(x=>x.owner_code===owner&&x.status==="approved"&&Number(x.ordered_quantity)>Number(x.received_quantity)).map(x=>x.supplier_name).filter(x=>typeof x==="string"&&x.trim()!==""))].sort(),[po,owner]);
  const outstandingDN=dn.filter(x=>x.owner_code===owner&&x.supplier_name===supplier);
  const supplierPO=po.filter(x=>x.owner_code===owner&&x.supplier_name===supplier&&x.status==="approved");
  const outstandingPO=supplierPO.filter(x=>x.ordered_quantity>x.received_quantity).sort((a,b)=>String(a.order_date).localeCompare(String(b.order_date))||a.order_id-b.order_id||a.order_line_id-b.order_line_id);
@@ -62,7 +62,7 @@ export default function GRVOutstanding(){
    po_allocations:lines.filter(x=>x.kind==="PO").map(x=>({order_line_id:x.orderLineId,item_code:x.item_code,quantity:Number(x.quantity)}))};
   const response=await fetch(endpoint,{method:"POST",headers:{authorization:"Bearer "+session.access_token,"content-type":"application/json"},body:JSON.stringify({action:"combined_grv",request_id:requestId,payload})});
   const result=await response.json();if(!response.ok)throw Error(result.error||"GRV posting failed");
-  setChosen({});setNumber("");setSuccess("Combined GRV saved and valued. Existing D-Note quantities were not posted again.");await load();
+  setChosen({});setNumber("");setSupplier("");setType("");setSuccess("Combined GRV saved and valued. Existing D-Note quantities were not posted again.");await load();
  }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
  const submitDNote=async()=>{if(!valid||busy||type!=="dnote")return;
   const selected=lines.filter(x=>x.kind==="PO"),poIds=[...new Set(selected.map(x=>x.source))];
@@ -75,7 +75,7 @@ export default function GRVOutstanding(){
    const multiPayload={owner_code:owner,supplier,delivery_note:number.trim(),receipt_date:dateISO(date),lines:selected.map(x=>({order_line_id:x.orderLineId,quantity:Number(x.quantity),...(x.price.trim()?{unit_price:Number(x.price)}:{})}))};
    const response=await fetch(endpoint,{method:"POST",headers:{authorization:"Bearer "+session.access_token,"content-type":"application/json"},body:JSON.stringify({action:noPO?"unplanned_dnote":"multi_po_dnote",request_id:id,payload:noPO?payload:multiPayload})});
    const result=await response.json();if(!response.ok)throw Error(result.error||"D-Note posting failed");
-   setChosen({});setNumber("");setSuccess("D-Note received into stock. Unit prices remain pending GRV.");await load();
+   setChosen({});setNumber("");setSupplier("");setType("");setSuccess("D-Note received into stock. Unit prices remain pending GRV.");await load();
   }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}
  };
  const selection=(id:string,text:string,selected:boolean,onPress:()=>void)=><Pressable key={id} onPress={onPress} style={[s.option,selected&&s.active]}><ThemedText style={selected?s.activeText:undefined}>{text}</ThemedText></Pressable>;
@@ -91,7 +91,7 @@ export default function GRVOutstanding(){
   {!!type?<View style={s.panel}>
   <ThemedText style={s.label}>Outstanding documents — enter figures in the yellow cells</ThemedText>
   <ScrollView horizontal><View style={{minWidth:1040}}>
-   <View style={s.trow}>{["Document","Date","Product","Ordered / Received","PO Price","Actual Qty","Actual Price"].map((h,i)=><ThemedText key={h} style={[s.tcell,i===3&&s.wide,s.bold]}>{h}</ThemedText>)}</View>
+   <View style={s.trow}>{["Document","Date","Product","Ordered / Received","PO Price","Actual Qty","Actual Price"].map((h,i)=><ThemedText key={h} style={[s.tcell,i===2&&s.wide,s.bold]}>{h}</ThemedText>)}</View>
    {type==="grv"?outstandingDN.map(x=>{const key="DN:"+x.line_id,e=chosen[key],r:Chosen={kind:"DN",key,item_code:x.item_code,quantity:String(x.quantity),price:"",source:x.document_id,max:x.quantity};return <View key={key} style={s.trow}>
      <ThemedText style={s.tcell}>{x.delivery_note}</ThemedText><ThemedText style={s.tcell}>{displayJsplDate(x.delivery_note_date||x.document_date)}</ThemedText>
      <ThemedText style={[s.tcell,s.wide]}>{x.item_name}</ThemedText><ThemedText style={s.tcell}>{x.quantity}</ThemedText>
@@ -103,7 +103,7 @@ export default function GRVOutstanding(){
      <ThemedText style={[s.tcell,s.wide]}>{x.item_name}</ThemedText><ThemedText style={s.tcell}>{x.ordered_quantity} / {x.received_quantity}</ThemedText>
      <ThemedText style={s.tcell}>{x.ordered_unit_price??"—"}</ThemedText>
      <TextInput style={[s.tcell,s.required]} keyboardType="decimal-pad" placeholder={"Max "+max} value={e?.quantity??""} onChangeText={v=>setRowField(r,"quantity",v)}/>
-     {type==="grv"?<TextInput style={[s.tcell,s.required]} keyboardType="decimal-pad" placeholder="Price" value={e?.price??""} onChangeText={v=>setChosen(p=>({...p,[key]:{...(p[key]??r),price:v}}))}/>:<ThemedText style={s.tcell}>—</ThemedText>}
+     <TextInput style={[s.tcell,type==="grv"?s.required:s.optional]} keyboardType="decimal-pad" placeholder={type==="grv"?"Required":"Optional"} value={e?.price??""} onChangeText={v=>setRowField(r,"price",v)}/>
     </View>})}
   </View></ScrollView>
   <ThemedText style={s.muted}>{type==="grv"?"Delivery Note quantities are locked. Enter only price. For PO quantities, enter actual quantity and price.":"Enter actual quantities received from POs. Unit price is optional on Delivery Notes."}</ThemedText>
