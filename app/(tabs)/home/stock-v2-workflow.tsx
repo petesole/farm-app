@@ -78,7 +78,7 @@ export default function StockV2Workflow(){
  const changeLine=(id:number,key:keyof Line,value:string)=>{setLines(old=>old.map(l=>l.id===id?{...l,[key]:value}:l));resetEdit()};
  const addLine=()=>{setLines(old=>[...old,emptyLine(nextLine)]);setNextLine(n=>n+1);resetEdit()};
  const removeLine=(id:number)=>{setLines(old=>old.filter(l=>l.id!==id));resetEdit()};
- const switchTab=(v:Tab|null)=>{if(v==="GRV"){router.push("/stock-v2-grv-outstanding");return;}if(v==="Stock Transfer"){router.push("/stock-v2-owner-transactions");return;}setTab(v);if(v==="POs Outstanding"||v==="Planned Issue")void refresh(false);setLines([emptyLine(nextLine)]);setNextLine(n=>n+1);setOrderId(null);setJobId(null);setDropdown(null);setStatus("");setReceiptMode("dnote");setInvoiceNumber("");setDeliveryNote("");resetEdit()};
+ const switchTab=(v:Tab|null)=>{if(v==="GRV"||v==="POs Outstanding"){router.push("/stock-v2-grv-outstanding");return;}if(v==="Stock Transfer"){router.push("/stock-v2-owner-transactions");return;}setTab(v);if(v==="POs Outstanding"||v==="Planned Issue")void refresh(false);setLines([emptyLine(nextLine)]);setNextLine(n=>n+1);setOrderId(null);setJobId(null);setDropdown(null);setStatus("");setReceiptMode("dnote");setInvoiceNumber("");setDeliveryNote("");resetEdit()};
  const products=snapshot?.items??[];
  const inputTypes=[...new Set(products.map(x=>x.input_type).filter((x):x is string=>!!x))].sort();
  const inputCategories=[...new Set(products.map(x=>x.input_category).filter((x):x is string=>!!x))].sort();
@@ -168,7 +168,7 @@ export default function StockV2Workflow(){
      </View>)}</View>
    </View>:null}
   <View style={styles.navActions}>
-   {tab==="Purchase Orders"?<Pressable style={styles.back} onPress={()=>switchTab("POs Outstanding")}><ThemedText style={styles.backText}>Outstanding POs</ThemedText></Pressable>:null}
+   {tab==="Purchase Orders"?<Pressable style={styles.back} onPress={()=>switchTab("POs Outstanding")}><ThemedText style={styles.backText}>Receive D-Note / GRV</ThemedText></Pressable>:null}
    {tab==="Stock Balances"?<Pressable style={styles.back} onPress={()=>switchTab("Stock Transfer")}><ThemedText style={styles.backText}>Transfer Stock</ThemedText></Pressable>:null}
    {tab==="Purchase Orders"?<Pressable style={styles.back} onPress={()=>router.push("/stock-v2-suppliers")}><ThemedText style={styles.backText}>Suppliers</ThemedText></Pressable>:null}
    <Pressable style={styles.refresh} onPress={()=>refresh()}><ThemedText>↻ Refresh records</ThemedText></Pressable>
