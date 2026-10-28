@@ -34,7 +34,7 @@ export default function DailyDnotes(){
  return <ScrollView style={{flex:1,backgroundColor:C.background}} contentContainerStyle={{padding:22,minWidth:1020}}>
  <WbModuleHeader title="Daily DNotes" right={<WbLastSync refreshKey={data.length}/>}/>
  <Text style={{fontSize:26,fontWeight:"bold",marginBottom:6}}>Daily DNotes — Tonnage & Trace Allocations</Text>
- <Text style={{color:"#667085",marginBottom:14}}>Completed WB computer and manual slips · Choose a season to view all records, latest first · Click any column heading to sort</Text>
+ <Text style={{color:"#667085",marginBottom:14}}>Completed field-origin WB computer and manual slips only (including field-to-customer loads) · Stock dispatches excluded · Click any column heading to sort</Text>
  <View style={{flexDirection:"row",alignItems:"center",marginBottom:14,flexWrap:"wrap"}}>
  <Text style={{marginRight:8,fontWeight:"bold"}}>Season:</Text>
  <Picker selectedValue={season} onValueChange={v=>setSeason(String(v))} style={pickerStyle}>{availableSeasons.map(s=><Picker.Item key={s.season_id} label={s.season_name} value={String(s.season_id)}/>)}</Picker>
@@ -62,6 +62,6 @@ export default function DailyDnotes(){
  </View>)}
  {!loading&&loads.length===0?<Text style={{padding:14,color:"#667085"}}>No completed DNotes for the selected season and date.</Text>:null}
  </View>
- <Text style={{marginTop:12,color:"#667085"}}>{loading?"Loading…":"Selected total: "+(total/1000).toFixed(3)+" tonnes across "+loads.length+" slips."} Loads are counted once even when allocated across several TraceCodes. When filtering by TraceCode, all fields allocated on matching loads remain visible. Nett tonnes shows full load weights; Selected TraceCode tonnes counts only the chosen field. Unallocated market loads are shown without field allocations.</Text>
+ <Text style={{marginTop:12,color:"#667085"}}>{loading?"Loading…":"Selected total: "+(total/1000).toFixed(3)+" tonnes across "+loads.length+" slips."} Loads are counted once even when allocated across several TraceCodes. When filtering by TraceCode, all fields allocated on matching loads remain visible. Nett tonnes shows full load weights; Selected TraceCode tonnes counts only the chosen field. Only loads originating from a field are shown; stock-to-customer dispatches are excluded.</Text>
  </ScrollView>;
 }
