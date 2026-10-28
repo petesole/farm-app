@@ -1,3 +1,4 @@
+import {StockV2Header} from "@/components/jspl/StockV2Header";
 import {useEffect,useMemo,useState} from "react";
 import {useLocalSearchParams,useRouter} from "expo-router";
 import {ActivityIndicator,Platform,Pressable,ScrollView,StyleSheet,TextInput,View} from "react-native";
@@ -63,8 +64,9 @@ export default function ApplicationSheet(){
  };
  const heading=useMemo(()=>first?isoWeek(first.planned_week_start):"",[first]);
  return <ThemedView style={styles.root}><ScrollView contentContainerStyle={styles.page}>
+  <StockV2Header title="Stock Application"/>
   <View testID="application-actions" style={styles.actions}>
-   <Pressable style={styles.button} onPress={()=>router.back()}><ThemedText>← Close</ThemedText></Pressable>
+
    <Pressable style={[styles.button,styles.print,!canPrint&&{opacity:.5}]} disabled={!canPrint} onPress={print}><ThemedText style={{color:"#fff",fontWeight:"700"}}>Print Application</ThemedText></Pressable>
   </View>
   {loading?<ActivityIndicator/>:error?<ThemedText style={styles.error}>{error}</ThemedText>:first?<View testID="application-print-sheet" style={styles.sheet}>
