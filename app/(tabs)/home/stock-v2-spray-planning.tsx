@@ -1,3 +1,4 @@
+import {StockV2Header} from "@/components/jspl/StockV2Header";
 import {useCallback,useEffect,useMemo,useState} from "react";
 import {useRouter} from "expo-router";
 import {ActivityIndicator,Pressable,ScrollView,StyleSheet,TextInput,View} from "react-native";
@@ -62,11 +63,9 @@ export default function WeeklySprayPlanning(){
   }catch(e){setError("NOT TRANSFERRED: "+(e instanceof Error?e.message:String(e)))}finally{setSaving(false)}
  };
  return <ThemedView style={styles.root}><ScrollView contentContainerStyle={styles.page}>
- <View style={styles.head}><View style={{flex:1}}><ThemedText style={styles.brand}>JOHN SOLE (PVT) LTD</ThemedText><ThemedText style={styles.title}>Weekly Spray Planning</ThemedText><ThemedText style={styles.note}>Stock V2 test owner and warehouse • One spray job = one tank mix</ThemedText></View></View>
+ <StockV2Header title="Weekly Spray Planning" onRefresh={()=>void load()}/>
  <View style={styles.actions}>
-  <Pressable style={styles.secondary} onPress={()=>router.replace("/(tabs)/stock-test")}><ThemedText>← Stock Home</ThemedText></Pressable>
   <Pressable style={styles.primary} onPress={()=>router.push("/stock-v2-spray-entry")}><ThemedText style={styles.white}>+ New Spray</ThemedText></Pressable>
-  <Pressable style={styles.secondary} onPress={()=>void load()}><ThemedText>↻ Refresh</ThemedText></Pressable>
   <Pressable style={styles.secondary} onPress={()=>setShowCompleted(v=>!v)}><ThemedText>{showCompleted?"Hide completed":"Show history"}</ThemedText></Pressable>
  </View>
  {showCompleted?<View style={styles.panel}><ThemedText style={styles.bold}>Posted issue slips · Reprint</ThemedText>
