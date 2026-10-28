@@ -1,5 +1,4 @@
 import { JsplDashboardButton } from "@/components/jspl/JsplDashboardButton";
-import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 import { JsplTable } from "@/components/jspl/JsplTable";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -23,9 +22,9 @@ const emptyLine=(id:number,item_code=""):Line=>({id,item_code,quantity:"",unit_p
 const uuid=()=>"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const r=Math.floor(Math.random()*16);return(c==="x"?r:(r&3)|8).toString(16)});
 const number=(x:string)=>Number(x);
 const currency=(n:number)=>Number.isFinite(n)?n.toFixed(2):"—";
-const tabs=["Purchase Orders","POs Outstanding","GRV","Stock Balances","Spray Planning","Planned Issue","Direct Issue"] as const;
+const tabs=["Purchase Orders","POs Outstanding","GRV","Stock Balances","Spray Planning","Stock Transfer","Direct Issue"] as const;
 // Screen states also include the retained Planned Issue flow, beyond the dashboard buttons.
-type Tab=typeof tabs[number]|"Stock Transfer";
+type Tab=typeof tabs[number]|"Planned Issue";
 function Field({label,value,onChange,numeric=false}:{label:string;value:string;onChange:(v:string)=>void;numeric?:boolean}){
  return <View style={styles.field}><ThemedText style={styles.label}>{label}</ThemedText><TextInput style={styles.input} value={value} onChangeText={onChange} keyboardType={numeric?"decimal-pad":"default"}/></View>;
 }
@@ -159,18 +158,27 @@ export default function StockV2Workflow(){
    <Image source={require("../../../assets/images/jspl_farm_watermark.png")} resizeMode="contain" style={[styles.watermark,{width:watermarkSize,height:watermarkSize}]}/>
   </View>
   <ScrollView style={styles.foreground} contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
-  <JsplModuleHeader title="Stock V2" subtitle={tab??"Stock Management"} backLabel={tab?"Stock Home":"Main Dashboard"} backHref={tab?undefined:"/(tabs)/main-dashboard"} onBack={tab?()=>switchTab(null):undefined} showMain={!!tab} />
+  <View style={styles.brandHeader}><View style={styles.brandHeading}>
+   <ThemedText style={styles.brandName}>JOHN SOLE (PVT) LTD</ThemedText>
+  <ThemedText style={styles.title}>Stock Control — V2 Test</ThemedText>
+  </View><Image source={require("../../../assets/images/jspl_farm_logo.png")} accessibilityLabel="John Sole (Pvt) Ltd" resizeMode="contain" style={styles.logo}/></View>
+  <ThemedText style={styles.muted}>Isolated demo records only • TEST_JS • TEST_WH • No live Access changes</ThemedText>
   {tab===null?<View style={styles.home}>
+    <ThemedText style={styles.homeTitle}>Stock Home</ThemedText>
+    <ThemedText style={styles.muted}>Choose a stock operation</ThemedText>
+    <View style={styles.navActions}>
+
+     <Pressable style={styles.back} onPress={()=>router.push("/stock-v2-setup")}><ThemedText style={styles.backText}>Manage Owners & Contracts</ThemedText></Pressable>
+     <Pressable style={styles.back} onPress={()=>router.push("/stock-v2-suppliers")}><ThemedText style={styles.backText}>Manage Suppliers</ThemedText></Pressable>
+    </View>
     <View style={styles.homeGrid}>{tabs.map(x=><View key={x} style={styles.dashboardCard}>
       <JsplDashboardButton title={x}
-       description={x==="GRV"&&snapshot?.pending_invoice_count?String(snapshot.pending_invoice_count)+" pending":undefined}
+       count={x==="POs Outstanding"?new Set((snapshot?.orders??[]).filter(o=>o.ordered_quantity>o.received_quantity).map(o=>o.order_id)).size:x==="GRV"?snapshot?.pending_invoice_count:undefined}
        onPress={()=>x==="Spray Planning"?router.push("/stock-v2-spray-planning"):switchTab(x)}/>
      </View>)}</View>
    </View>:null}
   <View style={styles.navActions}>
-   {tab==="Purchase Orders"?<Pressable style={styles.back} onPress={()=>switchTab("POs Outstanding")}><ThemedText style={styles.backText}>Receive D-Note / GRV</ThemedText></Pressable>:null}
-   {tab==="Stock Balances"?<Pressable style={styles.back} onPress={()=>switchTab("Stock Transfer")}><ThemedText style={styles.backText}>Transfer Stock</ThemedText></Pressable>:null}
-   {tab==="Purchase Orders"?<Pressable style={styles.back} onPress={()=>router.push("/stock-v2-suppliers")}><ThemedText style={styles.backText}>Suppliers</ThemedText></Pressable>:null}
+   {tab!==null?<Pressable style={styles.back} onPress={()=>switchTab(null)}><ThemedText style={styles.backText}>← Back to Stock Home</ThemedText></Pressable>:null}
    <Pressable style={styles.refresh} onPress={()=>refresh()}><ThemedText>↻ Refresh records</ThemedText></Pressable>
   </View>
   {busy?<ActivityIndicator/>:null}
