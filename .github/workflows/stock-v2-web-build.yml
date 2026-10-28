@@ -7,6 +7,10 @@ on:
     branches:
       - main
   workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
 jobs:
   web-build:
     runs-on: ubuntu-latest
@@ -18,9 +22,34 @@ jobs:
           node-version: '20'
           cache: npm
       - run: npm ci
-      - name: Install missing PDF runtime dependency for migrated Weighbridge
-        run: npm install --no-save pdf-lib@1.17.1
-      - name: Validate TypeScript
-        run: npx tsc --noEmit
-      - name: Build Expo web
-        run: npx expo export --platform web
+      - run: npm install --no-save pdf-lib@1.17.1
+      - name: TypeScript and web compilation
+        id: compile
+        shell: bash
+        run: |
+          set +e
+          npx tsc --noEmit > /tmp/stock-v2-build.log 2>&1
+          tsc_status=$?
+          if [ "$tsc_status" -eq 0 ]; then
+            npx expo export --platform web >> /tmp/stock-v2-build.log 2>&1
+            build_status=$?
+          else
+            build_status=0
+          fi
+          cat /tmp/stock-v2-build.log
+          if [ "$tsc_status" -ne 0 ] || [ "$build_status" -ne 0 ]; then exit 1; fi
+      - name: Write failing errors to draft validation PR
+        if: failure() && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if [ -f /tmp/stock-v2-build.log ]; then
+            {
+              printf 'Stock V2 build failure on commit %s\n\n' "${GITHUB_SHA:0:7}"
+              printf '\`\`\`text\n'
+              grep -E 'error TS[0-9]+|Error:|npm ERR!|error:' /tmp/stock-v2-build.log | head -70 || tail -35 /tmp/stock-v2-build.log
+              printf '\n\`\`\`\n'
+            } > /tmp/stock-v2-comment.md
+            gh pr comment 7 --body-file /tmp/stock-v2-comment.md
+          fi
