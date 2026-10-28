@@ -215,7 +215,7 @@ export default function FuelBudgetManage(){
     {visibleJobs.length===0?<ThemedText style={s.small}>No matching jobs. Choose another filter or select Clear Filters.</ThemedText>:null}
     {visibleJobs.map(a=><View key={a.fuel_budget_activity_id} style={s.jobRow}>
      <View style={s.jobSummary}>
-      <ThemedText style={[s.bold,s.jobSeq]}>{a.sequence_no??"—"}</ThemedText>
+      <ThemedText style={[s.bold,{width:42,textAlign:'center'}]}>{a.sequence_no??"—"}</ThemedText>
       <ThemedText style={[s.bold,s.jobName]} numberOfLines={1}>{jobName(a.vehicle_job_id)}</ThemedText>
       <ThemedText style={s.jobData}>DAP {a.target_dap??"—"}</ThemedText>
       <ThemedText style={s.jobData}>{className(a.tractor_class_id)}</ThemedText>
