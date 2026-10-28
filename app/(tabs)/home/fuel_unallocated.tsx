@@ -1,3 +1,4 @@
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 // app/(tabs)/fuel_unallocated.tsx
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -183,6 +184,7 @@ export default function FuelUnallocatedScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      <JsplModuleHeader title="Unallocated Fuel" />
       
       {/* ✅ CANCEL BUTTON ADDED */}
       <Pressable

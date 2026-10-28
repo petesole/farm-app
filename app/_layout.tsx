@@ -1,6 +1,8 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { View } from "react-native";
+import { JsplReturnNavigation } from "@/components/jspl/JsplReturnNavigation";
 import { useEffect } from "react";
 import { Platform } from "react-native";
 import "react-native-reanimated";
@@ -26,6 +28,8 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+      <View style={{ flex: 1 }}>
+      <JsplReturnNavigation />
       <Stack screenOptions={{ headerShown: false }}>
         {/* This hosts your tabs */}
         <Stack.Screen name="(tabs)" />
@@ -34,6 +38,7 @@ export default function RootLayout() {
         <Stack.Screen name="modal" options={{ presentation: "modal" }} />
       </Stack>
 
+      </View>
       <StatusBar style="auto" />
     </ThemeProvider>
   );

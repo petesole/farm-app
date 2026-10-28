@@ -1,4 +1,4 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { supabase } from "../../supabase";
 import { Redirect, Tabs } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Platform, View } from "react-native";
@@ -6,17 +6,29 @@ import { ActivityIndicator, Platform, View } from "react-native";
 export default function TabsLayout() {
   const [ready, setReady] = useState(false);
   const [loggedIn, setLoggedIn] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [canFuel, setCanFuel] = useState(false);
 
   useEffect(() => {
     let alive = true;
 
     async function checkAuth() {
       try {
-        const raw = await AsyncStorage.getItem("app_user");
-        const role = await AsyncStorage.getItem("role");
-
+        // A cached UI role is not proof of authentication.
+        const { data: session, error: userError } = await supabase.auth.getUser();
         if (!alive) return;
-        setLoggedIn(!!raw && !!role);
+        if (userError || !session.user) {
+          setLoggedIn(false);
+          return;
+        }
+        const { data: roles, error: rolesError } = await supabase.rpc("my_farm_app_roles");
+        if (!alive) return;
+        const assigned = !rolesError && Array.isArray(roles) ? roles.map((r: string) => String(r).trim().toLowerCase()) : [];
+        const admin = assigned.includes('admin');
+        const fuelAccess = admin || assigned.includes('manager') || assigned.includes('fuel');
+        setIsAdmin(admin);
+        setCanFuel(fuelAccess);
+        setLoggedIn(admin || fuelAccess);
       } catch {
         if (!alive) return;
         setLoggedIn(false);
@@ -45,19 +57,25 @@ export default function TabsLayout() {
   }
 
   return (
-    <Tabs initialRouteName="field-dashboard" screenOptions={{ headerShown: false }}>
+    <Tabs initialRouteName={isAdmin ? "main-dashboard" : "fuel"} screenOptions={{ headerShown: false }}>
       <Tabs.Screen name="home" options={{ href: null }} />
-      <Tabs.Screen name="field-dashboard" options={{ title: "Fields" }} />
-      <Tabs.Screen name="wb-admin" options={{ title: "Weighbridge", href: Platform.OS === "web" ? "/wb-admin" : null }} />
-      <Tabs.Screen name="fuel" options={{ title: "Fuel" }} />
+      <Tabs.Screen name="control-panel" options={{ href: null }} />
+      <Tabs.Screen name="vehicle-management" options={{ href: null }} />
+      <Tabs.Screen name="vehicle-detail" options={{ href: null }} />
+      <Tabs.Screen name="fields-control" options={{ href: null }} />
+      <Tabs.Screen name="field-control-list" options={{ href: null }} />
+      <Tabs.Screen name="field-control-detail" options={{ href: null }} />
+      <Tabs.Screen name="main-dashboard" options={{ title: "Main", href: isAdmin ? "/main-dashboard" : null }} />
+      <Tabs.Screen name="field-dashboard" options={{ title: "Trace", href: isAdmin ? "/field-dashboard" : null }} />
+      <Tabs.Screen name="wb-admin" options={{ title: "Weighbridge", href: isAdmin && Platform.OS === "web" ? "/wb-admin" : null }} />
+      <Tabs.Screen name="fuel" options={{ title: "Fuel", href: canFuel ? "/fuel" : null }} />
+      <Tabs.Screen name="stock-test" options={{ href: null }} />
+      <Tabs.Screen name="cashbook" options={{ href: null }} />
       <Tabs.Screen
         name="irrigation_main_dashboard"
-        options={{ title: "Irrigation" }}
+        options={{ href: null }}
       />
-      <Tabs.Screen name="scouting" options={{ title: "Scouting" }} />
-      <Tabs.Screen name="spray" options={{ title: "Spray Planning" }} />
-      <Tabs.Screen name="direct-issue" options={{ title: "Direct Issue" }} />
-      <Tabs.Screen name="stock-test" options={{ title: "Stock V2 Test" }} />
+      <Tabs.Screen name="scouting" options={{ href: null }} />
     </Tabs>
   );
 }

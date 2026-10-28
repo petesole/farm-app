@@ -1,3 +1,4 @@
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 // app/(tabs)/home/fuel_planning.tsx
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -249,6 +250,7 @@ export default function FuelPlanningScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      <JsplModuleHeader title="Fuel Planning" />
       <View style={styles.headerRow}>
         <View>
           <ThemedText type="title">Fuel Planning</ThemedText>

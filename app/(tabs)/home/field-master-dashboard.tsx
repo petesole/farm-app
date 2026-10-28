@@ -1,3 +1,4 @@
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { router } from "expo-router";
@@ -12,11 +13,12 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  Switch,
   View,
 } from "react-native";
 import { supabase } from "../../../supabase";
 
-type FarmRow = { farm_id: number; farm_name: string | null };
+type FarmRow = { farm_id: number; farm_name: string | null; active: boolean };
 
 type FieldRow = {
   field_id: number;
@@ -34,7 +36,8 @@ type FieldRow = {
   field_classification_id: number | null;
 };
 
-type FieldJoined = FieldRow & { farm_name: string | null };
+type FieldJoined = FieldRow & { farm_name: string | null; farm_active: boolean };
+const effectiveActive = (f: FieldJoined) => f.farm_active && f.discontinued !== true;
 
 function fmt(v: any) {
   if (v === null || v === undefined) return "-";
@@ -57,10 +60,11 @@ export default function FieldMasterDashboardScreen() {
 
   const [q, setQ] = useState("");
   const [farmFilterId, setFarmFilterId] = useState<number | null>(null); // null = All
+  const [statusFilter, setStatusFilter] = useState<"active" | "inactive" | "all">("active");
 
   async function load() {
     const [farmRes, fieldRes] = await Promise.all([
-      supabase.from("farm").select("farm_id,farm_name").order("farm_name"),
+      supabase.from("farm").select("farm_id,farm_name,active").order("farm_name"),
       supabase
         .from("field")
         .select(
@@ -75,12 +79,13 @@ export default function FieldMasterDashboardScreen() {
     const farmList = (farmRes.data ?? []) as FarmRow[];
     const fieldList = (fieldRes.data ?? []) as FieldRow[];
 
-    const farmMap = new Map<number, string | null>();
-    farmList.forEach((f) => farmMap.set(f.farm_id, f.farm_name ?? null));
+    const farmMap = new Map<number, FarmRow>();
+    farmList.forEach((f) => farmMap.set(f.farm_id, f));
 
     const joined: FieldJoined[] = fieldList.map((x) => ({
       ...x,
-      farm_name: x.farm_id ? farmMap.get(x.farm_id) ?? null : null,
+      farm_name: x.farm_id ? farmMap.get(x.farm_id)?.farm_name ?? null : null,
+      farm_active: x.farm_id ? farmMap.get(x.farm_id)?.active !== false : false,
     }));
 
     joined.sort((a, b) => {
@@ -123,6 +128,8 @@ export default function FieldMasterDashboardScreen() {
 
     return rows.filter((r) => {
       if (farmFilterId !== null && r.farm_id !== farmFilterId) return false;
+      if (statusFilter === "active" && !effectiveActive(r)) return false;
+      if (statusFilter === "inactive" && effectiveActive(r)) return false;
       if (!qq) return true;
 
       const hay = [
@@ -145,7 +152,7 @@ export default function FieldMasterDashboardScreen() {
 
       return hay.includes(qq);
     });
-  }, [rows, q, farmFilterId]);
+  }, [rows, q, farmFilterId, statusFilter]);
 
   function FarmPills() {
     const pillValues = [{ farm_id: null as any, farm_name: "All" as any }, ...farms];
@@ -186,6 +193,17 @@ export default function FieldMasterDashboardScreen() {
     });
   }
 
+  async function setFieldActive(item: FieldJoined, active: boolean) {
+    if (!item.farm_active) return;
+    const { data, error } = await supabase.from("field")
+      .update({ discontinued: !active }).eq("field_id", item.field_id).select("field_id");
+    if (error || !data?.length) {
+      Alert.alert("Update failed", error?.message ?? "Could not change field status.");
+      return;
+    }
+    setRows(previous => previous.map(row => row.field_id === item.field_id ? {...row, discontinued: !active} : row));
+  }
+
   function TableRow({ item }: { item: FieldJoined }) {
     // Horizontal mini-table per row (so you can see all columns)
     return (
@@ -199,7 +217,9 @@ export default function FieldMasterDashboardScreen() {
             <Cell w={120} text={fmt(item.latitude)} />
             <Cell w={120} text={fmt(item.longitude)} />
             <Cell w={110} text={fmt(item.fuel_active)} />
-            <Cell w={110} text={fmt(item.discontinued)} />
+            <View style={{ width: 110, alignItems: "center", justifyContent: "center" }}>
+              <Switch value={effectiveActive(item)} disabled={!item.farm_active} onValueChange={value => void setFieldActive(item, value)} />
+            </View>
             <Cell w={110} text={fmt(item.zesa_point_id)} />
             <Cell w={120} text={fmt(item.rain_gauge_id)} />
             <Cell w={160} text={fmt(item.field_classification_id)} />
@@ -245,6 +265,19 @@ export default function FieldMasterDashboardScreen() {
         />
 
         <FarmPills />
+        <View style={{ marginTop: 12 }}>
+          <ThemedText style={{ opacity: 0.7, marginBottom: 6 }}>Field status</ThemedText>
+          <View style={styles.pills}>
+            {(["active", "all", "inactive"] as const).map(value => (
+              <Pressable key={value} onPress={() => setStatusFilter(value)}
+                style={[styles.pill, statusFilter === value && styles.pillActive]}>
+                <ThemedText style={[styles.pillText, statusFilter === value && styles.pillTextActive]}>
+                  {value === "all" ? "All" : value === "active" ? "Active" : "Inactive"}
+                </ThemedText>
+              </Pressable>
+            ))}
+          </View>
+        </View>
 
         <ThemedText style={{ marginTop: 10, opacity: 0.7 }}>
           Showing {filtered.length} of {rows.length}
@@ -261,7 +294,7 @@ export default function FieldMasterDashboardScreen() {
               <HeaderCell w={120} text="Lat" />
               <HeaderCell w={120} text="Long" />
               <HeaderCell w={110} text="Fuel" />
-              <HeaderCell w={110} text="Discontinued" />
+              <HeaderCell w={110} text="Active" />
               <HeaderCell w={110} text="Zesa" />
               <HeaderCell w={120} text="Rain Gauge" />
               <HeaderCell w={160} text="Classification" />
@@ -284,6 +317,8 @@ export default function FieldMasterDashboardScreen() {
 
   return (
     <ThemedView style={styles.container}>
+      <JsplModuleHeader title="Field Management" />
+      <Pressable onPress={()=>router.replace("/(tabs)/fields-control")} style={{padding:10}}><Text style={{color:"#25633A",fontWeight:"700"}}>← Fields Control</Text></Pressable>
       <FlatList
         data={filtered}
         keyExtractor={(item) => String(item.field_id)}

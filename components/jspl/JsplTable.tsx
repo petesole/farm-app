@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   formatJsplNumber, jsplCellAlignment, jsplColors, jsplSizes,
   jsplSpacing, jsplType, type JsplCellKind,
@@ -13,18 +13,16 @@ export type JsplColumn<Row> = {
   decimals?: number;
   unit?: string;
   render?: (row: Row) => string | number | null | undefined;
-  onPress?: (row: Row) => void;
   value?: (row: Row) => string | number | null | undefined;
 };
 
 export function JsplTable<Row>({
-  rows, columns, rowKey, emptyMessage = 'No records', rowAction,
+  rows, columns, rowKey, emptyMessage = 'No records',
 }: {
   rows: readonly Row[];
   columns: readonly JsplColumn<Row>[];
   rowKey: (row: Row, index: number) => string;
   emptyMessage?: string;
-  rowAction?: { label: string; onPress: (row: Row) => void };
 }) {
   return (
     <ScrollView horizontal contentContainerStyle={styles.scrollContent}>
@@ -36,7 +34,6 @@ export function JsplTable<Row>({
               textAlign: jsplCellAlignment(column.kind ?? 'text'),
             }]}>{column.title}</Text>
           ))}
-          {rowAction ? <Text style={[styles.headerCell,{width:115}]}>Movements</Text> : null}
         </View>
         {rows.length === 0 ? <Text style={styles.empty}>{emptyMessage}</Text> :
           rows.map((row, i) => (
@@ -47,11 +44,7 @@ export function JsplTable<Row>({
                 const display = kind === 'number' && typeof raw === 'number'
                   ? formatJsplNumber(raw, column.decimals ?? 2)
                   : raw == null ? '—' : String(raw);
-                return column.onPress ? <Pressable key={column.key} accessibilityRole="button"
-                  style={[styles.actionButton,{width:column.width??112}]}
-                  onPress={()=>column.onPress?.(row)}>
-                  <Text style={styles.actionText}>{display}</Text>
-                </Pressable> : <Text key={column.key} numberOfLines={1} selectable
+                return <Text key={column.key} numberOfLines={1} selectable
                   style={[styles.cell, {
                     width: column.width ?? 144,
                     textAlign: jsplCellAlignment(kind),
@@ -60,7 +53,6 @@ export function JsplTable<Row>({
                   {display}{column.unit && raw != null ? ` ${column.unit}` : ''}
                 </Text>;
               })}
-              {rowAction ? <Pressable accessibilityRole="button" style={styles.actionButton} onPress={()=>rowAction.onPress(row)}><Text style={styles.actionText}>{rowAction.label}</Text></Pressable> : null}
             </View>
           ))}
       </View>
@@ -75,7 +67,5 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', minHeight: jsplSizes.tableRowMinHeight, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: jsplColors.border },
   alternate: { backgroundColor: '#FAFBFA' },
   cell: { paddingHorizontal: jsplSpacing.md, paddingVertical: jsplSpacing.sm, fontSize: jsplType.body, color: jsplColors.text },
-  actionButton:{width:115,paddingVertical:9,paddingHorizontal:10,borderWidth:1,borderColor:jsplColors.border,borderRadius:5,alignItems:'center',backgroundColor:jsplColors.background},
-  actionText:{fontSize:jsplType.caption,fontWeight:'700',color:jsplColors.primary},
   empty: { padding: jsplSpacing.xl, textAlign: 'center', color: jsplColors.textSecondary },
 });

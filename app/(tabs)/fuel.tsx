@@ -1,5 +1,5 @@
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 // app/(tabs)/fuel.tsx
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -14,6 +14,8 @@ import { supabase } from "../../supabase";
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
+import { JsplDashboardButton } from "@/components/jspl/JsplDashboardButton";
+import { jsplColors, jsplSpacing, jsplRadii } from "@/constants/jspl-design";
 
 /** Helpers */
 function toISODate(d: Date) {
@@ -98,10 +100,23 @@ export default function FuelScreen() {
   };
 
   const loadMyRoleName = async () => {
-    const storedRole = await AsyncStorage.getItem("role");
-    const r = norm(storedRole) || null;
-    setRoleName(r);
-    return r;
+    // Only accept roles verified by the database for the current Auth user.
+    const { data: identity, error: identityError } = await supabase.auth.getUser();
+    if (identityError || !identity.user) {
+      setRoleName(null);
+      setErr("Please sign in again.");
+      return null;
+    }
+    const { data: roles, error: roleError } = await supabase.rpc("my_farm_app_roles");
+    if (roleError || !Array.isArray(roles)) {
+      setRoleName(null);
+      setErr("Unable to verify your permissions.");
+      return null;
+    }
+    const role = ["admin", "manager", "fuel", "viewer", "irrigation", "scouting", "scout", "scouter"]
+      .find((item) => roles.map((value: string) => norm(value)).includes(item)) ?? null;
+    setRoleName(role);
+    return role;
   };
 
   const checkRequiredDips = async (currentRole?: string | null) => {
@@ -202,6 +217,7 @@ export default function FuelScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      <JsplModuleHeader title="Fuel" showMain={isAdmin} />
       <ThemedText type="title">Fuel Dashboard</ThemedText>
 
       {dash && (
@@ -212,49 +228,19 @@ export default function FuelScreen() {
 
       <ThemedView style={styles.bottomBar}>
         {isAdmin && (
-          <Pressable
-            style={styles.navBtn}
-            onPress={() => router.push("/(tabs)/home/fuel_admin_home")}
-          >
-            <ThemedText>Fuel Admin</ThemedText>
-          </Pressable>
+          <JsplDashboardButton title="Fuel Admin" onPress={() => router.push("/(tabs)/home/fuel_admin_home")} />
         )}
 
-        <Pressable
-          style={styles.navBtn}
-          onPress={() => router.push("/(tabs)/home/fuel_issue")}
-        >
-          <ThemedText>Fuel Issue</ThemedText>
-        </Pressable>
+        <JsplDashboardButton title="Fuel Issue" onPress={() => router.push("/(tabs)/home/fuel_issue")} />
 
-        <Pressable
-          style={styles.navBtn}
-          onPress={() => router.push("/(tabs)/home/fuel_received")}
-        >
-          <ThemedText>Fuel Received</ThemedText>
-        </Pressable>
+        <JsplDashboardButton title="Fuel Received" onPress={() => router.push("/(tabs)/home/fuel_received")} />
 
-        <Pressable
-          style={styles.navBtn}
-          onPress={() => router.push("/(tabs)/home/fuel_unallocated")}
-        >
-          <ThemedText>Fuel Unallocated</ThemedText>
-        </Pressable>
+        <JsplDashboardButton title="Fuel Unallocated" onPress={() => router.push("/(tabs)/home/fuel_unallocated")} />
 
-        <Pressable
-          style={styles.navBtn}
-          onPress={() => router.push("/(tabs)/home/fuel_report")}
-        >
-          <ThemedText>Fuel Report</ThemedText>
-        </Pressable>
+        <JsplDashboardButton title="Fuel Report" onPress={() => router.push("/(tabs)/home/fuel_report")} />
 
         {canSeeMonthlyAllocations && (
-          <Pressable
-            style={styles.navBtn}
-            onPress={() => router.push("/(tabs)/home/fuel_monthly_allocations")}
-          >
-            <ThemedText>Monthly Allocations</ThemedText>
-          </Pressable>
+          <JsplDashboardButton title="Monthly Allocations" onPress={() => router.push("/(tabs)/home/fuel_monthly_allocations")} />
         )}
       </ThemedView>
     </ScrollView>
@@ -262,10 +248,10 @@ export default function FuelScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 18, gap: 12 },
-  card: { borderWidth: 1, padding: 12 },
-  input: { borderWidth: 1, padding: 10 },
-  button: { borderWidth: 1, padding: 10 },
-  bottomBar: { marginTop: 20, gap: 10 },
+  container: { padding: jsplSpacing.lg, gap: jsplSpacing.md, backgroundColor: jsplColors.background },
+  card: { borderWidth: 1, borderColor: jsplColors.border, backgroundColor: jsplColors.surface, borderRadius: jsplRadii.md, padding: jsplSpacing.lg },
+  input: { borderWidth: 1, borderColor: jsplColors.border, backgroundColor: jsplColors.surface, borderRadius: jsplRadii.md, padding: jsplSpacing.md },
+  button: { backgroundColor: jsplColors.primary, borderRadius: jsplRadii.md, padding: jsplSpacing.md },
+  bottomBar: { marginTop: jsplSpacing.xl, gap: jsplSpacing.md, backgroundColor: jsplColors.background },
   navBtn: { borderWidth: 1, padding: 12 },
 });

@@ -1,3 +1,4 @@
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 import {fuelDateISO} from "./fuel_admin_dates";
 // app/(tabs)/home/tracecode-edit.tsx
 import { ThemedText } from "@/components/themed-text";
@@ -42,6 +43,8 @@ type TracecodeRow = {
 
   plant_population: number | null;
   fuel_budget_id: number | null;
+  contract_id: number | null;
+  crop_status: "Planned" | "Planted" | "Not Planted" | "Abandoned";
 };
 
 type RoleName = "admin" | "manager" | "viewer" | "irrigation" | "unknown";
@@ -52,6 +55,7 @@ type SeasonRow = { season_id: number; season_name: string | null };
 type IrrRow = { irrigation_type_id: number; irrigation_type: string | null };
 type CropRow = { crop_id: number; crop_name: string | null };
 type VarietyRow = { variety_id: number; crop_id: number | null; variety_name: string | null };
+type ContractRow = {contract_id:number;contract_name:string;active:boolean};
 type FuelBudgetRow = { fuel_budget_id:number; fuel_budget_name:string; crop_id:number|null; active:boolean };
 
 /** ---------- Helpers ---------- */
@@ -113,6 +117,7 @@ function LabeledInput(props: {
   keyboardType?: "default" | "numeric";
   placeholder?: string;
   editable?: boolean;
+  normalizeDate?: boolean;
 }) {
   return (
     <View style={{ marginTop: 10 }}>
@@ -120,6 +125,7 @@ function LabeledInput(props: {
       <TextInput
         value={props.value}
         onChangeText={props.onChangeText}
+        onBlur={props.normalizeDate ? () => { const iso = fuelDateISO(props.value); if(iso) props.onChangeText(isoToDDMMYYYY(iso)); } : undefined}
         keyboardType={props.keyboardType ?? "default"}
         autoCapitalize="none"
         autoCorrect={false}
@@ -272,6 +278,9 @@ export default function TracecodeEditScreen() {
   const [crops, setCrops] = useState<CropRow[]>([]);
   const [varieties, setVarieties] = useState<VarietyRow[]>([]);
   const [fuelBudgets,setFuelBudgets] = useState<FuelBudgetRow[]>([]);
+  const [contracts,setContracts] = useState<ContractRow[]>([]);
+  const [contractId,setContractId] = useState<number|null>(null);
+  const [contractModal,setContractModal] = useState(false);
 
   // Modals (admin only)
   const [farmModal, setFarmModal] = useState(false);
@@ -285,6 +294,9 @@ export default function TracecodeEditScreen() {
   // Form fields
   const [tracecodeName, setTracecodeName] = useState("");
   const [tracecodeSize, setTracecodeSize] = useState("");
+  const [cropStatus, setCropStatus] = useState<TracecodeRow["crop_status"]>("Planned");
+  const [cropStatusModal, setCropStatusModal] = useState(false);
+  const cropStatusOptions: TracecodeRow["crop_status"][] = ["Not Planted", "Abandoned"];
 
   const [farmId, setFarmId] = useState<number | null>(null);
   const [fieldId, setFieldId] = useState<number | null>(null);
@@ -334,7 +346,10 @@ export default function TracecodeEditScreen() {
     [varieties, varietyId]
   );
 
-  const budgetsForCrop = useMemo(()=>fuelBudgets.filter(b=>b.crop_id===cropId || b.fuel_budget_id===fuelBudgetId),[fuelBudgets,cropId,fuelBudgetId]);
+  const selfContract = contracts.find(x=>x.contract_name==="Self");
+  const selectedContract = contracts.find(x=>x.contract_id===contractId)??selfContract;
+  const availableContracts=contracts.filter(x=>x.active);
+  const budgetsForCrop = useMemo(()=>fuelBudgets.filter(b=>b.active && b.crop_id===cropId),[fuelBudgets,cropId]);
   const selectedFuelBudget = fuelBudgets.find(b=>b.fuel_budget_id===fuelBudgetId);
 
   const fieldsForFarm = useMemo(() => {
@@ -360,7 +375,7 @@ export default function TracecodeEditScreen() {
   }
 
   async function loadLookupsAdmin() {
-    const [farmRes, fieldRes, seasonRes, irrRes, cropRes, varRes, fuelRes] = await Promise.all([
+    const [farmRes, fieldRes, seasonRes, irrRes, cropRes, varRes, fuelRes, contractRes] = await Promise.all([
       supabase.from("farm").select("farm_id,farm_name").order("farm_name"),
       supabase.from("field").select("field_id,field_name,farm_id").order("field_name"),
       supabase.from("season").select("season_id,season_name").order("season_name"),
@@ -368,6 +383,7 @@ export default function TracecodeEditScreen() {
       supabase.from("crop").select("crop_id,crop_name").order("crop_name"),
       supabase.from("variety").select("variety_id,variety_name,crop_id").order("variety_name"),
       supabase.from("fuel_budget").select("fuel_budget_id,fuel_budget_name,crop_id,active").order("fuel_budget_name"),
+      supabase.from("contract").select("contract_id,contract_name,active").order("contract_name"),
     ]);
 
     if (farmRes.error) throw new Error(`farm: ${farmRes.error.message}`);
@@ -377,6 +393,7 @@ export default function TracecodeEditScreen() {
     if (cropRes.error) throw new Error(`crop: ${cropRes.error.message}`);
     if (varRes.error) throw new Error(`variety: ${varRes.error.message}`);
     if (fuelRes.error) throw new Error(`fuel_budget: ${fuelRes.error.message}`);
+    if (contractRes.error) throw new Error(`contract: ${contractRes.error.message}`);
 
     setFarms((farmRes.data ?? []) as FarmRow[]);
     setFields((fieldRes.data ?? []) as FieldRow[]);
@@ -385,6 +402,7 @@ export default function TracecodeEditScreen() {
     setCrops((cropRes.data ?? []) as CropRow[]);
     setVarieties((varRes.data ?? []) as VarietyRow[]);
     setFuelBudgets((fuelRes.data ?? []) as FuelBudgetRow[]);
+    setContracts((contractRes.data??[]) as ContractRow[]);
   }
 
   async function loadTracecodeAdmin(tid: number) {
@@ -426,6 +444,7 @@ export default function TracecodeEditScreen() {
 
           setTracecodeName("");
           setTracecodeSize("");
+          setCropStatus("Planned");
           setFarmId(null);
           setFieldId(null);
           setSeasonId(null);
@@ -433,6 +452,7 @@ export default function TracecodeEditScreen() {
           setCropId(null);
           setVarietyId(null);
           setFuelBudgetId(null);
+          setContractId(null);
 
           setStartDate("");
           setEndDate("");
@@ -458,6 +478,7 @@ export default function TracecodeEditScreen() {
 
           setTracecodeName(tc.tracecode_name ?? "");
           setTracecodeSize(tc.tracecode_size?.toString() ?? "");
+          setCropStatus(tc.crop_status ?? "Planted");
 
           setFieldId(tc.field_id ?? null);
           setSeasonId(tc.season_id ?? null);
@@ -465,6 +486,7 @@ export default function TracecodeEditScreen() {
           setCropId(tc.crop_id ?? null);
           setVarietyId(tc.variety_id ?? null);
           setFuelBudgetId(tc.fuel_budget_id ?? null);
+          setContractId(tc.contract_id ?? null);
 
           setStartDate(isoToDDMMYYYY(tc.start_date));
           setEndDate(isoToDDMMYYYY(tc.end_date));
@@ -612,6 +634,16 @@ export default function TracecodeEditScreen() {
         return;
       }
 
+      // Open TraceCodes must not be assigned an inactive fuel budget.
+      if (!endDb && fuelBudgetId != null) {
+        const chosenBudget = fuelBudgets.find(b => b.fuel_budget_id === fuelBudgetId);
+        if (!chosenBudget?.active || chosenBudget.crop_id !== cropId) {
+          Alert.alert("Fuel budget unavailable", "This TraceCode is active. Select an active fuel budget for its crop, or clear the fuel budget selection.");
+          return;
+        }
+      }
+
+      if(!selectedContract || (endDb===null && !selectedContract.active)){Alert.alert("Contract unavailable","Select an active contract before saving.");return;}
       const payload: Omit<TracecodeRow, "tracecode_id"> = {
         tracecode_name: name,
         tracecode_size: toNumOrNull(tracecodeSize),
@@ -631,6 +663,8 @@ export default function TracecodeEditScreen() {
 
         plant_population: toNumOrNull(plantPopulation),
         fuel_budget_id: fuelBudgetId,
+        contract_id: contractId??selfContract?.contract_id??null,
+        crop_status: cropStatus,
       };
 
       if (isNew) {
@@ -694,12 +728,22 @@ export default function TracecodeEditScreen() {
 
   return (
     <ThemedView style={styles.container}>
+      <JsplModuleHeader title="Trace Control" backLabel="Trace Control" backHref="/(tabs)/field-dashboard" />
       <ThemedText style={{ opacity: 0.55, marginBottom: 6 }}>
         params: mode={String(mode ?? "")} tracecodeIdRaw={String(tidRaw ?? "")}
       </ThemedText>
 
       {allowFullAdminEdit && (
         <>
+          <SelectModal<TracecodeRow["crop_status"]>
+            visible={cropStatusModal}
+            title="Crop status"
+            items={cropStatusOptions}
+            getKey={(status) => status}
+            getLabel={(status) => status}
+            onPick={(status) => { setCropStatus(status); setCropStatusModal(false); }}
+            onClose={() => setCropStatusModal(false)}
+          />
           <SelectModal<FarmRow>
             visible={farmModal}
             title="Select Farm"
@@ -756,12 +800,21 @@ export default function TracecodeEditScreen() {
             onClose={() => setCropModal(false)}
           />
 
+          <SelectModal<ContractRow>
+            visible={contractModal}
+            title="Select Contract"
+            items={availableContracts}
+            getKey={x=>String(x.contract_id)}
+            getLabel={x=>x.contract_name}
+            onPick={x=>{setContractId(x.contract_id);setContractModal(false);}}
+            onClose={()=>setContractModal(false)}
+          />
           <SelectModal<FuelBudgetRow>
             visible={fuelBudgetModal}
             title="Select Fuel Budget"
             items={budgetsForCrop}
             getKey={(b)=>String(b.fuel_budget_id)}
-            getLabel={(b)=>b.fuel_budget_name+(b.active?"":" (inactive)")}
+            getLabel={(b)=>b.fuel_budget_name}
             onPick={(b)=>{setFuelBudgetId(b.fuel_budget_id);setFuelBudgetModal(false);}}
             onClose={()=>setFuelBudgetModal(false)}
           />
@@ -802,6 +855,13 @@ export default function TracecodeEditScreen() {
               />
             </Card>
 
+            <Card title="Crop status">
+              <SelectorRow label="Status" valueText={cropStatus === "Planned" || cropStatus === "Planted" ? "Normal" : cropStatus} onPress={() => setCropStatusModal(true)} />
+              <Pressable onPress={() => setCropStatus("Planted")} style={{ marginTop: 8 }}>
+                <ThemedText style={{ opacity: 0.7 }}>Clear status (normal crop)</ThemedText>
+              </Pressable>
+            </Card>
+
             <Card title="Location / Setup (names, not IDs)">
               <SelectorRow
                 label="Farm"
@@ -825,6 +885,9 @@ export default function TracecodeEditScreen() {
               />
             </Card>
 
+            <Card title="Contract">
+              <SelectorRow label="Contract" valueText={selectedContract?.contract_name??"Self"} onPress={()=>setContractModal(true)}/>
+            </Card>
             <Card title="Crop (names, not IDs)">
               <SelectorRow
                 label="Crop"
@@ -842,7 +905,7 @@ export default function TracecodeEditScreen() {
             <Card title="Fuel planning">
               <SelectorRow
                 label="Fuel budget"
-                valueText={selectedFuelBudget?.fuel_budget_name??"Select fuel budget…"}
+                valueText={selectedFuelBudget ? selectedFuelBudget.fuel_budget_name + (selectedFuelBudget.active ? "" : " (inactive — change or clear)") : "Select fuel budget…"}
                 onPress={()=>setFuelBudgetModal(true)}
                 disabled={!cropId}
               />
@@ -851,12 +914,15 @@ export default function TracecodeEditScreen() {
               </Pressable>
             </Card>
             <Card title="Dates (DD/MM/YYYY)">
-              <LabeledInput label="Start date" value={startDate} onChangeText={setStartDate} placeholder="e.g. 09/02/2026" />
-              <LabeledInput label="End date" value={endDate} onChangeText={setEndDate} placeholder="e.g. 30/06/2026" />
+              <LabeledInput label="Start date" value={startDate} onChangeText={setStartDate}
+                normalizeDate placeholder="e.g. 09/02/2026" />
+              <LabeledInput label="End date" value={endDate} onChangeText={setEndDate}
+                normalizeDate placeholder="e.g. 30/06/2026" />
               <LabeledInput
                 label="Planned planting date"
                 value={plannedPlantingDate}
                 onChangeText={setPlannedPlantingDate}
+                normalizeDate
                 placeholder="e.g. 15/02/2026"
               />
             </Card>
@@ -868,6 +934,7 @@ export default function TracecodeEditScreen() {
             label="Actual planting date (DD/MM/YYYY)"
             value={actualPlantingDate}
             onChangeText={setActualPlantingDate}
+                normalizeDate
             placeholder="e.g. 18/02/2026"
             editable={isAdmin || isManager}
           />
@@ -875,6 +942,7 @@ export default function TracecodeEditScreen() {
             label="Germination date (DD/MM/YYYY)"
             value={germinationDate}
             onChangeText={setGerminationDate}
+                normalizeDate
             placeholder="e.g. 28/02/2026"
             editable={isAdmin || isManager}
           />
