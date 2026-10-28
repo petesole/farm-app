@@ -1,0 +1,21 @@
+name: Stock V2 web build
+on:
+  push:
+    branches:
+      - feature/stock-v2-spray-planning-preview
+  workflow_dispatch:
+jobs:
+  web-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - name: Validate TypeScript
+        run: npx tsc --noEmit
+      - name: Build Expo web
+        run: npx expo export --platform web
