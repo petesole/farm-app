@@ -10,7 +10,7 @@ const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-d
 type DLine={document_id:number;document_date:string;delivery_note:string;delivery_note_date:string|null;supplier_name:string;owner_code:string;item_code:string;item_name:string;base_unit:string;line_id:number;quantity:number;order_id?:number|null};
 type POLine={owner_code:string;order_id:number;order_number:string;supplier_name:string;item_code:string;item_name:string;base_unit:string;ordered_quantity:number;received_quantity:number;ordered_unit_price:number|null;status:string};
 type Chosen={kind:"DN"|"PO";key:string;item_code:string;quantity:string;price:string;source:number;max:number};
-const dateISO=(v:string)=>{const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(v.trim());if(!m)return null;const iso=m[3]+"-"+m[2]+"-"+m[1];const d=new Date(iso+"T12:00:00Z");return d.toISOString().slice(0,10)===iso?iso:null;};
+const dateISO=(v:string)=>{const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(v.trim());if(!m)return null;const iso=m[3]+"-"+m[2]+"-"+m[1];const d=new Date(iso+"T12:00:00Z");return !Number.isNaN(d.getTime())&&d.toISOString().slice(0,10)===iso?iso:null;};
 const money=(n:number)=>Number.isFinite(n)?n.toFixed(2):"0.00";
 export default function GRVOutstanding(){
  const router=useRouter();
