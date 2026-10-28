@@ -1,3 +1,4 @@
+import {StockV2Header} from "@/components/jspl/StockV2Header";
 import {useEffect,useRef,useState} from "react";
 import {useLocalSearchParams,useRouter} from "expo-router";
 import {ActivityIndicator,Pressable,ScrollView,StyleSheet,View} from "react-native";
@@ -27,7 +28,8 @@ export default function StockV2MovementReport(){
  }void load();return()=>{active=false}},[itemCode,owner]);
  const rows=result?.movements??[];
  return <ThemedView style={styles.root}>
-  <View style={styles.header}><Pressable style={styles.back} onPress={()=>router.back()}><ThemedText>← Stock Balances</ThemedText></Pressable><ThemedText style={styles.heading}>Stock Movement Report</ThemedText><ThemedText style={styles.sub}>{result?.item?.item_name??itemCode} · {result?.item?.base_unit??""} · {owner} / TEST_WH</ThemedText></View>
+  <StockV2Header title="Stock Movement Report"/>
+  <View style={styles.header}><ThemedText style={styles.heading}>Stock Movement Report</ThemedText><ThemedText style={styles.sub}>{result?.item?.item_name??itemCode} · {result?.item?.base_unit??""} · {owner} / TEST_WH</ThemedText></View>
   {loading?<ActivityIndicator/>:error?<ThemedText style={styles.error}>{error}</ThemedText>:<ScrollView horizontal contentContainerStyle={{flexGrow:1}}>
    <ScrollView ref={scroll} style={styles.list} onContentSizeChange={()=>scroll.current?.scrollToEnd({animated:false})}>
     <View style={styles.table}>
