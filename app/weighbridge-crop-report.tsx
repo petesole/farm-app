@@ -75,7 +75,7 @@ export default function CropReport(){
    <Text style={{fontWeight:"bold",fontSize:16}}>Harvest Yield: {ha>0?fmt(harvest/ha):"—"} t/ha</Text>
   </View>
   <View style={{flexDirection:"row",backgroundColor:"#dbeadd",paddingVertical:10,borderBottomWidth:1,borderBottomColor:"#889d8b"}}>
-   {(["Crop","Farm","Variety","TraceCode","Irrigation","Ha","Harvested","Harvest t/Ha"] as const).map((x,i)=><Text key={x} style={{width:(i===3?13:i===0||i===2?13:i===1?12:i===4?12:i===5?8:i===6?13:16)+"%",fontSize:13,fontWeight:"bold",paddingHorizontal:2,textAlign:i>=5?"right":"left"}}>{x}</Text>)}
+   {(["Crop","Farm","Variety","TraceCode","Irrigation","Ha","Harvested","Harvest t/Ha"] as const).map((x,i)=><Text key={x} style={{width:(i===3?13:i===0||i===2?13:i===1?12:i===4?12:i===5?8:i===6?13:16)+"%" as `${number}%`,fontSize:13,fontWeight:"bold",paddingHorizontal:2,textAlign:i>=5?"right":"left"}}>{x}</Text>)}
   </View>
   {shown.map((r,i)=><View key={r.tracecode_id} style={{flexDirection:"row",paddingVertical:shown.length>30?2:6,borderBottomWidth:.5,borderBottomColor:"#dce4df",backgroundColor:i%2?"#f6f9f7":"#fff"}}>
    {([r.crop_name||"",r.farm_name||"",r.variety_name||"",r.tracecode_name,r.irrigation_type||"",fmt(r.hectares,2),fmt(r.harvested_tonnes),fmt(r.harvest_yield_t_ha)] as string[]).map((v,j)=><Text key={j} numberOfLines={1} style={{width:(j===3?13:j===0||j===2?13:j===1?12:j===4?12:j===5?8:j===6?13:16)+"%",fontSize:shown.length>45?9:13,paddingHorizontal:2,textAlign:j>=5?"right":"left"}}>{v}</Text>)}
