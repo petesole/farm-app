@@ -7,8 +7,10 @@ import {supabase} from "../../../supabase";
 import {displayJsplDate} from "@/utils/jspl-input";
 import {jsplColors,jsplSpacing,jsplRadii} from "@/constants/jspl-design";
 const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
-type Line={document_id:number;document_date:string;delivery_note:string;delivery_note_date:string|null;supplier_name:string;owner_code:string;item_code:string;item_name:string;base_unit:string;line_id:number;quantity:number};
+type Line={document_id:number;document_date:string;delivery_note:string;delivery_note_date:string|null;supplier_name:string;owner_code:string;item_code:string;item_name:string;base_unit:string;line_id:number;quantity:number;original_price:number|null;original_price_source?:string|null};
 const dateISO=(v:string)=>{const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(v.trim());if(!m)return null;const iso=m[3]+"-"+m[2]+"-"+m[1];const d=new Date(iso+"T12:00:00Z");return !Number.isNaN(d.getTime())&&d.toISOString().slice(0,10)===iso?iso:null;};
+const formatDate=(v:string|null|undefined)=>{if(!v)return "—";const s=String(v);if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(8,10)+"/"+s.slice(5,7)+"/"+s.slice(0,4);return /^\d{2}\/\d{2}\/\d{4}$/.test(s)?s:"—";};
+const shortDNote=(x:Line)=>/^(?:DEMO-)?DN-[a-f0-9]{8}-[a-f0-9-]{27,}$/i.test(x.delivery_note)?String(x.document_id):x.delivery_note;
 export default function GRVOutstanding(){
  const [rows,setRows]=useState<Line[]>([]),[owner,setOwner]=useState(""),[supplier,setSupplier]=useState("");
  const [date,setDate]=useState(new Date().toLocaleDateString("en-GB")),[invoice,setInvoice]=useState("");
@@ -42,8 +44,8 @@ export default function GRVOutstanding(){
   {!!supplier?<><View style={s.panel}><View style={s.wrap}><View style={s.field}><ThemedText style={s.label}>Date</ThemedText><TextInput style={[s.input,s.required]} value={date} onChangeText={setDate} placeholder="DD/MM/YYYY"/></View><View style={s.field}><ThemedText style={s.label}>Invoice / GRV Number</ThemedText><TextInput style={[s.input,s.required]} value={invoice} onChangeText={setInvoice} placeholder="Invoice number"/></View></View></View>
   <View style={s.panel}><ThemedText style={s.label}>Outstanding D Notes — enter price only for lines on this invoice</ThemedText>
    <ScrollView horizontal><View>
-    <View style={s.trow}>{["D Note","Date","Product","Quantity Received","Actual Unit Price"].map((h,i)=><ThemedText key={h} style={[s.tcell,i===2&&s.wide,s.bold]}>{h}</ThemedText>)}</View>
-    {outstanding.map(x=><View key={x.line_id} style={s.trow}><ThemedText style={s.tcell}>{x.delivery_note}</ThemedText><ThemedText style={s.tcell}>{displayJsplDate(x.delivery_note_date||x.document_date)}</ThemedText><ThemedText style={[s.tcell,s.wide]}>{x.item_name} ({x.base_unit})</ThemedText><ThemedText style={s.tcell}>{x.quantity} locked</ThemedText><TextInput style={[s.tcell,s.required]} keyboardType="decimal-pad" placeholder="Price" value={prices[x.line_id]??""} onChangeText={v=>setPrice(x.line_id,v)}/></View>)}
+    <View style={s.trow}>{["D Note #","Date (dd/mm/yyyy)","Product","Quantity Received","Original Price","GRV Price"].map((h,i)=><ThemedText key={h} style={[s.tcell,i===2&&s.wide,s.bold]}>{h}</ThemedText>)}</View>
+    {outstanding.map(x=><View key={x.line_id} style={s.trow}><ThemedText style={s.tcell}>{shortDNote(x)}</ThemedText><ThemedText style={s.tcell}>{formatDate(x.delivery_note_date||x.document_date)}</ThemedText><ThemedText style={[s.tcell,s.wide]}>{x.item_name} ({x.base_unit})</ThemedText><ThemedText style={s.tcell}>{x.quantity} locked</ThemedText><ThemedText style={s.tcell}>{x.original_price==null?"—":Number(x.original_price).toFixed(2)}{x.original_price_source==="DNote"?" (DN)":x.original_price_source==="PO"?" (PO)":""}</ThemedText><TextInput style={[s.tcell,s.required]} keyboardType="decimal-pad" placeholder="Required" value={prices[x.line_id]??""} onChangeText={v=>setPrice(x.line_id,v)}/></View>)}
    </View></ScrollView>
    <ThemedText style={s.muted}>{included.length} line(s) entered. No selection boxes; quantities cannot be changed.</ThemedText>
    <Pressable style={[s.submit,busy&&s.disabled]} disabled={busy} onPress={()=>void submit()}><ThemedText style={s.submitText}>SAVE INVOICE GRV</ThemedText></Pressable>
