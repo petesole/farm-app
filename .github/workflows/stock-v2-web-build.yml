@@ -18,6 +18,8 @@ jobs:
           node-version: '20'
           cache: npm
       - run: npm ci
+      - name: Install missing PDF runtime dependency for migrated Weighbridge
+        run: npm install --no-save pdf-lib@1.17.1
       - name: Validate TypeScript
         run: npx tsc --noEmit
       - name: Build Expo web
