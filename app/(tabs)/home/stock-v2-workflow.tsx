@@ -173,7 +173,7 @@ export default function StockV2Workflow(){
     </View>
     <View style={styles.homeGrid}>{tabs.map(x=><View key={x} style={styles.dashboardCard}>
       <JsplDashboardButton title={x}
-       count={x==="POs Outstanding"?new Set((snapshot?.orders??[]).filter(o=>o.ordered_quantity>o.received_quantity).map(o=>o.order_id)).size:x==="GRV"?snapshot?.pending_invoice_count:undefined}
+       description={x==="POs Outstanding"?String(new Set((snapshot?.orders??[]).filter(o=>o.ordered_quantity>o.received_quantity).map(o=>o.order_id)).size)+" outstanding orders":x==="GRV"?String(snapshot?.pending_invoice_count??0)+" pending invoices":undefined}
        onPress={()=>x==="Spray Planning"?router.push("/stock-v2-spray-planning"):switchTab(x)}/>
      </View>)}</View>
    </View>:null}
