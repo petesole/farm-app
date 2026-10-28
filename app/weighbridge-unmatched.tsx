@@ -44,7 +44,7 @@ export default function UnmatchedDocuments(){
    const duplicate=!!d.grv_number&&d.grv_number!==str(x.grv_number);
    return {...d,score,reason,blocked:duplicate,customerWb:w};
   }).filter((d):d is NonNullable<typeof d>=>d!==null&&!d.blocked)
-    .filter(d=>!query.trim()||[d.customerWb.document_number,d.customerWb.delivery_note,d.slip_number,d.registration_text].join(" ").toLowerCase().includes(query.toLowerCase()))
+    .filter(d=>!query.trim()||[(d.customerWb as Receipt).document_number,(d.customerWb as Receipt).delivery_note,d.slip_number,d.registration_text].join(" ").toLowerCase().includes(query.toLowerCase()))
     .sort((a,b)=>b.score-a.score).slice(0,100);
  }
  return loads.map(d=>{
@@ -85,8 +85,8 @@ export default function UnmatchedDocuments(){
  <TextInput value={query} onChangeText={setQuery} placeholder={current.document_type==="grv"?"Search customer WB number / delivery note":"Search DNote / farm WB slip / vehicle"} style={{borderWidth:1,borderColor:C.border,padding:10,marginBottom:10,borderRadius:5}}/>
  <ScrollView style={{maxHeight:580}}>
  {choices.map(d=><Pressable key={d.source_type+":"+d.source_id} onPress={()=>setChosen(d.source_type+":"+d.source_id)} style={{padding:11,marginBottom:7,borderWidth:1,borderRadius:6,borderColor:chosen===d.source_type+":"+d.source_id?C.primary:C.border,backgroundColor:chosen===d.source_type+":"+d.source_id?C.successTint:"white"}}>
- <Text style={{fontWeight:"bold"}}>{chosen===d.source_type+":"+d.source_id?"✓ ":""}{current.document_type==="grv"&&"customerWb" in d?"Customer WB "+d.customerWb.document_number+" · Delivery Note "+(d.customerWb.delivery_note||"—"):"Field DNote "+(d.dnote_number||"—")+" · Slip "+d.slip_number}</Text>
- <Text>{current.document_type==="grv"&&"customerWb" in d?Number(d.customerWb.net_kg||0).toLocaleString()+" customer kg · "+date(d.customerWb.document_date):Number(d.net_kg).toLocaleString()+" farm kg · "+wbFormatDate(d.weigh_date)} · Transporter vehicle: {d.registration_text||"No vehicle"}</Text>{Number(d.linked_field_kg)>0?<Text style={{color:C.primaryDark}}>Combined truck: WB {Number(d.own_slip_kg).toLocaleString()} kg + {d.linked_manual_slips} {Number(d.linked_field_kg).toLocaleString()} kg</Text>:null}
+ <Text style={{fontWeight:"bold"}}>{chosen===d.source_type+":"+d.source_id?"✓ ":""}{current.document_type==="grv"&&"customerWb" in d?"Customer WB "+(d.customerWb as Receipt).document_number+" · Delivery Note "+((d.customerWb as Receipt).delivery_note||"—"):"Field DNote "+(d.dnote_number||"—")+" · Slip "+d.slip_number}</Text>
+ <Text>{current.document_type==="grv"&&"customerWb" in d?Number((d.customerWb as Receipt).net_kg||0).toLocaleString()+" customer kg · "+date((d.customerWb as Receipt).document_date):Number(d.net_kg).toLocaleString()+" farm kg · "+wbFormatDate(d.weigh_date)} · Transporter vehicle: {d.registration_text||"No vehicle"}</Text>{Number(d.linked_field_kg)>0?<Text style={{color:C.primaryDark}}>Combined truck: WB {Number(d.own_slip_kg).toLocaleString()} kg + {d.linked_manual_slips} {Number(d.linked_field_kg).toLocaleString()} kg</Text>:null}
  <Text style={{color:C.textSecondary}}>{d.reason.join(", ")||"No matching indicators — verify manually"}</Text>
  </Pressable>)}
  {!choices.length?<Text>No available dispatches match the search. Clear the search to see all.</Text>:null}
