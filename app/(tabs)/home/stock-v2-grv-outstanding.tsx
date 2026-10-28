@@ -36,7 +36,6 @@ export default function GRVOutstanding(){
  const edit=(key:string,field:"quantity"|"price",value:string)=>setChosen(old=>old[key]?{...old,[key]:{...old[key],[field]:value}}:old);
  const lines=Object.values(chosen);
  const valid=!!owner&&!!supplier&&!!type&&!!dateISO(date)&&!!number.trim()&&lines.length>0&&lines.every(x=>(type==="dnote"||Number.isFinite(Number(x.price))&&Number(x.price)>0)&&(x.kind==="DN"||Number.isFinite(Number(x.quantity))&&Number(x.quantity)>0&&Number(x.quantity)<=x.max));
- const canLegacy=type==="grv"&&lines.length>0&&lines.every(x=>x.kind==="DN")&&new Set(lines.map(x=>x.source)).size===1&&lines.length===dn.filter(x=>x.document_id===lines[0]?.source).length;
  const submitCombined=async()=>{if(!valid||busy||type!=="grv")return;setBusy(true);setError("");setSuccess("");try{
   const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");
   const grouped=new Map<string,{item_code:string;invoice_quantity:number;unit_price:number}>();
@@ -67,13 +66,6 @@ export default function GRVOutstanding(){
    setChosen({});setNumber("");setSuccess("D-Note received into stock. Unit prices remain pending GRV.");await load();
   }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}
  };
- const submit=async()=>{if(!valid||!canLegacy||busy)return;setBusy(true);setError("");setSuccess("");try{
-  const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");
-  const payload={document_id:lines[0].source,invoice_number:number.trim(),invoice_date:dateISO(date),lines:lines.map(x=>({line_id:Number(x.key.slice(3)),unit_price:Number(x.price)}))};
-  const response=await fetch(endpoint,{method:"POST",headers:{authorization:"Bearer "+session.access_token,"content-type":"application/json"},body:JSON.stringify({action:"match_invoice",payload})});
-  const result=await response.json();if(!response.ok)throw Error(result.error||"GRV posting failed");
-  setChosen({});setNumber("");setSuccess("GRV priced successfully. Existing D-Note stock was not received again.");await load();
- }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
  const selection=(id:string,text:string,selected:boolean,onPress:()=>void)=><Pressable key={id} onPress={onPress} style={[s.option,selected&&s.active]}><ThemedText style={selected?s.activeText:undefined}>{text}</ThemedText></Pressable>;
  return <ThemedView style={s.root}><ScrollView contentContainerStyle={s.page}>
   <Pressable onPress={()=>router.replace("/stock-test")}><ThemedText>← Back to Stock Dashboard</ThemedText></Pressable>
@@ -102,9 +94,8 @@ export default function GRVOutstanding(){
    {!outstandingDN.length&&!outstandingPO.length?<ThemedText>No outstanding lines for this supplier.</ThemedText>:null}
    <ThemedText style={s.label}>Selected: {lines.length} lines {type==="grv"?" · Total value: USD "+money(lines.reduce((a,x)=>a+Number(x.quantity)*Number(x.price),0)):""}</ThemedText>
    {type==="dnote"?<Pressable disabled={!valid||busy} onPress={()=>void submitDNote()} style={[s.submit,(!valid||busy)&&s.disabled]}><ThemedText style={s.submitText}>Receive D-Note into Stock</ThemedText></Pressable>:null}
-   {type==="grv"&&!canLegacy&&lines.some(x=>x.kind==="PO")?<ThemedText style={s.muted}>Direct GRV receipts create stock and apply the final unit price together.</ThemedText>:null}
-   {type==="grv"&&!canLegacy?<Pressable disabled={!valid||busy} onPress={()=>void submitCombined()} style={[s.submit,(!valid||busy)&&s.disabled]}><ThemedText style={s.submitText}>Save Combined GRV</ThemedText></Pressable>:null}
-   {type==="grv"&&canLegacy?<Pressable disabled={!valid||busy} onPress={()=>void submit()} style={[s.submit,(!valid||busy)&&s.disabled]}><ThemedText style={s.submitText}>Save fully priced GRV</ThemedText></Pressable>:null}
+   {type==="grv"&&lines.some(x=>x.kind==="PO")?<ThemedText style={s.muted}>Direct GRV receipts create stock and apply the final unit price together.</ThemedText>:null}
+   {type==="grv"?<Pressable disabled={!valid||busy} onPress={()=>void submitCombined()} style={[s.submit,(!valid||busy)&&s.disabled]}><ThemedText style={s.submitText}>Save Combined GRV</ThemedText></Pressable>:null}
   </View>:null}
  </ScrollView></ThemedView>;
 }
