@@ -53,3 +53,10 @@ jobs:
             } > /tmp/stock-v2-comment.md
             gh pr comment 7 --body-file /tmp/stock-v2-comment.md
           fi
+      - name: Confirm passing build on draft validation PR
+        if: success() && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh pr comment 7 --body "Stock V2 TypeScript and Expo web build PASSED on commit ${GITHUB_SHA:0:7}."
