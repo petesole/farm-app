@@ -3,6 +3,9 @@ on:
   push:
     branches:
       - feature/stock-v2-spray-planning-preview
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
 jobs:
   web-build:
