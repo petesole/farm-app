@@ -159,7 +159,7 @@ export default function StockV2Workflow(){
    <Image source={require("../../../assets/images/jspl_farm_watermark.png")} resizeMode="contain" style={[styles.watermark,{width:watermarkSize,height:watermarkSize}]}/>
   </View>
   <ScrollView style={styles.foreground} contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
-  <JsplModuleHeader title="Stock V2" subtitle={tab??"Stock Management"} backLabel={tab?"Stock Home":"Main Dashboard"} backHref={tab?"/stock-test":"/(tabs)/main-dashboard"} showMain={!!tab} />
+  <JsplModuleHeader title="Stock V2" subtitle={tab??"Stock Management"} backLabel={tab?"Stock Home":"Main Dashboard"} backHref={tab?undefined:"/(tabs)/main-dashboard"} onBack={tab?()=>switchTab(null):undefined} showMain={!!tab} />
   {tab===null?<View style={styles.home}>
     <View style={styles.homeGrid}>{tabs.map(x=><View key={x} style={styles.dashboardCard}>
       <JsplDashboardButton title={x}
