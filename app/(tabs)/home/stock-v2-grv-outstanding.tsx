@@ -37,22 +37,6 @@ export default function GRVOutstanding(){
  const lines=Object.values(chosen);
  const valid=!!owner&&!!supplier&&!!type&&!!dateISO(date)&&!!number.trim()&&lines.length>0&&lines.every(x=>(type==="dnote"||Number(x.price)>0&&Number.isFinite(Number(x.price)))&&(x.kind==="DN"||Number(x.quantity)>0&&Number(x.quantity)<=x.max));
  const canLegacy=type==="grv"&&lines.length>0&&lines.every(x=>x.kind==="DN")&&new Set(lines.map(x=>x.source)).size===1&&lines.length===dn.filter(x=>x.document_id===lines[0]?.source).length;
- const submitCombined=async()=>{if(!valid||busy)return;setBusy(true);setError("");setSuccess("");try{
-  const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");
-  const grouped=new Map<string,{item_code:string;invoice_quantity:number;unit_price:number}>();
-  for(const line of lines){const previous=grouped.get(line.item_code),price=Number(line.price);
-   if(previous&&previous.unit_price!==price)throw Error("Different prices for one product must be entered on separate GRVs");
-   grouped.set(line.item_code,{item_code:line.item_code,invoice_quantity:(previous?.invoice_quantity??0)+Number(line.quantity),unit_price:price});
-  }
-  const requestId="xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,v=>{const n=Math.floor(Math.random()*16);return(v==="x"?n:(n&3)|8).toString(16)});
-  const payload={owner_code:owner,supplier,invoice_number:number.trim(),invoice_date:dateISO(date),
-   invoice_lines:[...grouped.values()],
-   allocations:lines.filter(x=>x.kind==="DN").map(x=>({line_id:Number(x.key.slice(3)),quantity:Number(x.quantity)})),
-   new_receipts:lines.filter(x=>x.kind==="PO").map(x=>({item_code:x.item_code,quantity:Number(x.quantity)}))};
-  const response=await fetch(endpoint,{method:"POST",headers:{authorization:"Bearer "+session.access_token,"content-type":"application/json"},body:JSON.stringify({action:"combined_grv",request_id:requestId,payload})});
-  const result=await response.json();if(!response.ok)throw Error(result.error||"Combined GRV rejected");
-  setChosen({});setNumber("");setSuccess("GRV saved and valued. Existing D-Note quantities were not posted again.");await load();
- }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
  const submitCombined=async()=>{if(!valid||busy||type!=="grv")return;setBusy(true);setError("");setSuccess("");try{
   const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");
   const grouped=new Map<string,{item_code:string;invoice_quantity:number;unit_price:number}>();
