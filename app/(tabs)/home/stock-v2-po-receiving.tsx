@@ -84,39 +84,31 @@ export default function GRVOutstanding(){
   {!!supplier?<View style={s.panel}><ThemedText style={s.label}>Document Type</ThemedText><View style={s.wrap}>{selection("dnote","Delivery Note",type==="dnote",()=>{setType("dnote");setChosen({});setNoPO(false)})}{selection("grv","Invoice GRV",type==="grv",()=>{setType("grv");setChosen({});setNoPO(false)})}</View></View>:null}
   {!!type?<View style={s.panel}><ThemedText style={s.label}>Date (DD/MM/YYYY)</ThemedText><TextInput style={[s.input,s.required]} value={date} onChangeText={setDate} placeholder="DD/MM/YYYY"/></View>:null}
   {!!type&&!!dateISO(date)?<View style={s.panel}><ThemedText style={s.label}>{type==="grv"?"Invoice GRV Number":"Delivery Note Number"}</ThemedText><TextInput style={[s.input,s.required]} value={number} onChangeText={setNumber} placeholder="Enter document number"/></View>:null}
-  {!!type&&!!dateISO(date)&&!!number.trim()?<View style={s.panel}>
-  <ThemedText style={s.label}>Complete the highlighted product fields below, then save.</ThemedText>
-  <Pressable accessibilityRole="button" disabled={!valid||busy} onPress={()=>{if(type==="grv")void submitCombined();else void submitDNote()}} style={[s.submit,(!valid||busy)&&s.disabled]}>
-    <ThemedText style={s.submitText}>{type==="grv"?"Save Invoice GRV":"Receive Delivery Note"}</ThemedText>
-  </Pressable>
- </View>:null}
- {!!type&&!!dateISO(date)&&!!number.trim()?<View style={s.panel}>
-   <ThemedText style={s.label}>{type==="grv"?"Received D-Notes awaiting prices, and undelivered PO lines":"Outstanding Purchase Order lines"}</ThemedText>
-   <ThemedText style={s.muted}>Supplier summary: {outstandingDN.length} unpriced D-Note lines ({receivedPending} units across products) · {outstandingPO.length} PO lines not fully delivered.</ThemedText>
-   <ThemedText style={s.muted}>{type==="dnote"?"Select the PO products physically delivered. Enter received quantity only; pricing is NOT required.":"Select the supplier lines to include. D-Note quantities are locked and require final prices; direct PO receipts require quantity and price."}</ThemedText>
-
-   {type==="grv"?outstandingDN.map(x=>{const key="DN:"+x.line_id,entry=chosen[key];return <View key={key} style={s.line}>
-    {selection(key,(entry?"☑ ":"□ ")+x.delivery_note+" · "+displayJsplDate(x.delivery_note_date||x.document_date)+" · "+x.item_name+" ("+x.base_unit+")",!!entry,()=>pick({kind:"DN",key,item_code:x.item_code,quantity:String(x.quantity),price:"0",source:x.document_id,max:x.quantity}))}
-    <ThemedText>Delivered: {x.quantity} {x.base_unit} · Locked</ThemedText>
-    {entry?<View><ThemedText style={s.label}>Required unit price</ThemedText><TextInput style={[s.input,s.required]} keyboardType="decimal-pad" value={entry.price} onChangeText={v=>edit(key,"price",v)}/></View>:null}
-   </View>}):null}
-   {type==="dnote"&&!noPO?<ThemedText style={s.muted}>Select delivered products from one or several POs for this supplier. For products without a PO, select No PO / Unplanned Delivery.</ThemedText>:null}
-   {type==="dnote"&&noPO?products.map(x=>{const key="DIRECT:"+x.item_code,entry=chosen[key];return <View key={key} style={s.line}>
-    {selection(key,(entry?"☑ ":"□ ")+x.item_name+" ("+x.base_unit+")",!!entry,()=>pick({kind:"DIRECT",key,item_code:x.item_code,quantity:"0",price:"0",source:0,max:100000}))}
-    {entry?<View style={s.field}><ThemedText style={s.label}>Received quantity ({x.base_unit})</ThemedText><TextInput style={[s.input,s.required]} keyboardType="decimal-pad" value={entry.quantity} onChangeText={v=>edit(key,"quantity",v)}/></View>:null}
-   </View>}):null}
-   {!noPO||type==="grv"?outstandingPO.map(x=>{const key="PO:"+x.order_line_id,entry=chosen[key],remaining=Math.max(0,x.ordered_quantity-x.received_quantity);return <View key={key} style={s.line}>
-    {selection(key,(entry?"☑ ":"□ ")+x.order_number+" · "+(x.order_date?x.order_date.slice(8,10)+"/"+x.order_date.slice(5,7)+"/"+x.order_date.slice(0,4):"No PO date")+" · "+x.item_name+" ("+x.base_unit+")",!!entry,()=>pick({kind:"PO",key,item_code:x.item_code,quantity:"0",price:"0",source:x.order_id,max:remaining,orderLineId:x.order_line_id}))}
-    <ThemedText>Ordered: {x.ordered_quantity} · Physically received: {x.received_quantity} · Not yet delivered: {remaining} {x.base_unit}</ThemedText>
-    {entry?<View style={s.wrap}><View style={s.field}><ThemedText style={s.label}>Required qty (max {remaining})</ThemedText><TextInput style={[s.input,s.required]} keyboardType="decimal-pad" value={entry.quantity} onChangeText={v=>edit(key,"quantity",v)}/></View>{type==="grv"?<View style={s.field}><ThemedText style={s.label}>Required unit price</ThemedText><TextInput style={[s.input,s.required]} keyboardType="decimal-pad" value={entry.price} onChangeText={v=>edit(key,"price",v)}/></View>:null}</View>:null}
-   </View>}):null}
-   {type==="grv"&&supplierPO.some(x=>x.received_quantity>0)?<ThemedText style={s.muted}>Received quantities awaiting valuation are listed above as D-Note lines. Do not select a PO line again for quantities already received.</ThemedText>:null}
-   {(type==="grv"?!outstandingDN.length&&!outstandingPO.length:noPO?!products.length:!outstandingPO.length)?<ThemedText>No outstanding lines for this supplier.</ThemedText>:null}
-   <ThemedText style={s.label}>Selected: {lines.length} lines {type==="grv"?" · Total value: USD "+money(lines.reduce((a,x)=>a+Number(x.quantity)*Number(x.price),0)):""}</ThemedText>
-   {type==="dnote"?<Pressable disabled={!valid||busy} onPress={()=>void submitDNote()} style={[s.submit,(!valid||busy)&&s.disabled]}><ThemedText style={s.submitText}>Receive D-Note into Stock</ThemedText></Pressable>:null}
-
-   {type==="grv"?<Pressable disabled={!valid||busy} onPress={()=>void submitCombined()} style={[s.submit,(!valid||busy)&&s.disabled]}><ThemedText style={s.submitText}>Save Combined GRV</ThemedText></Pressable>:null}
+  {!!type?<View style={s.panel}>
+  <ThemedText style={s.label}>Outstanding documents — enter figures in the yellow cells</ThemedText>
+  <ScrollView horizontal><View style={{minWidth:1040}}>
+   <View style={s.trow}>{["Select","Document","Date","Product","Ordered / Received","PO Price","Actual Qty","Actual Price"].map((h,i)=><ThemedText key={h} style={[s.tcell,i===3&&s.wide,s.bold]}>{h}</ThemedText>)}</View>
+   {type==="grv"?outstandingDN.map(x=>{const key="DN:"+x.line_id,e=chosen[key],r:Chosen={kind:"DN",key,item_code:x.item_code,quantity:String(x.quantity),price:"",source:x.document_id,max:x.quantity};return <View key={key} style={s.trow}>
+     <Pressable style={s.tcell} onPress={()=>pick(r)}><ThemedText>{e?"☑":"□"}</ThemedText></Pressable>
+     <ThemedText style={s.tcell}>{x.delivery_note}</ThemedText><ThemedText style={s.tcell}>{displayJsplDate(x.delivery_note_date||x.document_date)}</ThemedText>
+     <ThemedText style={[s.tcell,s.wide]}>{x.item_name}</ThemedText><ThemedText style={s.tcell}>{x.quantity}</ThemedText>
+     <ThemedText style={s.tcell}>—</ThemedText><ThemedText style={s.tcell}>{x.quantity} locked</ThemedText>
+     <TextInput style={[s.tcell,s.required]} keyboardType="decimal-pad" placeholder="Price" value={e?.price??""} onChangeText={v=>setChosen(p=>({...p,[key]:{...(p[key]??r),price:v}}))}/>
+    </View>}):null}
+   {outstandingPO.map(x=>{const key="PO:"+x.order_line_id,e=chosen[key],max=Math.max(0,x.ordered_quantity-x.received_quantity),r:Chosen={kind:"PO",key,item_code:x.item_code,quantity:"",price:"",source:x.order_id,max,orderLineId:x.order_line_id};return <View key={key} style={s.trow}>
+     <Pressable style={s.tcell} onPress={()=>pick(r)}><ThemedText>{e?"☑":"□"}</ThemedText></Pressable>
+     <ThemedText style={s.tcell}>{x.order_number}</ThemedText><ThemedText style={s.tcell}>{displayJsplDate(x.order_date)}</ThemedText>
+     <ThemedText style={[s.tcell,s.wide]}>{x.item_name}</ThemedText><ThemedText style={s.tcell}>{x.ordered_quantity} / {x.received_quantity}</ThemedText>
+     <ThemedText style={s.tcell}>{x.ordered_unit_price??"—"}</ThemedText>
+     <TextInput style={[s.tcell,s.required]} keyboardType="decimal-pad" placeholder={"Max "+max} value={e?.quantity??""} onChangeText={v=>setChosen(p=>({...p,[key]:{...(p[key]??r),quantity:v}}))}/>
+     {type==="grv"?<TextInput style={[s.tcell,s.required]} keyboardType="decimal-pad" placeholder="Price" value={e?.price??""} onChangeText={v=>setChosen(p=>({...p,[key]:{...(p[key]??r),price:v}}))}/>:<ThemedText style={s.tcell}>—</ThemedText>}
+    </View>})}
+  </View></ScrollView>
+  <ThemedText style={s.muted}>{type==="grv"?"Delivery Note quantities are locked. Enter only price. For PO quantities, enter actual quantity and price.":"Enter actual quantities received from POs. Prices are not required on Delivery Notes."}</ThemedText>
+  <ThemedText>Selected {lines.length} lines</ThemedText>
+  <Pressable disabled={busy} onPress={()=>{setError("");if(!valid){setError(!dateISO(date)?"Enter a valid date.":!number.trim()?"Enter the document number.":!lines.length?"Enter a quantity or price in a yellow row.":"Complete all highlighted cells on the selected lines.");return;}if(type==="grv")void submitCombined();else void submitDNote()}} style={[s.submit,busy&&s.disabled]}>
+  <ThemedText style={s.submitText}>{type==="grv"?"SAVE INVOICE GRV":"SAVE DELIVERY NOTE"}</ThemedText></Pressable>
   </View>:null}
  </ScrollView></ThemedView>;
 }
-const s=StyleSheet.create({root:{flex:1,backgroundColor:jsplColors.background},page:{padding:jsplSpacing.lg,gap:12},heading:{fontSize:22,fontWeight:"700",color:jsplColors.primaryDark},panel:{backgroundColor:"#fff",padding:14,borderWidth:1,borderColor:jsplColors.border,borderRadius:jsplRadii.md,gap:9},label:{fontWeight:"700"},muted:{color:jsplColors.textSecondary},warning:{color:jsplColors.danger},wrap:{flexDirection:"row",flexWrap:"wrap",gap:8},option:{borderWidth:1,borderColor:jsplColors.border,padding:11,borderRadius:6},active:{backgroundColor:jsplColors.primary},activeText:{color:"#fff",fontWeight:"700"},line:{paddingVertical:11,borderBottomWidth:1,borderColor:jsplColors.border,gap:7},field:{minWidth:170,flex:1},input:{borderWidth:1,borderColor:jsplColors.border,backgroundColor:"#fff",padding:10,borderRadius:5,minHeight:42,color:jsplColors.text},required:{borderColor:"#e5a700",borderWidth:2,backgroundColor:"#fff4cb"},submit:{backgroundColor:jsplColors.primary,padding:14,borderRadius:6,alignSelf:"flex-start"},submitText:{color:"#fff",fontWeight:"700"},disabled:{opacity:0.5}});
+const s=StyleSheet.create({root:{flex:1,backgroundColor:jsplColors.background},page:{padding:jsplSpacing.lg,gap:12},heading:{fontSize:22,fontWeight:"700",color:jsplColors.primaryDark},panel:{backgroundColor:"#fff",padding:14,borderWidth:1,borderColor:jsplColors.border,borderRadius:jsplRadii.md,gap:9},label:{fontWeight:"700"},muted:{color:jsplColors.textSecondary},warning:{color:jsplColors.danger},wrap:{flexDirection:"row",flexWrap:"wrap",gap:8},option:{borderWidth:1,borderColor:jsplColors.border,padding:11,borderRadius:6},active:{backgroundColor:jsplColors.primary},activeText:{color:"#fff",fontWeight:"700"},line:{paddingVertical:11,borderBottomWidth:1,borderColor:jsplColors.border,gap:7},field:{minWidth:170,flex:1},input:{borderWidth:1,borderColor:jsplColors.border,backgroundColor:"#fff",padding:10,borderRadius:5,minHeight:42,color:jsplColors.text},required:{borderColor:"#e5a700",borderWidth:2,backgroundColor:"#fff4cb"},submit:{backgroundColor:jsplColors.primary,padding:14,borderRadius:6,alignSelf:"flex-start"},submitText:{color:"#fff",fontWeight:"700"},trow:{flexDirection:"row",alignItems:"center",borderBottomWidth:1,borderColor:"#ddd",minHeight:52},tcell:{width:125,padding:7,fontSize:12,color:"#222"},wide:{width:190},bold:{fontWeight:"700"},disabled:{opacity:0.5}});
