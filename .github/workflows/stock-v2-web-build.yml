@@ -8,7 +8,7 @@ on:
       - main
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
   issues: write
   pull-requests: write
 jobs:
@@ -22,6 +22,17 @@ jobs:
           node-version: '20'
           cache: npm
       - run: npm install --no-audit --no-fund
+      - name: Keep dependency lockfile synchronized
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          if ! git diff --quiet -- package-lock.json; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add package-lock.json
+            git commit -m 'Sync Stock V2 dependency lockfile [skip ci]'
+            git push origin HEAD:feature/stock-v2-spray-planning-preview
+          fi
       - name: TypeScript and web compilation
         id: compile
         shell: bash
