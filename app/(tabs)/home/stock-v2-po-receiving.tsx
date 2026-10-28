@@ -14,12 +14,14 @@ type Product={item_code:string;item_name:string;base_unit:string};
 type Chosen={kind:"DN"|"PO"|"DIRECT";key:string;item_code:string;quantity:string;price:string;source:number;max:number;orderLineId?:number};
 const dateISO=(v:string)=>{const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(v.trim());if(!m)return null;const iso=m[3]+"-"+m[2]+"-"+m[1];const d=new Date(iso+"T12:00:00Z");return !Number.isNaN(d.getTime())&&d.toISOString().slice(0,10)===iso?iso:null;};
 const money=(n:number)=>Number.isFinite(n)?n.toFixed(2):"0.00";
+const shortPO=(value:string)=>{const s=String(value||"");return s.length>16?s.slice(-10):s;};
 export default function GRVOutstanding(){
  const [dn,setDn]=useState<DLine[]>([]),[po,setPo]=useState<POLine[]>([]),[products,setProducts]=useState<Product[]>([]);
  const [noPO,setNoPO]=useState(false);
  const [owner,setOwner]=useState(""),[supplier,setSupplier]=useState(""),[type,setType]=useState<""|"dnote"|"grv">("");
  const [date,setDate]=useState(new Date().toLocaleDateString("en-GB")),[number,setNumber]=useState("");
  const [chosen,setChosen]=useState<Record<string,Chosen>>({});
+ const setRowField=(row:Chosen,field:"quantity"|"price",value:string)=>setChosen(prev=>{const updated={...(prev[row.key]??row),[field]:value};const next={...prev};if(updated.kind==="PO"&&!updated.quantity.trim()&&!updated.price.trim()||updated.kind==="DN"&&!updated.price.trim())delete next[row.key];else next[row.key]=updated;return next;});
  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[success,setSuccess]=useState("");
  const load=async()=>{setBusy(true);setError("");try{
   const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");
@@ -43,7 +45,7 @@ export default function GRVOutstanding(){
  const lines=Object.values(chosen);
  const hasPO=outstandingPO.length>0;
  const includeRow=(row:Chosen)=>setChosen(prev=>({...prev,[row.key]:prev[row.key]??row}));
- const valid=!!owner&&!!supplier&&!!type&&!!dateISO(date)&&!!number.trim()&&lines.length>0&&lines.every(x=>(type==="dnote"||(x.price.trim()!==""&&Number.isFinite(Number(x.price))&&Number(x.price)>0))&&(x.kind==="DN"||(x.quantity.trim()!==""&&Number.isFinite(Number(x.quantity))&&Number(x.quantity)>0&&Number(x.quantity)<=x.max)))&&(type!=="dnote"||lines.every(x=>x.kind==="PO"));
+ const valid=!!owner&&!!supplier&&!!type&&!!dateISO(date)&&!!number.trim()&&lines.length>0&&lines.every(x=>(type==="dnote"?(x.price.trim()===""||(Number.isFinite(Number(x.price))&&Number(x.price)>0)):(x.price.trim()!==""&&Number.isFinite(Number(x.price))&&Number(x.price)>0))&&(x.kind==="DN"||(x.quantity.trim()!==""&&Number.isFinite(Number(x.quantity))&&Number(x.quantity)>0&&Number(x.quantity)<=x.max)))&&(type!=="dnote"||lines.every(x=>x.kind==="PO"));
  const submitCombined=async()=>{if(!valid||busy||type!=="grv")return;setBusy(true);setError("");setSuccess("");try{
   const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");
   const grouped=new Map<string,{item_code:string;invoice_quantity:number;unit_price:number}>();
@@ -89,29 +91,27 @@ export default function GRVOutstanding(){
   {!!type?<View style={s.panel}>
   <ThemedText style={s.label}>Outstanding documents — enter figures in the yellow cells</ThemedText>
   <ScrollView horizontal><View style={{minWidth:1040}}>
-   <View style={s.trow}>{["Select","Document","Date","Product","Ordered / Received","PO Price","Actual Qty","Actual Price"].map((h,i)=><ThemedText key={h} style={[s.tcell,i===3&&s.wide,s.bold]}>{h}</ThemedText>)}</View>
+   <View style={s.trow}>{["Document","Date","Product","Ordered / Received","PO Price","Actual Qty","Actual Price"].map((h,i)=><ThemedText key={h} style={[s.tcell,i===3&&s.wide,s.bold]}>{h}</ThemedText>)}</View>
    {type==="grv"?outstandingDN.map(x=>{const key="DN:"+x.line_id,e=chosen[key],r:Chosen={kind:"DN",key,item_code:x.item_code,quantity:String(x.quantity),price:"",source:x.document_id,max:x.quantity};return <View key={key} style={s.trow}>
-     <Pressable style={s.tcell} onPress={()=>pick(r)}><ThemedText>{e?"☑":"□"}</ThemedText></Pressable>
      <ThemedText style={s.tcell}>{x.delivery_note}</ThemedText><ThemedText style={s.tcell}>{displayJsplDate(x.delivery_note_date||x.document_date)}</ThemedText>
      <ThemedText style={[s.tcell,s.wide]}>{x.item_name}</ThemedText><ThemedText style={s.tcell}>{x.quantity}</ThemedText>
      <ThemedText style={s.tcell}>—</ThemedText><ThemedText style={s.tcell}>{x.quantity} locked</ThemedText>
-     <TextInput style={[s.tcell,s.required]} keyboardType="decimal-pad" placeholder="Price" value={e?.price??""} onChangeText={v=>setChosen(p=>({...p,[key]:{...(p[key]??r),price:v}}))}/>
+     <TextInput style={[s.tcell,s.required]} keyboardType="decimal-pad" placeholder="Required" value={e?.price??""} onChangeText={v=>setRowField(r,"price",v)}/>
     </View>}):null}
    {outstandingPO.map(x=>{const key="PO:"+x.order_line_id,e=chosen[key],max=Math.max(0,x.ordered_quantity-x.received_quantity),r:Chosen={kind:"PO",key,item_code:x.item_code,quantity:"",price:"",source:x.order_id,max,orderLineId:x.order_line_id};return <View key={key} style={s.trow}>
-     <Pressable style={s.tcell} onPress={()=>pick(r)}><ThemedText>{e?"☑":"□"}</ThemedText></Pressable>
-     <ThemedText style={s.tcell}>{x.order_number}</ThemedText><ThemedText style={s.tcell}>{displayJsplDate(x.order_date)}</ThemedText>
+     <ThemedText style={s.tcell}>{shortPO(x.order_number)}</ThemedText><ThemedText style={s.tcell}>{displayJsplDate(x.order_date)}</ThemedText>
      <ThemedText style={[s.tcell,s.wide]}>{x.item_name}</ThemedText><ThemedText style={s.tcell}>{x.ordered_quantity} / {x.received_quantity}</ThemedText>
      <ThemedText style={s.tcell}>{x.ordered_unit_price??"—"}</ThemedText>
-     <TextInput style={[s.tcell,s.required]} keyboardType="decimal-pad" placeholder={"Max "+max} value={e?.quantity??""} onChangeText={v=>setChosen(p=>({...p,[key]:{...(p[key]??r),quantity:v}}))}/>
+     <TextInput style={[s.tcell,s.required]} keyboardType="decimal-pad" placeholder={"Max "+max} value={e?.quantity??""} onChangeText={v=>setRowField(r,"quantity",v)}/>
      {type==="grv"?<TextInput style={[s.tcell,s.required]} keyboardType="decimal-pad" placeholder="Price" value={e?.price??""} onChangeText={v=>setChosen(p=>({...p,[key]:{...(p[key]??r),price:v}}))}/>:<ThemedText style={s.tcell}>—</ThemedText>}
     </View>})}
   </View></ScrollView>
-  <ThemedText style={s.muted}>{type==="grv"?"Delivery Note quantities are locked. Enter only price. For PO quantities, enter actual quantity and price.":"Enter actual quantities received from POs. Prices are not required on Delivery Notes."}</ThemedText>
-  <ThemedText>Selected {lines.length} lines</ThemedText>
+  <ThemedText style={s.muted}>{type==="grv"?"Delivery Note quantities are locked. Enter only price. For PO quantities, enter actual quantity and price.":"Enter actual quantities received from POs. Unit price is optional on Delivery Notes."}</ThemedText>
+  <ThemedText>{lines.length} line(s) to save — rows with quantities or prices entered are included automatically.</ThemedText>
   {!hasPO&&!outstandingDN.length?<ThemedText>No outstanding documents for this supplier.</ThemedText>:null}
   <Pressable disabled={busy} onPress={()=>{setError("");if(!valid){setError(!dateISO(date)?"Enter a valid date.":!number.trim()?"Enter the document number.":!lines.length?"Enter a quantity or price in a yellow row.":"Complete all highlighted cells on the selected lines.");return;}if(type==="grv")void submitCombined();else void submitDNote()}} style={[s.submit,busy&&s.disabled]}>
   <ThemedText style={s.submitText}>{type==="grv"?"SAVE INVOICE GRV":"SAVE DELIVERY NOTE"}</ThemedText></Pressable>
   </View>:null}
  </ScrollView></ThemedView>;
 }
-const s=StyleSheet.create({root:{flex:1,backgroundColor:jsplColors.background},page:{padding:jsplSpacing.lg,gap:12},heading:{fontSize:22,fontWeight:"700",color:jsplColors.primaryDark},panel:{backgroundColor:"#fff",padding:14,borderWidth:1,borderColor:jsplColors.border,borderRadius:jsplRadii.md,gap:9},label:{fontWeight:"700"},muted:{color:jsplColors.textSecondary},warning:{color:jsplColors.danger},wrap:{flexDirection:"row",flexWrap:"wrap",gap:8},option:{borderWidth:1,borderColor:jsplColors.border,padding:11,borderRadius:6},active:{backgroundColor:jsplColors.primary},activeText:{color:"#fff",fontWeight:"700"},line:{paddingVertical:11,borderBottomWidth:1,borderColor:jsplColors.border,gap:7},field:{minWidth:170,flex:1},input:{borderWidth:1,borderColor:jsplColors.border,backgroundColor:"#fff",padding:10,borderRadius:5,minHeight:42,color:jsplColors.text},required:{borderColor:"#e5a700",borderWidth:2,backgroundColor:"#fff4cb"},submit:{backgroundColor:jsplColors.primary,padding:14,borderRadius:6,alignSelf:"flex-start"},submitText:{color:"#fff",fontWeight:"700"},trow:{flexDirection:"row",alignItems:"center",borderBottomWidth:1,borderColor:"#ddd",minHeight:52},tcell:{width:125,padding:7,fontSize:12,color:"#222"},wide:{width:190},bold:{fontWeight:"700"},disabled:{opacity:0.5}});
+const s=StyleSheet.create({root:{flex:1,backgroundColor:jsplColors.background},page:{padding:jsplSpacing.lg,gap:12},heading:{fontSize:22,fontWeight:"700",color:jsplColors.primaryDark},panel:{backgroundColor:"#fff",padding:14,borderWidth:1,borderColor:jsplColors.border,borderRadius:jsplRadii.md,gap:9},label:{fontWeight:"700"},muted:{color:jsplColors.textSecondary},warning:{color:jsplColors.danger},wrap:{flexDirection:"row",flexWrap:"wrap",gap:8},option:{borderWidth:1,borderColor:jsplColors.border,padding:11,borderRadius:6},active:{backgroundColor:jsplColors.primary},activeText:{color:"#fff",fontWeight:"700"},line:{paddingVertical:11,borderBottomWidth:1,borderColor:jsplColors.border,gap:7},field:{minWidth:170,flex:1},input:{borderWidth:1,borderColor:jsplColors.border,backgroundColor:"#fff",padding:10,borderRadius:5,minHeight:42,color:jsplColors.text},required:{borderColor:"#e5a700",borderWidth:2,backgroundColor:"#fff4cb"},optional:{borderColor:"#b3b3b3",borderWidth:1,backgroundColor:"#fff4cb"},submit:{backgroundColor:jsplColors.primary,padding:14,borderRadius:6,alignSelf:"flex-start"},submitText:{color:"#fff",fontWeight:"700"},trow:{flexDirection:"row",alignItems:"center",borderBottomWidth:1,borderColor:"#ddd",minHeight:52},tcell:{width:125,padding:7,fontSize:12,color:"#222"},wide:{width:190},bold:{fontWeight:"700"},disabled:{opacity:0.5}});
