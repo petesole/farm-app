@@ -1,5 +1,4 @@
 import {useEffect,useMemo,useState} from "react";
-import {useRouter} from "expo-router";
 import {ActivityIndicator,Pressable,ScrollView,StyleSheet,TextInput,View} from "react-native";
 import {ThemedText} from "@/components/themed-text";
 import {ThemedView} from "@/components/themed-view";
@@ -14,7 +13,6 @@ type Chosen={kind:"DN"|"PO";key:string;item_code:string;quantity:string;price:st
 const dateISO=(v:string)=>{const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(v.trim());if(!m)return null;const iso=m[3]+"-"+m[2]+"-"+m[1];const d=new Date(iso+"T12:00:00Z");return !Number.isNaN(d.getTime())&&d.toISOString().slice(0,10)===iso?iso:null;};
 const money=(n:number)=>Number.isFinite(n)?n.toFixed(2):"0.00";
 export default function GRVOutstanding(){
- const router=useRouter();
  const [dn,setDn]=useState<DLine[]>([]),[po,setPo]=useState<POLine[]>([]);
  const [owner,setOwner]=useState(""),[supplier,setSupplier]=useState(""),[type,setType]=useState<""|"dnote"|"grv">("");
  const [date,setDate]=useState(new Date().toLocaleDateString("en-GB")),[number,setNumber]=useState("");
@@ -32,11 +30,13 @@ export default function GRVOutstanding(){
  const owners=useMemo(()=>[...new Set([...dn.map(x=>x.owner_code),...po.map(x=>x.owner_code)])].sort(),[dn,po]);
  const suppliers=useMemo(()=>[...new Set([...dn,...po].filter(x=>x.owner_code===owner).map(x=>x.supplier_name))].sort(),[dn,po,owner]);
  const outstandingDN=dn.filter(x=>x.owner_code===owner&&x.supplier_name===supplier);
- const outstandingPO=po.filter(x=>x.owner_code===owner&&x.supplier_name===supplier&&x.status==="approved"&&x.ordered_quantity>x.received_quantity);
+ const supplierPO=po.filter(x=>x.owner_code===owner&&x.supplier_name===supplier&&x.status==="approved");
+ const outstandingPO=supplierPO.filter(x=>x.ordered_quantity>x.received_quantity);
+ const receivedPending=outstandingDN.reduce((a,x)=>a+Number(x.quantity||0),0);
  const pick=(row:Chosen)=>setChosen(old=>old[row.key]?Object.fromEntries(Object.entries(old).filter(([k])=>k!==row.key)):{...old,[row.key]:row});
  const edit=(key:string,field:"quantity"|"price",value:string)=>setChosen(old=>old[key]?{...old,[key]:{...old[key],[field]:value}}:old);
  const lines=Object.values(chosen);
- const valid=!!owner&&!!supplier&&!!type&&!!dateISO(date)&&!!number.trim()&&lines.length>0&&lines.every(x=>(type==="dnote"||Number.isFinite(Number(x.price))&&Number(x.price)>0)&&(x.kind==="DN"||Number.isFinite(Number(x.quantity))&&Number(x.quantity)>0&&Number(x.quantity)<=x.max));
+ const valid=!!owner&&!!supplier&&!!type&&!!dateISO(date)&&!!number.trim()&&lines.length>0&&lines.every(x=>(type==="dnote"||Number.isFinite(Number(x.price))&&Number(x.price)>0)&&(x.kind==="DN"||Number.isFinite(Number(x.quantity))&&Number(x.quantity)>0&&Number(x.quantity)<=x.max))&&(type!=="dnote"||(lines.every(x=>x.kind==="PO")&&new Set(lines.map(x=>x.source)).size===1));
  const submitCombined=async()=>{if(!valid||busy||type!=="grv")return;setBusy(true);setError("");setSuccess("");try{
   const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");
   const grouped=new Map<string,{item_code:string;invoice_quantity:number;unit_price:number}>();
@@ -77,19 +77,22 @@ export default function GRVOutstanding(){
   {!!type?<View style={s.panel}><ThemedText style={s.label}>Date (DD/MM/YYYY)</ThemedText><TextInput style={s.input} value={date} onChangeText={setDate} placeholder="DD/MM/YYYY"/></View>:null}
   {!!type&&!!dateISO(date)?<View style={s.panel}><ThemedText style={s.label}>{type==="grv"?"Supplier Invoice / Delivery Reference":"Delivery Note Number"}</ThemedText><TextInput style={s.input} value={number} onChangeText={setNumber} placeholder="Enter document number"/></View>:null}
   {!!type&&!!dateISO(date)&&!!number.trim()?<View style={s.panel}>
-   <ThemedText style={s.label}>{type==="grv"?"Outstanding D-Note and PO lines":"Outstanding Purchase Order lines"}</ThemedText>
+   <ThemedText style={s.label}>{type==="grv"?"Received D-Notes awaiting prices, and undelivered PO lines":"Outstanding Purchase Order lines"}</ThemedText>
+   <ThemedText style={s.muted}>Supplier summary: {outstandingDN.length} unpriced D-Note lines ({receivedPending} units across products) · {outstandingPO.length} PO lines not fully delivered.</ThemedText>
    <ThemedText style={s.muted}>{type==="dnote"?"Select the PO products physically delivered. Enter received quantity only; pricing is NOT required.":"Select the supplier lines to include. D-Note quantities are locked and require final prices; direct PO receipts require quantity and price."}</ThemedText>
    {type==="grv"?outstandingDN.map(x=>{const key="DN:"+x.line_id,entry=chosen[key];return <View key={key} style={s.line}>
     {selection(key,(entry?"☑ ":"□ ")+x.delivery_note+" · "+displayJsplDate(x.delivery_note_date||x.document_date)+" · "+x.item_name+" ("+x.base_unit+")",!!entry,()=>pick({kind:"DN",key,item_code:x.item_code,quantity:String(x.quantity),price:"0",source:x.document_id,max:x.quantity}))}
     <ThemedText>Delivered: {x.quantity} {x.base_unit} · Locked</ThemedText>
     {entry?<View><ThemedText style={s.label}>Required unit price</ThemedText><TextInput style={[s.input,s.required]} keyboardType="decimal-pad" value={entry.price} onChangeText={v=>edit(key,"price",v)}/></View>:null}
    </View>}):null}
+   {type==="dnote"?<ThemedText style={s.muted}>One D-Note may contain several products from the same PO. Select another PO for a separate D-Note; the current receipt endpoint does not support combining POs safely.</ThemedText>:null}
    {outstandingPO.map(x=>{const key="PO:"+x.order_line_id,entry=chosen[key],remaining=Math.max(0,x.ordered_quantity-x.received_quantity);return <View key={key} style={s.line}>
     {selection(key,(entry?"☑ ":"□ ")+x.order_number+" · "+x.item_name+" ("+x.base_unit+")",!!entry,()=>pick({kind:"PO",key,item_code:x.item_code,quantity:"0",price:"0",source:x.order_id,max:remaining,orderLineId:x.order_line_id}))}
-    <ThemedText>Ordered {x.ordered_quantity} · Already received {x.received_quantity} · Available {remaining}</ThemedText>
+    <ThemedText>Ordered: {x.ordered_quantity} · Physically received: {x.received_quantity} · Not yet delivered: {remaining} {x.base_unit}</ThemedText>
     {entry?<View style={s.wrap}><View style={s.field}><ThemedText style={s.label}>Required qty (max {remaining})</ThemedText><TextInput style={[s.input,s.required]} keyboardType="decimal-pad" value={entry.quantity} onChangeText={v=>edit(key,"quantity",v)}/></View>{type==="grv"?<View style={s.field}><ThemedText style={s.label}>Required unit price</ThemedText><TextInput style={[s.input,s.required]} keyboardType="decimal-pad" value={entry.price} onChangeText={v=>edit(key,"price",v)}/></View>:null}</View>:null}
    </View>})}
-   {!outstandingDN.length&&!outstandingPO.length?<ThemedText>No outstanding lines for this supplier.</ThemedText>:null}
+   {type==="grv"&&supplierPO.some(x=>x.received_quantity>0)?<ThemedText style={s.muted}>Received quantities awaiting valuation are listed above as D-Note lines. Do not select a PO line again for quantities already received.</ThemedText>:null}
+   {(type==="grv"?!outstandingDN.length&&!outstandingPO.length:!outstandingPO.length)?<ThemedText>No outstanding lines for this supplier.</ThemedText>:null}
    <ThemedText style={s.label}>Selected: {lines.length} lines {type==="grv"?" · Total value: USD "+money(lines.reduce((a,x)=>a+Number(x.quantity)*Number(x.price),0)):""}</ThemedText>
    {type==="dnote"?<Pressable disabled={!valid||busy} onPress={()=>void submitDNote()} style={[s.submit,(!valid||busy)&&s.disabled]}><ThemedText style={s.submitText}>Receive D-Note into Stock</ThemedText></Pressable>:null}
 
