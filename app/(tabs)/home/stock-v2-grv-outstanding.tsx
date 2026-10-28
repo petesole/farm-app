@@ -31,7 +31,7 @@ export default function GRVOutstanding(){
  }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
  useEffect(()=>{void load()},[]);
  const owners=["JS","AO"];
- const suppliers=useMemo(()=>[...new Set([...dn,...po].filter(x=>x.owner_code===owner).map(x=>x.supplier_name).concat(supplierNames))].sort(),[dn,po,owner,supplierNames]);
+ const suppliers=useMemo(()=>[...new Set([...dn,...po].filter(x=>x.owner_code===owner).map(x=>x.supplier_name).concat(supplierNames)).filter((name):name is string=>typeof name==="string"&&name.trim().length>0)].sort(),[dn,po,owner,supplierNames]);
  const outstandingDN=dn.filter(x=>x.owner_code===owner&&x.supplier_name===supplier);
  const supplierPO=po.filter(x=>x.owner_code===owner&&x.supplier_name===supplier&&x.status==="approved");
  const outstandingPO=supplierPO.filter(x=>x.ordered_quantity>x.received_quantity);
