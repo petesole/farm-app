@@ -2,7 +2,7 @@ import {WbAdminSignIn} from "../components/jspl/WbAdminSignIn";
 import {WbModuleHeader} from "../components/jspl/WbModuleHeader";
 import {jsplColors as C} from "../constants/jspl-design";
 // Use the self-contained UMD build: Metro's ESM resolution breaks pdf-lib's nested tslib dependency.
-const {PDFDocument}=require("pdf-lib/dist/pdf-lib.js") as typeof import("pdf-lib");
+const {PDFDocument}=require("pdf-lib/dist/pdf-lib.js") as {PDFDocument:{create:()=>Promise<any>;load:(data:ArrayBuffer)=>Promise<any>}};
 import {useEffect,useMemo,useRef,useState} from "react";
 import {Platform,Pressable,ScrollView,Text,TextInput,View} from "react-native";
 import {supabase} from "../supabase";
@@ -143,7 +143,7 @@ export default function DocumentDispatch(){
    const mime=response.data.type.toLowerCase();
    if(mime.includes("pdf")||filename.endsWith(".pdf")){
     const original=await PDFDocument.load(buffer);const pages=await pdf.copyPages(original,original.getPageIndices());
-    pages.forEach(p=>pdf.addPage(p));pagesAdded+=pages.length;
+    pages.forEach((p:any)=>pdf.addPage(p));pagesAdded+=pages.length;
    }else if(mime.includes("png")||filename.endsWith(".png")||mime.includes("jpeg")||mime.includes("jpg")||/\.jpe?g$/.test(filename)){
     const img=mime.includes("png")||filename.endsWith(".png")?await pdf.embedPng(buffer):await pdf.embedJpg(buffer);
     const page=pdf.addPage([595.28,841.89]);const scale=Math.min(555/img.width,801/img.height);
