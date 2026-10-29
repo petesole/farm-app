@@ -15,6 +15,7 @@ type InputLine = { key: number; input: string; rate: string };
 const workflowEndpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
 const newRequestId=()=> "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const r=Math.floor(Math.random()*16);return(c==="x"?r:(r&3)|8).toString(16)});
 type BudgetLine={budget_ref_id:number;days_after_planting:number;rate_per_ha:number;item_code:string;item_name:string;base_unit:string};
+type BudgetTemplate={crop_budget_id:number;crop_name:string;budget_name:string;irrigation_type:string|null};
 type SprayType={access_spray_type_id:number;spray_type_name:string;spray_tank_size:number;spray_rate_per_ha:number};
 const monday = (d: Date) => { const x = new Date(d.getFullYear(),d.getMonth(),d.getDate()); x.setDate(x.getDate() - ((x.getDay()+6)%7)); return x; };
 const addWeeks = (d: Date, count: number) => { const x=new Date(d); x.setDate(x.getDate()+count*7); return x; };
@@ -35,6 +36,9 @@ export default function StockV2SprayPlanningPreview() {
   const [catalog,setCatalog]=useState<CatalogInput[]>([]);
   const [sprayTypes,setSprayTypes]=useState<SprayType[]>([]);
   const [budgetLines,setBudgetLines]=useState<BudgetLine[]>([]);
+  const [budgetTemplates,setBudgetTemplates]=useState<BudgetTemplate[]>([]);
+  const [selectedBudgetId,setSelectedBudgetId]=useState<number|null>(null);
+  const [budgetSaving,setBudgetSaving]=useState(false);
   const [saving,setSaving]=useState(false),[saveError,setSaveError]=useState("");
   const [openLine,setOpenLine]=useState<number|null>(null);
   const [traceId,setTraceId]=useState<number|null>(null);
@@ -78,6 +82,9 @@ export default function StockV2SprayPlanningPreview() {
         const typeResponse=await fetch(workflowEndpoint+"?spray_types=1",{headers:{authorization:"Bearer "+inputResult.data.session.access_token}});
         const typeData=await typeResponse.json();if(!typeResponse.ok)throw Error(typeData.error||"Unable to load spray types");
         setSprayTypes(typeData.spray_types??[]);
+        const budgetResponse=await fetch(workflowEndpoint+"?budget_templates=1",{headers:{authorization:"Bearer "+inputResult.data.session.access_token}});
+        const budgetData=await budgetResponse.json();if(!budgetResponse.ok)throw Error(budgetData.error||"Unable to load crop budgets");
+        setBudgetTemplates(budgetData.budgets??[]);
         if(editing){
           const matching=(data.sprays??[]).filter((j:{job_id:number|string})=>Number(j.job_id)===editJobId);
           if(matching.length===0)throw Error("Spray job not found for editing");
@@ -99,7 +106,8 @@ export default function StockV2SprayPlanningPreview() {
     setLoading(false);
   })();return()=>{mounted=false};},[editing,editJobId]);
   useEffect(()=>{setArea(selected?.tracecode_size?.toString()??"");setBudgetOffset(0);if(!editing)setLines([])},[traceId,editing]);
-  useEffect(()=>{let active=true;(async()=>{if(!traceId){setBudgetLines([]);return}try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)return;const response=await fetch(workflowEndpoint+"?budget_reference=1&tracecode_id="+traceId,{headers:{authorization:"Bearer "+session.access_token}});const data=await response.json();if(!response.ok)throw Error(data.error||"Budget reference unavailable");if(active)setBudgetLines(data.budget??[])}catch(e){if(active)setError(e instanceof Error?e.message:String(e))}})();return()=>{active=false}},[traceId]);
+  useEffect(()=>{let active=true;(async()=>{if(!traceId){setBudgetLines([]);return}try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)return;const response=await fetch(workflowEndpoint+"?budget_reference=1&tracecode_id="+traceId,{headers:{authorization:"Bearer "+session.access_token}});const data=await response.json();if(!response.ok)throw Error(data.error||"Budget reference unavailable");if(active){setBudgetLines(data.budget??[]);setSelectedBudgetId(data.crop_budget_id??null)}}catch(e){if(active)setError(e instanceof Error?e.message:String(e))}})();return()=>{active=false}},[traceId]);
+  const linkBudget=async(id:number|null)=>{if(!traceId||!id)return;setBudgetSaving(true);setSaveError("");try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign-in required");const response=await fetch(workflowEndpoint,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.access_token},body:JSON.stringify({action:"link_crop_budget",tracecode_id:traceId,crop_budget_id:id})});const data=await response.json();if(!response.ok)throw Error(data.error||"Could not assign budget");setSelectedBudgetId(id);const rr=await fetch(workflowEndpoint+"?budget_reference=1&tracecode_id="+traceId,{headers:{authorization:"Bearer "+session.access_token}});const bb=await rr.json();if(!rr.ok)throw Error(bb.error||"Could not load budget lines");setBudgetLines(bb.budget??[])}catch(e){setSaveError(e instanceof Error?e.message:String(e))}finally{setBudgetSaving(false)}};
   const addLine=(input="")=>setLines(old=>[...old,{key:nextKey++,input,rate:""}]);
   const copyBudgetInput=(input:string,rate:number)=>setLines(old=>{
     const existing=old.find(x=>x.input===input);
@@ -176,16 +184,17 @@ export default function StockV2SprayPlanningPreview() {
       </View>
       <View style={styles.panel}>
         <ThemedText type="subtitle">Crop budget reference</ThemedText>
+        <JsplSearchCombo label="Crop budget assigned to this trace" selector="crop-budget" options={budgetTemplates.filter(b=>!selected?.crop_id||b.crop_name.toLowerCase()===crops.find(c=>c.crop_id===selected.crop_id)?.crop_name.toLowerCase()).map(b=>({id:b.crop_budget_id,label:b.budget_name+" ("+b.irrigation_type+")",active:true}))} value={selectedBudgetId} onChange={v=>void linkBudget(typeof v==="number"?v:null)} placeholder={budgetSaving?"Saving budget…":"Select crop budget for this trace"}/>
         <View style={styles.weekNav}><Pressable style={styles.chip} onPress={()=>setBudgetOffset(x=>x-1)}><ThemedText>‹ Previous</ThemedText></Pressable><ThemedText>{weekLabel(budgetWeek)}</ThemedText><Pressable style={styles.chip} onPress={()=>setBudgetOffset(x=>x+1)}><ThemedText>Next ›</ThemedText></Pressable></View>
         <ThemedText style={styles.muted}>Budget weeks move independently of the operational spray week.</ThemedText>
         <View style={styles.empty}>
           <ThemedText style={styles.heading}>Crop budget reference — {selected?.tracecode_name??"Select trace"}</ThemedText>
           {budgetLines.length===0?<ThemedText style={styles.warning}>No crop budget reference linked to this tracecode yet. No sample products are used.</ThemedText>:null}
           {!budgetPlantingDate&&budgetLines.length>0?<ThemedText style={styles.warning}>Planting date unavailable: showing all budget lines without week filtering.</ThemedText>:null}
-          {selectedBudgetRows.map(row=><Pressable key={row.budget_ref_id} style={styles.budgetRow} onPress={()=>copyBudgetInput(row.item_name,row.rate_per_ha)}>
+          {selectedBudgetRows.map(row=><Pressable key={row.budget_ref_id} style={styles.budgetRow} onPress={()=>{const product=catalog.find(p=>p.item_code===row.item_code);if(product)copyBudgetInput(product.inputs_name,row.rate_per_ha);else setSaveError("Budget product not matched to Stock V2: "+row.item_name)}}>
             <View style={{flex:2}}><ThemedText style={styles.label}>DAP {row.days_after_planting}</ThemedText><ThemedText>{row.item_name}</ThemedText></View>
             <ThemedText style={{flex:1}}>{row.rate_per_ha} {row.base_unit}/ha</ThemedText>
-            <ThemedText style={styles.copy}>+ Copy</ThemedText>
+            <ThemedText style={styles.copy}>{row.item_code?"+ Copy":"Unmatched"}</ThemedText>
           </Pressable>)}
           {budgetLines.length>0&&selectedBudgetRows.length===0?<ThemedText style={styles.muted}>No budget applications for this week.</ThemedText>:null}
           <ThemedText style={styles.muted}>Tap a budget item to copy its recorded rate into this spray job.</ThemedText>
