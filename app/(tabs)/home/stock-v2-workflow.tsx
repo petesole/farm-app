@@ -11,7 +11,7 @@ import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, TextInput,
 import { supabase } from "../../../supabase";
 
 const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
-type Item={item_code:string;item_name:string;base_unit:string;quantity:number;ao_quantity:number;input_type:string|null;input_category:string|null;active_ingredient:string|null;last_purchase_price:number|null;weighted_average_price:number|null;last_purchase_supplier:string|null};
+type Item={item_code:string;item_name:string;base_unit:string;active:boolean;quantity:number;ao_quantity:number;input_type:string|null;input_category:string|null;active_ingredient:string|null;last_purchase_price:number|null;weighted_average_price:number|null;last_purchase_supplier:string|null};
 type OrderLine={owner_code:string;contract_id:number|null;order_id:number;order_number:string;supplier_name:string;item_code:string;item_name:string;base_unit:string;ordered_quantity:number;received_quantity:number;ordered_unit_price:number|null;status:string};
 type SprayLine={job_id:number;external_tracecode_id:number;tracecode_name:string;item_code:string;item_name:string;area_ha:number;rate_per_ha:number;planned_quantity:number;issued_quantity:number;status:string};
 type Doc={document_id:number;document_type:string;document_number:string;item_name:string;quantity:number;tracecode_name:string|null};
@@ -127,7 +127,7 @@ export default function StockV2Workflow(){
  const valid=(tab!=="POs Outstanding"||(!!parseJsplDateInput(receiptDate)&&(receiptMode==="dnote"?!!deliveryNote.trim():!!invoiceNumber.trim())&&(receiptMode==="dnote"||lines.every(l=>l.unit_price.trim()!==""&&Number(l.unit_price)>0))))&&!!snapshot&&(tab!=="Purchase Orders"&&tab!=="POs Outstanding"||ownerReady)&&
  (tab!=="Purchase Orders"||(contractReady&&!!supplier.trim()))&&
  (tab!=="POs Outstanding"||!directGrv||(contractReady&&!!supplier.trim()))&&(tab!=="Purchase Orders"||!!parseJsplDateInput(orderDate))&&lines.length>0&&lines.length<=30&&new Set(lines.map(l=>l.item_code)).size===lines.length&&lines.every(l=>{
-  if(!products.some(p=>p.item_code===l.item_code))return false;
+  if(!products.some(p=>p.item_code===l.item_code&&p.active))return false;
   const n=number(l.quantity);
   if(!Number.isFinite(n)||n<=0)return false;
   if(["Purchase Orders","POs Outstanding"].includes(tab ?? "")&&l.unit_price.trim()!==""&&(!Number.isFinite(number(l.unit_price))||number(l.unit_price)<0))return false;
@@ -256,7 +256,7 @@ export default function StockV2Workflow(){
    {pickerLine!==null?<View style={styles.pickerPanel}>
     <View style={styles.pickerTop}><ThemedText style={styles.section}>Choose product</ThemedText><Pressable onPress={()=>setPickerLine(null)}><ThemedText>Close</ThemedText></Pressable></View>
     <TextInput style={styles.input} placeholder="Find product" value={pickerSearch} onChangeText={setPickerSearch}/>
-    {products.filter(p=>p.item_name.toLowerCase().startsWith(pickerSearch.trim().toLowerCase())&&!lines.some(x=>x.id!==pickerLine&&x.item_code===p.item_code)).map(p=><Pressable key={p.item_code} style={styles.choice} onPress={()=>{changeLine(pickerLine,"item_code",p.item_code);setPickerLine(null)}}><ThemedText>{p.item_name} ({p.base_unit})</ThemedText></Pressable>)}
+    {products.filter(p=>p.active&&p.item_name.toLowerCase().startsWith(pickerSearch.trim().toLowerCase())&&!lines.some(x=>x.id!==pickerLine&&x.item_code===p.item_code)).map(p=><Pressable key={p.item_code} style={styles.choice} onPress={()=>{changeLine(pickerLine,"item_code",p.item_code);setPickerLine(null)}}><ThemedText>{p.item_name} ({p.base_unit})</ThemedText></Pressable>)}
    </View>:null}
    {(directGrv||!["POs Outstanding","Planned Issue"].includes(tab ?? ""))?<Pressable style={styles.add} onPress={addLine}><ThemedText>＋ Add product line</ThemedText></Pressable>:null}
    {(tab==="Purchase Orders"||(tab==="POs Outstanding"&&receiptMode==="invoice"))?<ThemedText style={styles.total}>Document total: {currency(lines.reduce((s,l)=>s+number(l.quantity)*number(l.unit_price||"0"),0))}</ThemedText>:null}
