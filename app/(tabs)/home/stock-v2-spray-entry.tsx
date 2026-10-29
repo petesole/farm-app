@@ -12,19 +12,10 @@ type Trace = { tracecode_id: number; tracecode_name: string; tracecode_size: num
 type Crop = { crop_id: number; crop_name: string; active: boolean | null };
 type CatalogInput = { input_id: number; inputs_name: string; item_code:string; quantity:number; base_unit:string };
 type InputLine = { key: number; input: string; rate: string };
-// Demo-only values from the user's Access example. Not fetched from Supabase.
 const workflowEndpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
 const newRequestId=()=> "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const r=Math.floor(Math.random()*16);return(c==="x"?r:(r&3)|8).toString(16)});
-const exampleBudget = [
-  { category: "Seed Dressing", input: "Noble", rate: 0.12, unit: "L/ha" },
-  { category: "Seed Dressing", input: "SEED POWER", rate: 0.12, unit: "L/ha" },
-  { category: "Herbicide", input: "AMM SUL", rate: 6, unit: "L/ha" },
-  { category: "Herbicide", input: "GLYPHOSATE", rate: 5, unit: "L/ha" },
-  { category: "Nematicide", input: "Carbosulfan", rate: 6, unit: "L/ha" },
-  { category: "Insecticide", input: "Lambda", rate: 0.2, unit: "L/ha" },
-  { category: "Water Conditioner", input: "Hybrid Aqua Care SE", rate: 0.36, unit: "L/ha" },
-  { category: "Nutrition", input: "Compound D 14:28:14", rate: 300, unit: "kg/ha" },
-];
+type BudgetLine={budget_ref_id:number;days_after_planting:number;rate_per_ha:number;item_code:string;item_name:string;base_unit:string};
+type SprayType={access_spray_type_id:number;spray_type_name:string;spray_tank_size:number;spray_rate_per_ha:number};
 const monday = (d: Date) => { const x = new Date(d.getFullYear(),d.getMonth(),d.getDate()); x.setDate(x.getDate() - ((x.getDay()+6)%7)); return x; };
 const addWeeks = (d: Date, count: number) => { const x=new Date(d); x.setDate(x.getDate()+count*7); return x; };
 const weekLabel = (d: Date) => `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
@@ -42,7 +33,8 @@ export default function StockV2SprayPlanningPreview() {
   const [crops,setCrops]=useState<Crop[]>([]);
   const [cropId,setCropId]=useState<number|null>(null);
   const [catalog,setCatalog]=useState<CatalogInput[]>([]);
-  const [spraySetups,setSpraySetups]=useState<{setup_name:string;water_litres_per_ha:number}[]>([]);
+  const [sprayTypes,setSprayTypes]=useState<SprayType[]>([]);
+  const [budgetLines,setBudgetLines]=useState<BudgetLine[]>([]);
   const [saving,setSaving]=useState(false),[saveError,setSaveError]=useState("");
   const [openLine,setOpenLine]=useState<number|null>(null);
   const [traceId,setTraceId]=useState<number|null>(null);
@@ -65,6 +57,8 @@ export default function StockV2SprayPlanningPreview() {
   const selected=useMemo(()=>visibleTraces.find(t=>t.tracecode_id===traceId),[traceId,visibleTraces]);
   useEffect(()=>{if(!visibleTraces.some(t=>t.tracecode_id===traceId))setTraceId(visibleTraces[0]?.tracecode_id??null)},[visibleTraces,traceId]);
   const operationalWeek=addWeeks(monday(new Date()),operationalOffset);
+  const budgetPlantingDate=selected?.actual_planting_date||selected?.planned_planting_date||null;
+  const selectedBudgetRows=budgetLines.filter(row=>{if(!budgetPlantingDate)return true;const d=new Date(budgetPlantingDate.slice(0,10)+"T12:00:00");d.setDate(d.getDate()+row.days_after_planting);return monday(d).getTime()===budgetWeek.getTime()});
   const budgetWeek=addWeeks(monday(new Date()),budgetOffset);
   useEffect(()=>{ let mounted=true; (async()=>{
     const [traceResult,cropResult,inputResult]=await Promise.all([
@@ -81,7 +75,9 @@ export default function StockV2SprayPlanningPreview() {
       if(!inputResult.data.session?.access_token){setError("Sign in to Supabase to load private Stock V2 products.");}else{
         try{const response=await fetch(workflowEndpoint,{headers:{authorization:"Bearer "+inputResult.data.session.access_token}});const data=await response.json();if(!response.ok)throw Error(data.error||"Unable to load Stock V2");
         setCatalog((data.items??[]).map((p:{item_code:string;item_name:string;quantity:number;base_unit:string},i:number)=>({input_id:i+1,inputs_name:p.item_name,item_code:p.item_code,quantity:Number(p.quantity??0),base_unit:p.base_unit})));
-        setSpraySetups(data.sprayers??[]);
+        const typeResponse=await fetch(workflowEndpoint+"?spray_types=1",{headers:{authorization:"Bearer "+inputResult.data.session.access_token}});
+        const typeData=await typeResponse.json();if(!typeResponse.ok)throw Error(typeData.error||"Unable to load spray types");
+        setSprayTypes(typeData.spray_types??[]);
         if(editing){
           const matching=(data.sprays??[]).filter((j:{job_id:number|string})=>Number(j.job_id)===editJobId);
           if(matching.length===0)throw Error("Spray job not found for editing");
@@ -96,13 +92,14 @@ export default function StockV2SprayPlanningPreview() {
           setOperationalOffset(Math.round((monday(savedMonday).getTime()-currentMonday.getTime())/604800000));
           setLines(matching.map((j:{item_name:string;rate_per_ha:number},i:number)=>({key:i+1,input:j.item_name,rate:String(j.rate_per_ha)})));
         }
-        const first=data.sprayers?.[0];if(first&&!editing){setSprayType(first.setup_name);setWaterRate(String(first.water_litres_per_ha));}
+        const first=typeData.spray_types?.[0];if(first&&!editing){setSprayType(first.spray_type_name);setWaterRate(String(first.spray_rate_per_ha));}
         }catch(e){setError(e instanceof Error?e.message:String(e))}
       }
     }
     setLoading(false);
   })();return()=>{mounted=false};},[editing,editJobId]);
   useEffect(()=>{setArea(selected?.tracecode_size?.toString()??"");setBudgetOffset(0);if(!editing)setLines([])},[traceId,editing]);
+  useEffect(()=>{let active=true;(async()=>{if(!traceId){setBudgetLines([]);return}try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)return;const response=await fetch(workflowEndpoint+"?budget_reference=1&tracecode_id="+traceId,{headers:{authorization:"Bearer "+session.access_token}});const data=await response.json();if(!response.ok)throw Error(data.error||"Budget reference unavailable");if(active)setBudgetLines(data.budget??[])}catch(e){if(active)setError(e instanceof Error?e.message:String(e))}})();return()=>{active=false}},[traceId]);
   const addLine=(input="")=>setLines(old=>[...old,{key:nextKey++,input,rate:""}]);
   const copyBudgetInput=(input:string,rate:number)=>setLines(old=>{
     const existing=old.find(x=>x.input===input);
@@ -154,7 +151,7 @@ export default function StockV2SprayPlanningPreview() {
         <ThemedText type="subtitle">Weekly spray input</ThemedText>
         <View style={styles.weekNav}><Pressable onPress={()=>setOperationalOffset(0)} style={styles.chip}><ThemedText>This week</ThemedText></Pressable><Pressable onPress={()=>setOperationalOffset(1)} style={styles.chip}><ThemedText>Next week</ThemedText></Pressable></View>
         <ThemedText style={styles.muted}>Spray week begins {weekLabel(operationalWeek)}</ThemedText>
-        <ThemedText style={styles.label}>Spray type</ThemedText>{spraySetups.map(setup=><Pressable key={setup.setup_name} style={[styles.chip,sprayType===setup.setup_name&&styles.selected]} onPress={()=>{setSprayType(setup.setup_name);setWaterRate(String(setup.water_litres_per_ha));}}><ThemedText>{setup.setup_name}{sprayType===setup.setup_name?" ✓":""}</ThemedText></Pressable>)}
+        <ThemedText style={styles.label}>Spray type</ThemedText>{sprayTypes.map(setup=><Pressable key={setup.access_spray_type_id} style={[styles.chip,sprayType===setup.spray_type_name&&styles.selected]} onPress={()=>{setSprayType(setup.spray_type_name);setWaterRate(String(setup.spray_rate_per_ha));}}><ThemedText>{setup.spray_type_name}{sprayType===setup.spray_type_name?" ✓":""}</ThemedText></Pressable>)}
         <ThemedText style={styles.label}>Sprayer / equipment code</ThemedText><TextInput style={styles.input} value={sprayer} onChangeText={setSprayer} placeholder="Select sprayer later"/>
         <View style={styles.two}><View style={styles.half}><ThemedText style={styles.label}>Tracecode area (ha) — fixed</ThemedText><ThemedText style={styles.heading}>{fmt(wholeArea)}</ThemedText></View><View style={styles.half}><ThemedText style={styles.label}>Water rate (L/ha)</ThemedText><TextInput style={styles.input} keyboardType="decimal-pad" value={waterRate} onChangeText={setWaterRate} placeholder="Editable"/></View></View>
         <ThemedText style={styles.muted}>Water required: {fmt(totalWater)} L</ThemedText>
@@ -171,22 +168,23 @@ export default function StockV2SprayPlanningPreview() {
         <Pressable style={styles.action} onPress={()=>addLine()}><ThemedText>+ Add input</ThemedText></Pressable>
         {saveError?<ThemedText style={styles.error}>NOT SAVED: {saveError}</ThemedText>:null}
         <Pressable disabled={saving||loading||!!error} style={[styles.saveButton,(saving||loading||!!error)&&{opacity:0.5}]} onPress={savePlan}><ThemedText style={styles.saveText}>{saving?"Saving…":editing?"Save Mix Changes":"Save New Spray"}</ThemedText></Pressable>
-        <ThemedText style={styles.muted}>Only private Stock V2 test products are available until live product/owner mapping is approved.</ThemedText>
+        <ThemedText style={styles.muted}>Choose from the imported Access products. Stock quantities come from the Stock V2 test ledger.</ThemedText>
       </View>
       <View style={styles.panel}>
         <ThemedText type="subtitle">Crop budget reference</ThemedText>
         <View style={styles.weekNav}><Pressable style={styles.chip} onPress={()=>setBudgetOffset(x=>x-1)}><ThemedText>‹ Previous</ThemedText></Pressable><ThemedText>{weekLabel(budgetWeek)}</ThemedText><Pressable style={styles.chip} onPress={()=>setBudgetOffset(x=>x+1)}><ThemedText>Next ›</ThemedText></Pressable></View>
         <ThemedText style={styles.muted}>Budget weeks move independently of the operational spray week.</ThemedText>
         <View style={styles.empty}>
-          <ThemedText style={styles.heading}>Sample crop budget (demonstration only)</ThemedText>
-          <ThemedText style={styles.warning}>Illustrative Access inputs, NOT the selected tracecode&apos;s actual budget. No budget data has been imported or linked yet.</ThemedText>
-          {budgetOffset===0 ? exampleBudget.map((row,i)=><Pressable
-            key={i} style={styles.budgetRow} onPress={()=>copyBudgetInput(row.input,row.rate)}>
-            <View style={{flex:2}}><ThemedText style={styles.label}>{row.category}</ThemedText><ThemedText>{row.input}</ThemedText></View>
-            <ThemedText style={{flex:1}}>{row.rate} {row.unit}</ThemedText>
+          <ThemedText style={styles.heading}>Crop budget reference — {selected?.tracecode_name??"Select trace"}</ThemedText>
+          {budgetLines.length===0?<ThemedText style={styles.warning}>No crop budget reference linked to this tracecode yet. No sample products are used.</ThemedText>:null}
+          {!budgetPlantingDate&&budgetLines.length>0?<ThemedText style={styles.warning}>Planting date unavailable: showing all budget lines without week filtering.</ThemedText>:null}
+          {selectedBudgetRows.map(row=><Pressable key={row.budget_ref_id} style={styles.budgetRow} onPress={()=>copyBudgetInput(row.item_name,row.rate_per_ha)}>
+            <View style={{flex:2}}><ThemedText style={styles.label}>DAP {row.days_after_planting}</ThemedText><ThemedText>{row.item_name}</ThemedText></View>
+            <ThemedText style={{flex:1}}>{row.rate_per_ha} {row.base_unit}/ha</ThemedText>
             <ThemedText style={styles.copy}>+ Copy</ThemedText>
-          </Pressable>) : <ThemedText style={styles.muted}>No demonstration inputs for this budget week. Import is pending.</ThemedText>}
-          <ThemedText style={styles.muted}>Tap an input to copy its name and rate into the spray job. You can edit the copied rate before saving is enabled.</ThemedText>
+          </Pressable>)}
+          {budgetLines.length>0&&selectedBudgetRows.length===0?<ThemedText style={styles.muted}>No budget applications for this week.</ThemedText>:null}
+          <ThemedText style={styles.muted}>Tap a budget item to copy its recorded rate into this spray job.</ThemedText>
         </View>
       </View>
     </View>
