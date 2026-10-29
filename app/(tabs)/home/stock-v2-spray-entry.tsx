@@ -91,6 +91,7 @@ export default function StockV2SprayPlanningPreview() {
           if(matching.length===0)throw Error("Spray job not found for editing");
           const a=matching[0];if(a.status!=="planned"||matching.some((l:{issued_quantity:number})=>l.issued_quantity>0))throw Error("Cannot edit a spray after any stock has been issued");
           setTraceId(a.external_tracecode_id);setSprayType(a.spray_type);setWaterRate(String(a.water_litres_per_ha??""));
+          setWeekChosen(true);
           setPart(a.part_label?.startsWith("Part ")?a.part_label.slice(5).replace(/ ha$/,""):"");
           setSprayer(a.sprayer_asset_code??"");
           const currentMonday=monday(new Date());
@@ -186,7 +187,7 @@ export default function StockV2SprayPlanningPreview() {
         <Pressable disabled={saving||loading||!!error} style={[styles.saveButton,(saving||loading||!!error)&&{opacity:0.5}]} onPress={savePlan}><ThemedText style={styles.saveText}>{saving?"Saving…":editing?"Save Mix Changes":"Save New Spray"}</ThemedText></Pressable>
         </>:null}
       </View>
-      <View style={styles.panel}>
+      {weekChosen&&sprayType&&Number(waterRate)>0?<View style={styles.panel}>
         <ThemedText type="subtitle">Crop budget reference</ThemedText>
         <JsplSearchCombo label="Crop budget assigned to this trace" selector="crop-budget" options={budgetTemplates.map(b=>({id:b.crop_budget_id,label:b.budget_name+" · "+b.crop_name+" · "+(b.irrigation_type??"Any irrigation"),active:true}))} value={selectedBudgetId} onChange={v=>void linkBudget(typeof v==="number"?v:null)} placeholder={budgetSaving?"Saving budget…":"Select crop budget for this trace"}/>
         <View style={styles.weekNav}><Pressable style={styles.chip} onPress={()=>setBudgetOffset(x=>x-1)}><ThemedText>‹ Previous</ThemedText></Pressable><ThemedText>{weekLabel(budgetWeek)}</ThemedText><Pressable style={styles.chip} onPress={()=>setBudgetOffset(x=>x+1)}><ThemedText>Next ›</ThemedText></Pressable></View>
@@ -203,7 +204,7 @@ export default function StockV2SprayPlanningPreview() {
           {budgetLines.length>0&&selectedBudgetRows.length===0?<ThemedText style={styles.muted}>No budget applications for this week.</ThemedText>:null}
           <ThemedText style={styles.muted}>Tap a budget item to copy its recorded rate into this spray job.</ThemedText>
         </View>
-      </View>
+      </View>:null}
     </View>:null}
   </ScrollView></ThemedView>;
 }
