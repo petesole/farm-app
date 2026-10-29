@@ -146,16 +146,16 @@ export default function StockV2SprayPlanningPreview() {
     <StockV2Header title={editing?"Edit Spray Mix":"New Spray Plan"}/>
 
     {loading?<ActivityIndicator/>:error?<ThemedText style={styles.error}>{error}</ThemedText>:<View style={styles.traces}>
-      <JsplSearchCombo label="Filter by crop" selector="crop"
+      <JsplSearchCombo label="Crop" selector="crop"
         options={visibleCrops.map(c=>({id:c.crop_id,label:c.crop_name,active:true}))}
         value={cropId} onChange={value=>{setCropId(typeof value==="number"?value:null);setTraceId(null);setWeekChosen(false);}}
-        placeholder="All active crops — type to search"/>
+        placeholder="Choose crop"/>
       {cropId!=null?<JsplSearchCombo label="Trace Code" selector="trace"
         options={visibleTraces.map(t=>({id:t.tracecode_id,label:t.tracecode_name,active:true}))}
         value={traceId} onChange={value=>{setTraceId(typeof value==="number"?value:null);setWeekChosen(false);}}
         placeholder="Select Trace Code"/>:null}
       {selected?<ThemedText style={styles.muted}>Size: {fmt(Number(selected.tracecode_size??0))} ha · Growing days: {selected.actual_planting_date?Math.max(0,Math.floor((Date.now()-new Date(selected.actual_planting_date.slice(0,10)+"T12:00:00").getTime())/86400000)):"— (not planted)"}</ThemedText>:null}
-      {visibleTraces.length===0?<ThemedText style={styles.muted}>No active tracecodes for this crop.</ThemedText>:null}
+      {cropId!=null&&visibleTraces.length===0?<ThemedText style={styles.muted}>No current tracecodes for this crop.</ThemedText>:null}
     </View>}
     {selected?<View style={[styles.panels,wide?styles.sideBySide:styles.stacked]}>
       <View style={styles.panel}>
