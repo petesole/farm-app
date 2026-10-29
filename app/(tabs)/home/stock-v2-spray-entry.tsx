@@ -45,6 +45,7 @@ export default function StockV2SprayPlanningPreview() {
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState("");
   const [operationalOffset,setOperationalOffset]=useState(0);
+  const [weekChosen,setWeekChosen]=useState(false);
   const [budgetOffset,setBudgetOffset]=useState(0);
   const [area,setArea]=useState("");
   const [sprayer,setSprayer]=useState("");
@@ -59,7 +60,7 @@ export default function StockV2SprayPlanningPreview() {
   }),[traces,crops,cropId]);
   const visibleCrops=useMemo(()=>crops.filter(c=>c.active!==false && traces.some(t=>t.crop_id===c.crop_id && (!t.end_date || t.end_date.slice(0,10)>=new Date().toISOString().slice(0,10)))),[crops,traces]);
   const selected=useMemo(()=>visibleTraces.find(t=>t.tracecode_id===traceId),[traceId,visibleTraces]);
-  useEffect(()=>{if(!visibleTraces.some(t=>t.tracecode_id===traceId))setTraceId(visibleTraces[0]?.tracecode_id??null)},[visibleTraces,traceId]);
+  useEffect(()=>{if(!visibleTraces.some(t=>t.tracecode_id===traceId))setTraceId(null)},[visibleTraces,traceId]);
   const operationalWeek=addWeeks(monday(new Date()),operationalOffset);
   const budgetWeek=addWeeks(monday(new Date()),budgetOffset);
   const budgetPlantingDate=selected?.actual_planting_date||selected?.planned_planting_date||null;
@@ -142,32 +143,35 @@ export default function StockV2SprayPlanningPreview() {
     </View>
     <ScrollView style={styles.foreground} contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
     <StockV2Header title={editing?"Edit Spray Mix":"New Spray Plan"}/>
-    <ThemedText style={styles.muted}>Stock V2 private test workflow • Saving a spray does not move stock. Transfer from the weekly register to issue inputs.</ThemedText>
+
     {loading?<ActivityIndicator/>:error?<ThemedText style={styles.error}>{error}</ThemedText>:<View style={styles.traces}>
       <JsplSearchCombo label="Filter by crop" selector="crop"
         options={visibleCrops.map(c=>({id:c.crop_id,label:c.crop_name,active:true}))}
-        value={cropId} onChange={value=>setCropId(typeof value==="number"?value:null)}
+        value={cropId} onChange={value=>{setCropId(typeof value==="number"?value:null);setTraceId(null);setWeekChosen(false);}}
         placeholder="All active crops — type to search"/>
-      <JsplSearchCombo label={`Active tracecodes (${visibleTraces.length})`} selector="trace"
+      {cropId!=null?<JsplSearchCombo label="Trace Code" selector="trace"
         options={visibleTraces.map(t=>({id:t.tracecode_id,label:t.tracecode_name,active:true}))}
-        value={traceId} onChange={value=>setTraceId(typeof value==="number"?value:null)}
-        placeholder="Type the beginning of a trace code"/>
+        value={traceId} onChange={value=>{setTraceId(typeof value==="number"?value:null);setWeekChosen(false);}}
+        placeholder="Select Trace Code"/>:null}
+      {selected?<ThemedText style={styles.muted}>Size: {fmt(Number(selected.tracecode_size??0))} ha · Growing days: {selected.actual_planting_date?Math.max(0,Math.floor((Date.now()-new Date(selected.actual_planting_date.slice(0,10)+"T12:00:00").getTime())/86400000)):"— (not planted)"}</ThemedText>:null}
       {visibleTraces.length===0?<ThemedText style={styles.muted}>No active tracecodes for this crop.</ThemedText>:null}
     </View>}
-    <View style={[styles.panels,wide?styles.sideBySide:styles.stacked]}>
+    {selected?<View style={[styles.panels,wide?styles.sideBySide:styles.stacked]}>
       <View style={styles.panel}>
         <ThemedText type="subtitle">Weekly spray input</ThemedText>
-        <View style={styles.weekNav}><Pressable onPress={()=>setOperationalOffset(0)} style={styles.chip}><ThemedText>This week</ThemedText></Pressable><Pressable onPress={()=>setOperationalOffset(1)} style={styles.chip}><ThemedText>Next week</ThemedText></Pressable></View>
+        <View style={styles.weekNav}><Pressable onPress={()=>{setOperationalOffset(0);setWeekChosen(true)}} style={styles.chip}><ThemedText>This week</ThemedText></Pressable><Pressable onPress={()=>{setOperationalOffset(1);setWeekChosen(true)}} style={styles.chip}><ThemedText>Next week</ThemedText></Pressable></View>
         <ThemedText style={styles.muted}>Spray week begins {weekLabel(operationalWeek)}</ThemedText>
-        <JsplSearchCombo label="Spray Type" selector="spray-type"
+        {weekChosen?<JsplSearchCombo label="Spray Type" selector="spray-type"
           options={sprayTypes.map(setup=>({id:setup.access_spray_type_id,label:setup.spray_type_name,active:true}))}
           value={sprayTypes.find(setup=>setup.spray_type_name===sprayType)?.access_spray_type_id??null}
           onChange={id=>{const choice=sprayTypes.find(setup=>setup.access_spray_type_id===id);setSprayType(choice?.spray_type_name??"");setWaterRate(choice?String(choice.spray_rate_per_ha):"");}}
-          placeholder="Select or search spray type"/>
-        <ThemedText style={styles.label}>Sprayer / equipment code</ThemedText><TextInput style={styles.input} value={sprayer} onChangeText={setSprayer} placeholder="Select sprayer later"/>
-        <View style={styles.two}><View style={styles.half}><ThemedText style={styles.label}>Tracecode area (ha) — fixed</ThemedText><ThemedText style={styles.heading}>{fmt(wholeArea)}</ThemedText></View><View style={styles.half}><ThemedText style={styles.label}>Water rate (L/ha)</ThemedText><TextInput style={styles.input} keyboardType="decimal-pad" value={waterRate} onChangeText={setWaterRate} placeholder="Editable"/></View></View>
+          placeholder="Select or search spray type"/>:null}
+        {weekChosen&&sprayType?<View><ThemedText style={styles.label}>Water rate (L/ha)</ThemedText><TextInput style={styles.input} keyboardType="decimal-pad" value={waterRate} onChangeText={setWaterRate} placeholder="Enter water rate"/></View>:null}
+        {weekChosen&&sprayType&&Number(waterRate)>0?<>
+
+
         <ThemedText style={styles.muted}>Water required: {fmt(totalWater)} L</ThemedText>
-        <View style={styles.two}><View style={styles.half}><ThemedText style={styles.label}>Part (ha) — blank = whole field</ThemedText><TextInput style={styles.input} keyboardType="decimal-pad" value={part} onChangeText={setPart}/></View><View style={styles.half}><ThemedText style={styles.label}>Job code</ThemedText><TextInput style={styles.input} value={jobCode} onChangeText={setJobCode}/></View></View>
+        <View><ThemedText style={styles.label}>Part (ha) — blank = whole field</ThemedText><TextInput style={styles.input} keyboardType="decimal-pad" value={part} onChangeText={setPart}/></View>
         <ThemedText style={styles.heading}>Inputs & rates</ThemedText>
         {lines.map(x=><View key={x.key} style={styles.line}><View style={{flex:2}}><ThemedText style={styles.label}>Input</ThemedText><TextInput style={styles.input} value={x.input} onFocus={()=>setOpenLine(x.key)} onChangeText={v=>{changeLine(x.key,"input",v);setOpenLine(x.key)}} placeholder="Type product name or letters" autoCorrect={false}/>
           {openLine===x.key?<View style={styles.suggestions}><ThemedText style={styles.label}>Matching inputs ({matches(x.input).length}{catalog.length>=1000?"+":""})</ThemedText>
@@ -180,7 +184,7 @@ export default function StockV2SprayPlanningPreview() {
         <Pressable style={styles.action} onPress={()=>addLine()}><ThemedText>+ Add input</ThemedText></Pressable>
         {saveError?<ThemedText style={styles.error}>NOT SAVED: {saveError}</ThemedText>:null}
         <Pressable disabled={saving||loading||!!error} style={[styles.saveButton,(saving||loading||!!error)&&{opacity:0.5}]} onPress={savePlan}><ThemedText style={styles.saveText}>{saving?"Saving…":editing?"Save Mix Changes":"Save New Spray"}</ThemedText></Pressable>
-        <ThemedText style={styles.muted}>Choose from the imported Access products. Stock quantities come from the Stock V2 test ledger.</ThemedText>
+        </>:null}
       </View>
       <View style={styles.panel}>
         <ThemedText type="subtitle">Crop budget reference</ThemedText>
@@ -200,7 +204,7 @@ export default function StockV2SprayPlanningPreview() {
           <ThemedText style={styles.muted}>Tap a budget item to copy its recorded rate into this spray job.</ThemedText>
         </View>
       </View>
-    </View>
+    </View>:null}
   </ScrollView></ThemedView>;
 }
 const styles=StyleSheet.create({saveButton:{backgroundColor:jsplColors.primary,minHeight:jsplSizes.buttonHeight,paddingHorizontal:jsplSpacing.md,justifyContent:"center",borderRadius:jsplRadii.sm,alignItems:"center"},saveText:{color:"#fff",fontWeight:"700"},stockHomeBack:{alignSelf:"flex-start",backgroundColor:jsplColors.successTint,borderColor:jsplColors.border,borderWidth:1,borderRadius:jsplRadii.md,paddingVertical:10,paddingHorizontal:14},stockHomeBackText:{color:jsplColors.primaryDark,fontWeight:"700"},
