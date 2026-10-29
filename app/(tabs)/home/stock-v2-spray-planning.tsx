@@ -11,8 +11,8 @@ const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-d
 type Product={item_code:string;item_name:string;base_unit:string;quantity:number};
 type Spray={job_id:number;external_tracecode_id:number;tracecode_name:string;planned_week_start:string;area_ha:number;spray_type:string;part_label:string|null;sprayer_asset_code:string|null;water_litres_per_ha:number|null;status:string;item_code:string;item_name:string;base_unit:string;rate_per_ha:number;planned_quantity:number;issued_quantity:number};
 type Crop={crop_id:number;crop_name:string};
-type Trace={tracecode_id:number;crop_id:number|null};
-type Job={id:number;week:string;trace:string;crop:string;area:number;status:string;sprayType:string;part:string;sprayer:string;water:number;lines:Spray[];remainingArea:number};
+type Trace={tracecode_id:number;crop_id:number|null;end_date:string|null;start_date:string|null};
+type Job={id:number;traceId:number;week:string;trace:string;crop:string;area:number;status:string;sprayType:string;part:string;sprayer:string;water:number;lines:Spray[];remainingArea:number};
 const fmt=(n:number)=>Number.isFinite(n)?n.toLocaleString("en-GB",{maximumFractionDigits:3}):"—";
 const weekLabel=(s:string)=>{const d=new Date(s+"T12:00:00Z");const th=new Date(d);th.setUTCDate(d.getUTCDate()+3-((d.getUTCDay()+6)%7));const yr=th.getUTCFullYear();const jan4=new Date(Date.UTC(yr,0,4));const first=new Date(jan4);first.setUTCDate(jan4.getUTCDate()-((jan4.getUTCDay()+6)%7));return yr+"/"+String(1+Math.round((d.getTime()-first.getTime())/604800000)).padStart(2,"0")};
 const uuid=()=>"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const r=Math.floor(Math.random()*16);return(c==="x"?r:(r&3)|8).toString(16)});
@@ -22,13 +22,14 @@ export default function WeeklySprayPlanning(){
  const [loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState("");
  const [expanded,setExpanded]=useState(""),[issueId,setIssueId]=useState<number|null>(null),[issueHa,setIssueHa]=useState(""),[confirm,setConfirm]=useState(false);
  const [showCompleted,setShowCompleted]=useState(false);
+ const [cropFilter,setCropFilter]=useState("all"),[traceFilter,setTraceFilter]=useState("all");
  const [issueHistory,setIssueHistory]=useState<{document_id:number;document_number:string;document_type:string}[]>([]);
  const [latestSlip,setLatestSlip]=useState<number|null>(null);
  const load=useCallback(async()=>{setLoading(true);setError("");try{
   const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Supabase sign-in required");
   const [res,tc,cr]=await Promise.all([
     fetch(endpoint,{headers:{authorization:"Bearer "+session.access_token}}),
-    supabase.from("tracecode").select("tracecode_id,crop_id"),
+    supabase.from("tracecode").select("tracecode_id,crop_id,start_date,end_date"),
     supabase.from("crop").select("crop_id,crop_name")
   ]);
   const data=await res.json();if(!res.ok)throw Error(data.error||"Could not load spray jobs");
@@ -43,10 +44,14 @@ export default function WeeklySprayPlanning(){
    const a=lines[0],cropId=traces.find(t=>t.tracecode_id===a.external_tracecode_id)?.crop_id;
    const crop=crops.find(c=>c.crop_id===cropId)?.crop_name??"—";
    const areas=lines.map(l=>l.rate_per_ha>0?Math.max(0,(l.planned_quantity-l.issued_quantity)/l.rate_per_ha):0);
-   return {id,week:a.planned_week_start,trace:a.tracecode_name,crop,area:a.area_ha,status:a.status,sprayType:a.spray_type,part:a.part_label??"",sprayer:a.sprayer_asset_code??"",water:a.water_litres_per_ha??0,lines,remainingArea:areas.length?Math.min(...areas):0};
+   return {id,traceId:a.external_tracecode_id,week:a.planned_week_start,trace:a.tracecode_name,crop,area:a.area_ha,status:a.status,sprayType:a.spray_type,part:a.part_label??"",sprayer:a.sprayer_asset_code??"",water:a.water_litres_per_ha??0,lines,remainingArea:areas.length?Math.min(...areas):0};
   }).sort((a,b)=>a.week.localeCompare(b.week)||a.crop.localeCompare(b.crop)||a.trace.localeCompare(b.trace)||a.id-b.id);
  },[sprays,traces,crops]);
- const visible=jobs.filter(j=>showCompleted||(j.status==="planned"&&j.remainingArea>0.0001));
+ const activeIds=new Set(traces.filter(t=>t.start_date&&!t.end_date).map(t=>t.tracecode_id));
+ const due=jobs.filter(j=>activeIds.has(j.traceId)&&j.status==="planned"&&j.remainingArea>0.0001);
+ const dueCrops=[...new Set(due.map(j=>j.crop))].sort();
+ const dueTraces=[...new Map(due.filter(j=>cropFilter==="all"||j.crop===cropFilter).map(j=>[j.traceId,{id:j.traceId,name:j.trace}])).values()].sort((a,b)=>a.name.localeCompare(b.name));
+ const visible=jobs.filter(j=>(showCompleted||(activeIds.has(j.traceId)&&j.status==="planned"&&j.remainingArea>0.0001))&&(cropFilter==="all"||j.crop===cropFilter)&&(traceFilter==="all"||String(j.traceId)===traceFilter));
  const groups=useMemo(()=>{const m=new Map<string,Job[]>();for(const j of visible){const k=j.week+"|"+j.crop+"|"+j.trace;if(!m.has(k))m.set(k,[]);m.get(k)!.push(j)}return [...m.entries()].map(([key,rows])=>({key,rows,week:rows[0].week,crop:rows[0].crop,trace:rows[0].trace}))},[visible]);
  const transfer=async(job:Job)=>{const ha=Number(issueHa);setError("");
   if(!Number.isFinite(ha)||ha<=0||ha>job.remainingArea+0.00001){setError("Enter hectares greater than zero and no more than the outstanding spray area.");return}
@@ -72,6 +77,8 @@ export default function WeeklySprayPlanning(){
   {[...new Map(issueHistory.filter(d=>d.document_type==="issue").map(d=>[d.document_id,d])).values()].map(d=><Pressable key={d.document_id} style={styles.secondary} onPress={()=>router.push({pathname:"/stock-v2-issue-slip",params:{documentId:String(d.document_id)}})}><ThemedText>Reprint {d.document_number}</ThemedText></Pressable>)}
  </View>:null}
  {latestSlip?<Pressable style={styles.primary} onPress={()=>router.push({pathname:"/stock-v2-issue-slip",params:{documentId:String(latestSlip)}})}><ThemedText style={styles.white}>Print Issue Slip #{latestSlip}</ThemedText></Pressable>:null}
+ <View style={{flexDirection:"row",flexWrap:"wrap",gap:8,alignItems:"center"}}><ThemedText style={styles.bold}>Due sprays:</ThemedText><ScrollView horizontal style={{flexGrow:0,maxWidth:"100%"}}>{[["all","All crops"],...dueCrops.map(c=>[c,c])].map(([id,label])=><Pressable key={id} onPress={()=>{setCropFilter(id);setTraceFilter("all")}} style={[styles.secondary,{marginRight:6,backgroundColor:cropFilter===id?"#c9ead5":"#fff"}]}><ThemedText>{label}</ThemedText></Pressable>)}</ScrollView></View>
+ <View style={{flexDirection:"row",flexWrap:"wrap",gap:6}}><Pressable style={[styles.secondary,{backgroundColor:traceFilter==="all"?"#c9ead5":"#fff"}]} onPress={()=>setTraceFilter("all")}><ThemedText>All due traces</ThemedText></Pressable>{dueTraces.map(t=><Pressable key={t.id} style={[styles.secondary,{backgroundColor:traceFilter===String(t.id)?"#c9ead5":"#fff"}]} onPress={()=>setTraceFilter(String(t.id))}><ThemedText>{t.name}</ThemedText></Pressable>)}</View>
  {error?<ThemedText style={styles.error}>{error}</ThemedText>:null}
  {loading?<ActivityIndicator/>:<View style={styles.panel}>
  <View style={styles.tableHeader}><ThemedText style={[styles.bold,{flex:1}]}>Week</ThemedText><ThemedText style={[styles.bold,{flex:1}]}>Crop</ThemedText><ThemedText style={[styles.bold,{flex:2}]}>Trace Code</ThemedText><ThemedText style={[styles.bold,{width:55,textAlign:"right"}]}>Sprays</ThemedText><View style={{width:75}}/></View>
