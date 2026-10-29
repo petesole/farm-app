@@ -184,7 +184,7 @@ export default function StockV2SprayPlanningPreview() {
       </View>
       <View style={styles.panel}>
         <ThemedText type="subtitle">Crop budget reference</ThemedText>
-        <JsplSearchCombo label="Crop budget assigned to this trace" selector="crop-budget" options={budgetTemplates.filter(b=>!selected?.crop_id||b.crop_name.toLowerCase()===crops.find(c=>c.crop_id===selected?.crop_id)?.crop_name.toLowerCase()).map(b=>({id:b.crop_budget_id,label:b.budget_name+" ("+b.irrigation_type+")",active:true}))} value={selectedBudgetId} onChange={v=>void linkBudget(typeof v==="number"?v:null)} placeholder={budgetSaving?"Saving budget…":"Select crop budget for this trace"}/>
+        <JsplSearchCombo label="Crop budget assigned to this trace" selector="crop-budget" options={budgetTemplates.map(b=>({id:b.crop_budget_id,label:b.budget_name+" · "+b.crop_name+" · "+(b.irrigation_type??"Any irrigation"),active:true}))} value={selectedBudgetId} onChange={v=>void linkBudget(typeof v==="number"?v:null)} placeholder={budgetSaving?"Saving budget…":"Select crop budget for this trace"}/>
         <View style={styles.weekNav}><Pressable style={styles.chip} onPress={()=>setBudgetOffset(x=>x-1)}><ThemedText>‹ Previous</ThemedText></Pressable><ThemedText>{weekLabel(budgetWeek)}</ThemedText><Pressable style={styles.chip} onPress={()=>setBudgetOffset(x=>x+1)}><ThemedText>Next ›</ThemedText></Pressable></View>
         <ThemedText style={styles.muted}>Budget weeks move independently of the operational spray week.</ThemedText>
         <View style={styles.empty}>
