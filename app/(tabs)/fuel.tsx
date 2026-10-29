@@ -4,11 +4,11 @@ import { router } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
   TextInput,
+  View,
 } from "react-native";
 import { supabase } from "../../supabase";
 
@@ -61,6 +61,7 @@ export default function FuelScreen() {
   const [dipTypes, setDipTypes] = useState<DipTypeMap>({});
   const [dipReading, setDipReading] = useState<string>("");
   const [saving, setSaving] = useState(false);
+  const [dipError, setDipError] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const [forcedClosingDate, setForcedClosingDate] = useState<string | null>(null);
@@ -132,7 +133,12 @@ export default function FuelScreen() {
       return;
     }
 
-    const { data } = await supabase.rpc("fuel_missing_closing_days");
+    const { data, error } = await supabase.rpc("fuel_missing_closing_days");
+    if (error) {
+      setErr("Unable to check required dips: " + error.message);
+      setLoading(false);
+      return;
+    }
 
     if (Array.isArray(data) && data.length > 0) {
       const missingDate = data[0]?.report_date;
@@ -144,6 +150,7 @@ export default function FuelScreen() {
       }
     }
 
+    setForcedClosingDate(null);
     setStage(null);
     setLoading(false);
   };
@@ -167,51 +174,89 @@ export default function FuelScreen() {
     if (stage === null && !loading) loadDashboard();
   }, [stage, loading]);
 
-  /** ✅ SAFE RPC SAVE */
   const saveDip = async () => {
-    const val = Number(dipReading);
-    if (!val) {
-      Alert.alert("Enter dip");
+    if (saving) return;
+    setDipError(null);
+    const trimmed = dipReading.trim();
+    const val = Number(trimmed);
+    if (!trimmed || !Number.isFinite(val) || val < 0) {
+      setDipError("Enter a valid dip reading (zero is allowed).");
       return;
     }
-
     setSaving(true);
-
-    const { error } = await supabase.rpc("fuel_insert_dip", {
-      p_fuel_dip_date: requiredDate,
-      p_fuel_dip_type_id: requiredTypeId,
-      p_dip_reading: val,
-    });
-
-    setSaving(false);
-
-    if (error) {
-      Alert.alert(error.message);
-      return;
+    try {
+      const { error } = await supabase.rpc("fuel_insert_dip", {
+        p_fuel_dip_date: requiredDate,
+        p_fuel_dip_type_id: requiredTypeId,
+        p_dip_reading: val,
+      });
+      if (error) {
+        setDipError(error.message);
+        return;
+      }
+      setDipReading("");
+      await checkRequiredDips(roleName);
+    } catch (e: any) {
+      setDipError(e?.message || "Could not save the dip. Please try again.");
+    } finally {
+      setSaving(false);
     }
-
-    await checkRequiredDips(roleName);
   };
 
   if (loading) {
-    return <ActivityIndicator />;
+    return (
+      <ThemedView style={styles.container}>
+        <ActivityIndicator />
+        <ThemedText>Checking fuel dips...</ThemedText>
+      </ThemedView>
+    );
+  }
+
+  if (err) {
+    return (
+      <ThemedView style={styles.container}>
+        <ThemedText type="title">Fuel</ThemedText>
+        <ThemedText style={styles.error}>{err}</ThemedText>
+        <Pressable style={styles.button} onPress={async () => {
+          const role = await loadMyRoleName();
+          if (role) await checkRequiredDips(role);
+        }}>
+          <ThemedText style={styles.buttonText}>Retry</ThemedText>
+        </Pressable>
+      </ThemedView>
+    );
   }
 
   if (stage !== null) {
     return (
-      <ThemedView style={styles.container}>
-        <ThemedText type="title">Fuel Dip Required</ThemedText>
-
-        <TextInput
-          style={styles.input}
-          value={dipReading}
-          onChangeText={setDipReading}
-        />
-
-        <Pressable style={styles.button} onPress={saveDip}>
-          <ThemedText>Save Dip</ThemedText>
-        </Pressable>
-      </ThemedView>
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+        <JsplModuleHeader title="Fuel" showMain={isAdmin} />
+        <ThemedView style={styles.card}>
+          <ThemedText type="title">
+            {stage === "yesterday_closing" ? "Closing Fuel Dip Required" : "Opening Fuel Dip Required"}
+          </ThemedText>
+          <ThemedText style={styles.dipDate}>Date: {isoToDmy(requiredDate)}</ThemedText>
+          <ThemedText>
+            {stage === "yesterday_closing"
+              ? "Record the closing dip for this date before continuing to the Fuel Dashboard."
+              : "Record today's opening dip to continue."}
+          </ThemedText>
+          <ThemedText style={styles.label}>Dip reading</ThemedText>
+          <TextInput
+            style={styles.input}
+            value={dipReading}
+            onChangeText={(value) => { setDipReading(value); setDipError(null); }}
+            keyboardType="decimal-pad"
+            placeholder="Enter dip reading"
+            placeholderTextColor="#888"
+            editable={!saving}
+          />
+          {dipError ? <ThemedText style={styles.error}>{dipError}</ThemedText> : null}
+          <Pressable style={[styles.button, saving && { opacity: 0.6 }]} disabled={saving} onPress={saveDip}>
+            <ThemedText style={styles.buttonText}>{saving ? "Saving..." : "Save Dip"}</ThemedText>
+          </Pressable>
+        </ThemedView>
+      </ScrollView>
     );
   }
 
@@ -254,4 +299,8 @@ const styles = StyleSheet.create({
   button: { backgroundColor: jsplColors.primary, borderRadius: jsplRadii.md, padding: jsplSpacing.md },
   bottomBar: { marginTop: jsplSpacing.xl, gap: jsplSpacing.md, backgroundColor: jsplColors.background },
   navBtn: { borderWidth: 1, padding: 12 },
+  dipDate: { fontSize: 18, fontWeight: "700", color: jsplColors.primary },
+  label: { fontWeight: "700", marginTop: 10 },
+  error: { color: "#B42318", fontWeight: "600" },
+  buttonText: { color: "#FFFFFF", fontWeight: "700", textAlign: "center" },
 });
