@@ -151,7 +151,11 @@ export default function StockV2SprayPlanningPreview() {
         <ThemedText type="subtitle">Weekly spray input</ThemedText>
         <View style={styles.weekNav}><Pressable onPress={()=>setOperationalOffset(0)} style={styles.chip}><ThemedText>This week</ThemedText></Pressable><Pressable onPress={()=>setOperationalOffset(1)} style={styles.chip}><ThemedText>Next week</ThemedText></Pressable></View>
         <ThemedText style={styles.muted}>Spray week begins {weekLabel(operationalWeek)}</ThemedText>
-        <ThemedText style={styles.label}>Spray type</ThemedText>{sprayTypes.map(setup=><Pressable key={setup.access_spray_type_id} style={[styles.chip,sprayType===setup.spray_type_name&&styles.selected]} onPress={()=>{setSprayType(setup.spray_type_name);setWaterRate(String(setup.spray_rate_per_ha));}}><ThemedText>{setup.spray_type_name}{sprayType===setup.spray_type_name?" ✓":""}</ThemedText></Pressable>)}
+        <JsplSearchCombo label="Spray Type" selector="spray-type"
+          options={sprayTypes.map(setup=>({id:setup.access_spray_type_id,label:setup.spray_type_name,active:true}))}
+          value={sprayTypes.find(setup=>setup.spray_type_name===sprayType)?.access_spray_type_id??null}
+          onChange={id=>{const choice=sprayTypes.find(setup=>setup.access_spray_type_id===id);setSprayType(choice?.spray_type_name??"");setWaterRate(choice?String(choice.spray_rate_per_ha):"");}}
+          placeholder="Select or search spray type"/>
         <ThemedText style={styles.label}>Sprayer / equipment code</ThemedText><TextInput style={styles.input} value={sprayer} onChangeText={setSprayer} placeholder="Select sprayer later"/>
         <View style={styles.two}><View style={styles.half}><ThemedText style={styles.label}>Tracecode area (ha) — fixed</ThemedText><ThemedText style={styles.heading}>{fmt(wholeArea)}</ThemedText></View><View style={styles.half}><ThemedText style={styles.label}>Water rate (L/ha)</ThemedText><TextInput style={styles.input} keyboardType="decimal-pad" value={waterRate} onChangeText={setWaterRate} placeholder="Editable"/></View></View>
         <ThemedText style={styles.muted}>Water required: {fmt(totalWater)} L</ThemedText>
