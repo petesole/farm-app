@@ -57,6 +57,8 @@ type CropRow = { crop_id: number; crop_name: string | null };
 type VarietyRow = { variety_id: number; crop_id: number | null; variety_name: string | null };
 type ContractRow = {contract_id:number;contract_name:string;active:boolean};
 type FuelBudgetRow = { fuel_budget_id:number; fuel_budget_name:string; crop_id:number|null; active:boolean };
+type InputBudgetRow = {crop_budget_id:number;crop_name:string;budget_name:string;irrigation_type:string|null};
+const stockBudgetApi="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
 
 /** ---------- Helpers ---------- */
 function norm(s: string | null | undefined) {
@@ -278,6 +280,7 @@ export default function TracecodeEditScreen() {
   const [crops, setCrops] = useState<CropRow[]>([]);
   const [varieties, setVarieties] = useState<VarietyRow[]>([]);
   const [fuelBudgets,setFuelBudgets] = useState<FuelBudgetRow[]>([]);
+  const [inputBudgets,setInputBudgets] = useState<InputBudgetRow[]>([]);
   const [contracts,setContracts] = useState<ContractRow[]>([]);
   const [contractId,setContractId] = useState<number|null>(null);
   const [contractModal,setContractModal] = useState(false);
@@ -290,6 +293,7 @@ export default function TracecodeEditScreen() {
   const [cropModal, setCropModal] = useState(false);
   const [varietyModal, setVarietyModal] = useState(false);
   const [fuelBudgetModal,setFuelBudgetModal] = useState(false);
+  const [inputBudgetModal,setInputBudgetModal] = useState(false);
 
   // Form fields
   const [tracecodeName, setTracecodeName] = useState("");
@@ -305,6 +309,7 @@ export default function TracecodeEditScreen() {
   const [cropId, setCropId] = useState<number | null>(null);
   const [varietyId, setVarietyId] = useState<number | null>(null);
   const [fuelBudgetId,setFuelBudgetId] = useState<number | null>(null);
+  const [inputBudgetId,setInputBudgetId] = useState<number | null>(null);
 
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -351,6 +356,8 @@ export default function TracecodeEditScreen() {
   const availableContracts=contracts.filter(x=>x.active);
   const budgetsForCrop = useMemo(()=>fuelBudgets.filter(b=>b.active && b.crop_id===cropId),[fuelBudgets,cropId]);
   const selectedFuelBudget = fuelBudgets.find(b=>b.fuel_budget_id===fuelBudgetId);
+  const selectedInputBudget=inputBudgets.find(b=>b.crop_budget_id===inputBudgetId);
+  const inputBudgetsForCrop=inputBudgets.filter(b=>cropId!=null && norm(b.crop_name)===norm(crops.find(c=>c.crop_id===cropId)?.crop_name));
 
   const fieldsForFarm = useMemo(() => {
     if (!farmId) return fields;
@@ -403,6 +410,11 @@ export default function TracecodeEditScreen() {
     setVarieties((varRes.data ?? []) as VarietyRow[]);
     setFuelBudgets((fuelRes.data ?? []) as FuelBudgetRow[]);
     setContracts((contractRes.data??[]) as ContractRow[]);
+    const {data:{session}}=await supabase.auth.getSession();
+    if(!session?.access_token)throw new Error("Sign-in required for crop budgets");
+    const budgetResult=await fetch(stockBudgetApi+"?budget_templates=1",{headers:{authorization:"Bearer "+session.access_token}});
+    const budgetData=await budgetResult.json();if(!budgetResult.ok)throw new Error(budgetData.error||"Unable to load crop budgets");
+    setInputBudgets(budgetData.budgets??[]);
   }
 
   async function loadTracecodeAdmin(tid: number) {
@@ -452,6 +464,7 @@ export default function TracecodeEditScreen() {
           setCropId(null);
           setVarietyId(null);
           setFuelBudgetId(null);
+          setInputBudgetId(null);
           setContractId(null);
 
           setStartDate("");
@@ -486,6 +499,8 @@ export default function TracecodeEditScreen() {
           setCropId(tc.crop_id ?? null);
           setVarietyId(tc.variety_id ?? null);
           setFuelBudgetId(tc.fuel_budget_id ?? null);
+          const {data:{session}}=await supabase.auth.getSession();
+          if(session?.access_token){const br=await fetch(stockBudgetApi+"?budget_reference=1&tracecode_id="+id,{headers:{authorization:"Bearer "+session.access_token}});if(br.ok){const bd=await br.json();setInputBudgetId(bd.crop_budget_id??null)}}
           setContractId(tc.contract_id ?? null);
 
           setStartDate(isoToDDMMYYYY(tc.start_date));
@@ -544,6 +559,8 @@ export default function TracecodeEditScreen() {
     if (currentVar && currentVar.crop_id !== c.crop_id) setVarietyId(null);
     const currentBudget=fuelBudgets.find(b=>b.fuel_budget_id===fuelBudgetId);
     if(currentBudget && currentBudget.crop_id!==c.crop_id)setFuelBudgetId(null);
+    const inputBudget=inputBudgets.find(b=>b.crop_budget_id===inputBudgetId);
+    if(inputBudget && norm(inputBudget.crop_name)!==norm(c.crop_name))setInputBudgetId(null);
     setCropModal(false);
   }
 
@@ -643,6 +660,7 @@ export default function TracecodeEditScreen() {
         }
       }
 
+      if(inputBudgetId!=null && !inputBudgetsForCrop.some(b=>b.crop_budget_id===inputBudgetId)){Alert.alert("Inputs budget unavailable","Choose an Inputs budget for the selected crop.");return;}
       if(!selectedContract || (endDb===null && !selectedContract.active)){Alert.alert("Contract unavailable","Select an active contract before saving.");return;}
       const payload: Omit<TracecodeRow, "tracecode_id"> = {
         tracecode_name: name,
@@ -667,6 +685,11 @@ export default function TracecodeEditScreen() {
         crop_status: cropStatus,
       };
 
+      const saveInputBudget=async(traceId:number)=>{
+        const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw new Error("Sign-in required for Inputs budget");
+        const response=await fetch(stockBudgetApi,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.access_token},body:JSON.stringify({action:"link_crop_budget",tracecode_id:traceId,crop_budget_id:inputBudgetId})});
+        const data=await response.json();if(!response.ok)throw new Error(data.error||"Cannot save Inputs budget");
+      };
       if (isNew) {
         const res = await supabase.from("tracecode").insert(payload as any).select("tracecode_id").single();
 
@@ -679,6 +702,7 @@ export default function TracecodeEditScreen() {
           return;
         }
 
+        await saveInputBudget(Number(res.data.tracecode_id));
         router.replace(BACK_TO_DASHBOARD);
         return;
       }
@@ -700,6 +724,7 @@ export default function TracecodeEditScreen() {
         return;
       }
 
+      await saveInputBudget(tid);
       router.replace(BACK_TO_DASHBOARD);
     } catch (e: any) {
       Alert.alert("Save error", e?.message ?? "Failed to save tracecode");
@@ -818,6 +843,15 @@ export default function TracecodeEditScreen() {
             onPick={(b)=>{setFuelBudgetId(b.fuel_budget_id);setFuelBudgetModal(false);}}
             onClose={()=>setFuelBudgetModal(false)}
           />
+          <SelectModal<InputBudgetRow>
+            visible={inputBudgetModal}
+            title="Select Inputs Crop Budget"
+            items={inputBudgetsForCrop}
+            getKey={b=>String(b.crop_budget_id)}
+            getLabel={b=>b.budget_name}
+            onPick={b=>{setInputBudgetId(b.crop_budget_id);setInputBudgetModal(false);}}
+            onClose={()=>setInputBudgetModal(false)}
+          />
           <SelectModal<VarietyRow>
             visible={varietyModal}
             title="Select Variety"
@@ -902,13 +936,15 @@ export default function TracecodeEditScreen() {
               />
             </Card>
 
-            <Card title="Fuel planning">
+            <Card title="Budget Planning">
               <SelectorRow
-                label="Fuel budget"
+                label="Fuel"
                 valueText={selectedFuelBudget ? selectedFuelBudget.fuel_budget_name + (selectedFuelBudget.active ? "" : " (inactive — change or clear)") : "Select fuel budget…"}
                 onPress={()=>setFuelBudgetModal(true)}
                 disabled={!cropId}
               />
+              <SelectorRow label="Inputs" valueText={selectedInputBudget?.budget_name??"Select crop budget…"} onPress={()=>setInputBudgetModal(true)} disabled={!cropId}/>
+              <Pressable onPress={()=>setInputBudgetId(null)} style={{marginTop:8}}><ThemedText style={{opacity:0.7}}>Clear Inputs budget selection</ThemedText></Pressable>
               <Pressable onPress={()=>setFuelBudgetId(null)} style={{marginTop:8}}>
                 <ThemedText style={{opacity:0.7}}>Clear fuel budget selection</ThemedText>
               </Pressable>
