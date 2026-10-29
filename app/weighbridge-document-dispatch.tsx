@@ -26,6 +26,7 @@ export default function DocumentDispatch(){
  const [combined,setCombined]=useState<Combined[]>([]);
  const [outgoing,setOutgoing]=useState<{source_type:string;source_id:string;storage_path:string}[]>([]);
  const [outgoingErrors,setOutgoingErrors]=useState<Record<string,string>>({});
+ const [reprinting,setReprinting]=useState<string[]>([]);
  const outgoingPending=useRef(new Set<string>());
  const [autoErrors,setAutoErrors]=useState<Record<string,string>>({});
  const pending=useRef(new Set<string>());
@@ -79,6 +80,7 @@ export default function DocumentDispatch(){
  async function makeOutgoing(l:Load,regenerate=false){
   if(!l.source_id||outgoingPending.current.has(key(l))||(!regenerate&&outgoing.some(o=>key(o)===key(l))||outgoingErrors[key(l)]))return;
   const id=key(l);outgoingPending.current.add(id);
+  if(regenerate){setReprinting(xs=>[...xs,id]);setOutgoingErrors(xs=>{const copy={...xs};delete copy[id];return copy});setInfo("Regenerating outgoing WB PDF for "+l.slip_number+"...");}
   try{
    const isScale=l.source_type==="scale";
    const q=isScale?await supabase.from("wb_scale_transaction").select("official_slip_number,first_at,second_at,gross_kg,tare_kg,net_kg,dnote_number,registration_text,driver_name,driver_identity_number,driver_id,transporter_id,status").eq("transaction_id",l.source_id).single():await supabase.from("wb_manual_entries").select("manual_slip_number,slip_date,net_kg,dnote_number,registration_text,driver_id,transporter_id,status").eq("manual_entry_id",l.source_id).single();
@@ -125,8 +127,16 @@ export default function DocumentDispatch(){
    if(saved.error)throw saved.error;
    setOutgoing(xs=>[...xs.filter(o=>key(o)!==id),{source_type:l.source_type,source_id:l.source_id!,storage_path:storagePath}]);
    setDocs(xs=>[...xs.filter(o=>!(key(o)===id&&o.document_type==="outgoing_wb")),{source_type:l.source_type,source_id:l.source_id!,document_type:"outgoing_wb",storage_path:storagePath,original_filename:"JSPL_Outgoing_WB.pdf"}]);
+   if(regenerate)setInfo("Updated outgoing WB PDF saved for "+(isScale?l.slip_number:x.manual_slip_number)+". Click Open WB PDF to view it.");
   }catch(e:any){setOutgoingErrors(v=>({...v,[id]:String(e?.message||e)}));}
-  finally{outgoingPending.current.delete(id);}
+  finally{outgoingPending.current.delete(id);setReprinting(xs=>xs.filter(x=>x!==id));}
+ }
+ async function openOutgoing(l:Load){
+  const documentRow=available.get(key(l)+":outgoing_wb");
+  if(!documentRow){setError("No outgoing WB PDF is saved for "+l.slip_number+". Use Reprint M slip first.");return;}
+  const {data,error:e}=await supabase.storage.from("wb-customer-documents").createSignedUrl(documentRow.storage_path,300);
+  if(e||!data){setError(e?.message||"Unable to open outgoing WB PDF.");return;}
+  window.open(data.signedUrl,"_blank");
  }
  useEffect(()=>{
   if(!allowed||busy)return;
@@ -275,7 +285,9 @@ export default function DocumentDispatch(){
        {kinds.map((k,i)=><View key={k.id} style={{width:widths[5+i]}}>{circle(available.has(id+":"+k.id))}</View>)}
        <View style={{width:widths[9],alignItems:"center"}}>{pack?circle(true):complete&&!autoErrors[id]?<Text style={{fontSize:11,color:"#80600e"}}>Building…</Text>:circle(false)}</View>
        <View style={{width:widths[10],alignItems:"center"}}>
-         {l.source_type==="manual"?<Pressable onPress={()=>void makeOutgoing(l,true)} style={{padding:5}}><Text style={{color:C.primary,fontWeight:"700",fontSize:11}}>Reprint M slip</Text></Pressable>:null}
+         {l.source_type==="manual"?<Pressable disabled={reprinting.includes(id)} onPress={()=>void makeOutgoing(l,true)} style={{padding:5}}><Text style={{color:C.primary,fontWeight:"700",fontSize:11}}>{reprinting.includes(id)?"Regenerating...":"Reprint M slip"}</Text></Pressable>:null}
+         {available.has(id+":outgoing_wb")?<Pressable onPress={()=>void openOutgoing(l)} style={{padding:5}}><Text style={{color:C.primary,fontWeight:"700",fontSize:11}}>Open WB PDF</Text></Pressable>:null}
+         {outgoingErrors[id]?<Text style={{color:"#b42318",fontSize:11,maxWidth:110}}>{outgoingErrors[id]}</Text>:null}
         {pack?<Pressable onPress={()=>void openCombined(l)} style={{padding:7}}><Text style={{color:C.primary,fontWeight:"800"}}>Open PDF</Text></Pressable>
         :complete&&autoErrors[id]?<Pressable onPress={()=>setAutoErrors(e=>{const x={...e};delete x[id];return x})} style={{padding:6}}><Text style={{color:"#b42318",fontWeight:"700"}}>Retry</Text></Pressable>
         :<Text style={{color:"#85928a",fontSize:11}}>{complete?"Generating":"Waiting"}</Text>}
