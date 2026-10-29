@@ -57,9 +57,9 @@ export default function StockV2SprayPlanningPreview() {
   const selected=useMemo(()=>visibleTraces.find(t=>t.tracecode_id===traceId),[traceId,visibleTraces]);
   useEffect(()=>{if(!visibleTraces.some(t=>t.tracecode_id===traceId))setTraceId(visibleTraces[0]?.tracecode_id??null)},[visibleTraces,traceId]);
   const operationalWeek=addWeeks(monday(new Date()),operationalOffset);
+  const budgetWeek=addWeeks(monday(new Date()),budgetOffset);
   const budgetPlantingDate=selected?.actual_planting_date||selected?.planned_planting_date||null;
   const selectedBudgetRows=budgetLines.filter(row=>{if(!budgetPlantingDate)return true;const d=new Date(budgetPlantingDate.slice(0,10)+"T12:00:00");d.setDate(d.getDate()+row.days_after_planting);return monday(d).getTime()===budgetWeek.getTime()});
-  const budgetWeek=addWeeks(monday(new Date()),budgetOffset);
   useEffect(()=>{ let mounted=true; (async()=>{
     const [traceResult,cropResult,inputResult]=await Promise.all([
       supabase.from("tracecode").select("tracecode_id,tracecode_name,tracecode_size,crop_id,end_date,planned_planting_date,actual_planting_date").order("tracecode_name"),
