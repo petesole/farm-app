@@ -2,7 +2,7 @@ import {WbAdminSignIn} from "../components/jspl/WbAdminSignIn";
 import {WbModuleHeader} from "../components/jspl/WbModuleHeader";
 import {jsplColors as C} from "../constants/jspl-design";
 // Use the self-contained UMD build: Metro's ESM resolution breaks pdf-lib's nested tslib dependency.
-const {PDFDocument}=require("pdf-lib/dist/pdf-lib.js") as {PDFDocument:{create:()=>Promise<any>;load:(data:ArrayBuffer)=>Promise<any>}};
+const {PDFDocument}=require("pdf-lib/dist/pdf-lib.js") as typeof import("pdf-lib");
 import {useEffect,useMemo,useRef,useState} from "react";
 import {Platform,Pressable,ScrollView,Text,TextInput,View} from "react-native";
 import {supabase} from "../supabase";
@@ -26,6 +26,7 @@ export default function DocumentDispatch(){
  const [combined,setCombined]=useState<Combined[]>([]);
  const [outgoing,setOutgoing]=useState<{source_type:string;source_id:string;storage_path:string}[]>([]);
  const [outgoingErrors,setOutgoingErrors]=useState<Record<string,string>>({});
+ const [reprinting,setReprinting]=useState<string[]>([]);
  const outgoingPending=useRef(new Set<string>());
  const [autoErrors,setAutoErrors]=useState<Record<string,string>>({});
  const pending=useRef(new Set<string>());
@@ -76,12 +77,13 @@ export default function DocumentDispatch(){
  const chosen=loads.filter(l=>selected.includes(key(l)));
  const missing=chosen.flatMap(l=>enabled.filter(k=>!available.has(key(l)+":"+k)).map(k=>l.slip_number+" — "+kinds.find(x=>x.id===k)?.label));
 
- async function makeOutgoing(l:Load){
-  if(!l.source_id||outgoingPending.current.has(key(l))||outgoing.some(o=>key(o)===key(l))||outgoingErrors[key(l)])return;
+ async function makeOutgoing(l:Load,regenerate=false){
+  if(!l.source_id||outgoingPending.current.has(key(l))||(!regenerate&&outgoing.some(o=>key(o)===key(l))||outgoingErrors[key(l)]))return;
   const id=key(l);outgoingPending.current.add(id);
+  if(regenerate){setReprinting(xs=>[...xs,id]);setOutgoingErrors(xs=>{const copy={...xs};delete copy[id];return copy});setInfo("Regenerating outgoing WB PDF for "+l.slip_number+"...");}
   try{
    const isScale=l.source_type==="scale";
-   const q=isScale?await supabase.from("wb_scale_transaction").select("official_slip_number,first_at,second_at,gross_kg,tare_kg,net_kg,dnote_number,registration_text,driver_name,driver_identity_number,driver_id,transporter_id,status").eq("transaction_id",l.source_id).single():await supabase.from("wb_manual_entries").select("slip_date,net_kg,dnote_number,registration_text,driver_id,transporter_id,status").eq("manual_entry_id",l.source_id).single();
+   const q=isScale?await supabase.from("wb_scale_transaction").select("official_slip_number,first_at,second_at,gross_kg,tare_kg,net_kg,dnote_number,registration_text,driver_name,driver_identity_number,driver_id,transporter_id,status").eq("transaction_id",l.source_id).single():await supabase.from("wb_manual_entries").select("manual_slip_number,slip_date,net_kg,dnote_number,registration_text,driver_id,transporter_id,status").eq("manual_entry_id",l.source_id).single();
    if(q.error||!q.data)throw new Error(q.error?.message||"Original record unavailable");
    const x:any=q.data;
    if(isScale&&(x.gross_kg==null||x.tare_kg==null||x.net_kg==null))throw new Error("Original gross/tare/nett values are incomplete");
@@ -100,7 +102,7 @@ export default function DocumentDispatch(){
    };
    const line=(y:number)=>page.drawLine({start:{x:24,y},end:{x:571,y},thickness:0.6,color:rgb(0.55,0.62,0.57)});
    put("JOHN SOLE (PRIVATE) LIMITED",27,38,16,true);put(isScale?"WEIGHBRIDGE SLIP":"MANUAL WEIGHBRIDGE RECORD",340,38,11,true);line(366);
-   put("WB No.",28,77,9);put(l.slip_number,108,77,12,true);
+   put("WB No.",28,77,9);put(isScale?l.slip_number:x.manual_slip_number,108,77,12,true);
    put("Date",325,77,9);put(l.weigh_date,400,77,11,true);
    put("DNote",28,104,9);put(x.dnote_number||l.dnote_number,108,104,11);
    put("Vehicle",325,104,9);put(x.registration_text||"—",400,104,11,true);
@@ -120,12 +122,21 @@ export default function DocumentDispatch(){
    const storagePath="outgoing/"+l.source_type+"/"+l.source_id+"/"+Date.now()+".pdf";
    const upload=await supabase.storage.from("wb-customer-documents").upload(storagePath,new Uint8Array(bytes),{contentType:"application/pdf",upsert:false});
    if(upload.error)throw upload.error;
-   const saved=await supabase.from("wb_dispatch_outgoing_pdf").insert({source_type:l.source_type,source_id:l.source_id,storage_path:storagePath});
+   const prior=outgoing.some(o=>key(o)===key(l));
+    const saved=prior?await supabase.from("wb_dispatch_outgoing_pdf").update({storage_path:storagePath}).eq("source_type",l.source_type).eq("source_id",l.source_id):await supabase.from("wb_dispatch_outgoing_pdf").insert({source_type:l.source_type,source_id:l.source_id,storage_path:storagePath});
    if(saved.error)throw saved.error;
-   setOutgoing(xs=>[...xs,{source_type:l.source_type,source_id:l.source_id!,storage_path:storagePath}]);
-   setDocs(xs=>[...xs,{source_type:l.source_type,source_id:l.source_id!,document_type:"outgoing_wb",storage_path:storagePath,original_filename:"JSPL_Outgoing_WB.pdf"}]);
+   setOutgoing(xs=>[...xs.filter(o=>key(o)!==id),{source_type:l.source_type,source_id:l.source_id!,storage_path:storagePath}]);
+   setDocs(xs=>[...xs.filter(o=>!(key(o)===id&&o.document_type==="outgoing_wb")),{source_type:l.source_type,source_id:l.source_id!,document_type:"outgoing_wb",storage_path:storagePath,original_filename:"JSPL_Outgoing_WB.pdf"}]);
+   if(regenerate)setInfo("Updated outgoing WB PDF saved for "+(isScale?l.slip_number:x.manual_slip_number)+". Click Open WB PDF to view it.");
   }catch(e:any){setOutgoingErrors(v=>({...v,[id]:String(e?.message||e)}));}
-  finally{outgoingPending.current.delete(id);}
+  finally{outgoingPending.current.delete(id);setReprinting(xs=>xs.filter(x=>x!==id));}
+ }
+ async function openOutgoing(l:Load){
+  const documentRow=available.get(key(l)+":outgoing_wb");
+  if(!documentRow){setError("No outgoing WB PDF is saved for "+l.slip_number+". Use Reprint M slip first.");return;}
+  const {data,error:e}=await supabase.storage.from("wb-customer-documents").createSignedUrl(documentRow.storage_path,300);
+  if(e||!data){setError(e?.message||"Unable to open outgoing WB PDF.");return;}
+  window.open(data.signedUrl,"_blank");
  }
  useEffect(()=>{
   if(!allowed||busy)return;
@@ -143,7 +154,7 @@ export default function DocumentDispatch(){
    const mime=response.data.type.toLowerCase();
    if(mime.includes("pdf")||filename.endsWith(".pdf")){
     const original=await PDFDocument.load(buffer);const pages=await pdf.copyPages(original,original.getPageIndices());
-    pages.forEach((p:any)=>pdf.addPage(p));pagesAdded+=pages.length;
+    pages.forEach(p=>pdf.addPage(p));pagesAdded+=pages.length;
    }else if(mime.includes("png")||filename.endsWith(".png")||mime.includes("jpeg")||mime.includes("jpg")||/\.jpe?g$/.test(filename)){
     const img=mime.includes("png")||filename.endsWith(".png")?await pdf.embedPng(buffer):await pdf.embedJpg(buffer);
     const page=pdf.addPage([595.28,841.89]);const scale=Math.min(555/img.width,801/img.height);
@@ -274,6 +285,9 @@ export default function DocumentDispatch(){
        {kinds.map((k,i)=><View key={k.id} style={{width:widths[5+i]}}>{circle(available.has(id+":"+k.id))}</View>)}
        <View style={{width:widths[9],alignItems:"center"}}>{pack?circle(true):complete&&!autoErrors[id]?<Text style={{fontSize:11,color:"#80600e"}}>Building…</Text>:circle(false)}</View>
        <View style={{width:widths[10],alignItems:"center"}}>
+         {l.source_type==="manual"?<Pressable disabled={reprinting.includes(id)} onPress={()=>void makeOutgoing(l,true)} style={{padding:5}}><Text style={{color:C.primary,fontWeight:"700",fontSize:11}}>{reprinting.includes(id)?"Regenerating...":"Reprint M slip"}</Text></Pressable>:null}
+         {available.has(id+":outgoing_wb")?<Pressable onPress={()=>void openOutgoing(l)} style={{padding:5}}><Text style={{color:C.primary,fontWeight:"700",fontSize:11}}>Open WB PDF</Text></Pressable>:null}
+         {outgoingErrors[id]?<Text style={{color:"#b42318",fontSize:11,maxWidth:110}}>{outgoingErrors[id]}</Text>:null}
         {pack?<Pressable onPress={()=>void openCombined(l)} style={{padding:7}}><Text style={{color:C.primary,fontWeight:"800"}}>Open PDF</Text></Pressable>
         :complete&&autoErrors[id]?<Pressable onPress={()=>setAutoErrors(e=>{const x={...e};delete x[id];return x})} style={{padding:6}}><Text style={{color:"#b42318",fontWeight:"700"}}>Retry</Text></Pressable>
         :<Text style={{color:"#85928a",fontSize:11}}>{complete?"Generating":"Waiting"}</Text>}

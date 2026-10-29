@@ -4,25 +4,26 @@
  */
 
 import { Platform } from 'react-native';
+import { jsplColors } from './jspl-design';
 
-const tintColorLight = '#0a7ea4';
-const tintColorDark = '#fff';
+const tintColorLight = jsplColors.primary;
+const tintColorDark = jsplColors.primary;
 
 export const Colors = {
   light: {
-    text: '#11181C',
-    background: '#fff',
+    text: jsplColors.text,
+    background: jsplColors.background,
     tint: tintColorLight,
-    icon: '#687076',
-    tabIconDefault: '#687076',
+    icon: jsplColors.textSecondary,
+    tabIconDefault: jsplColors.textSecondary,
     tabIconSelected: tintColorLight,
   },
   dark: {
-    text: '#ECEDEE',
-    background: '#151718',
+    text: jsplColors.text,
+    background: jsplColors.background,
     tint: tintColorDark,
-    icon: '#9BA1A6',
-    tabIconDefault: '#9BA1A6',
+    icon: jsplColors.textSecondary,
+    tabIconDefault: jsplColors.textSecondary,
     tabIconSelected: tintColorDark,
   },
 };

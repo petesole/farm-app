@@ -104,6 +104,7 @@ export default function BatchScanner(){
  }
  async function changeType(d:SplitDoc,newType:string){
  if(d.document_type===newType||busy)return;
+  if(isMatched(d)){setError("Matched documents cannot be reclassified. Unmatch first.");return;}
  setBusy(true);setError("");setMessage("");
  try{
  const result=await supabase.from("wb_scan_document").update({document_type:newType}).eq("scan_document_id",d.scan_document_id).select("scan_document_id").single();
@@ -219,7 +220,7 @@ export default function BatchScanner(){
  </View><View style={{flexDirection:"row",marginTop:10}}><Btn name={busy?"Working…":splitDocs.some(d=>d.file_id===f.file_id&&Number(startPage)<=d.page_end&&Number(endPage)>=d.page_start)?"Pages already saved":"Save these pages as separate document"} go={splitPdf} disabled={busy||splitDocs.some(d=>d.file_id===f.file_id&&Number(startPage)<=d.page_end&&Number(endPage)>=d.page_start)}/></View>
  </View>:null}
  {splitDocs.some(d=>d.file_id===f.file_id)?<Text style={{fontWeight:"bold",marginTop:6}}>Individual documents saved from this batch:</Text>:null}
- {splitDocs.filter(d=>tab==="test"&&d.file_id===f.file_id).sort((a,b)=>a.page_start-b.page_start).map(d=><View key={d.scan_document_id} style={{padding:10,marginTop:5,backgroundColor:"#edf7ed",borderRadius:5}}>
+ {splitDocs.filter(d=>tab==="test"&&d.file_id===f.file_id&&(tab!=="active"||d.extraction_status!=="reviewed"||!["customer_wb","grv"].includes(d.document_type))&&(tab!=="awaiting_match"||d.extraction_status==="reviewed"&&["customer_wb","grv"].includes(d.document_type)&&!receipts.some(r=>r.scan_document_id===d.scan_document_id&&r.source_id))).sort((a,b)=>a.page_start-b.page_start).map(d=><View key={d.scan_document_id} style={{padding:10,marginTop:5,backgroundColor:"#edf7ed",borderRadius:5}}>
  <Text style={{fontWeight:"bold"}}>Pages {d.page_start}–{d.page_end} · {d.document_type==="customer_wb"?"Customer WB":d.document_type==="grv"?"GRV":d.document_type==="customer_dnote"?"Customer DNote":d.document_type==="rejection_notice"?"Rejection Notice":"Unclassified"}</Text>
  <View style={{flexDirection:"row",alignItems:"center",flexWrap:"wrap",marginTop:7}}>
  <Btn name="Open individual PDF" go={()=>openSplit(d.storage_path)}/>
@@ -260,7 +261,8 @@ export default function BatchScanner(){
  <Text style={{fontWeight:"bold",fontSize:16}}>Page {d.page_start}{d.page_end!==d.page_start?"–"+d.page_end:""} · {d.document_type==="grv"?"GRV":d.document_type==="customer_wb"?"Customer WB":d.document_type}</Text>
  <Text style={{color:C.textSecondary}}>Status: {d.extraction_status} · {String(d.extracted_data?.wb_number||d.extracted_data?.grv_number||"")}</Text>
  <View style={{flexDirection:"row",flexWrap:"wrap"}}><Btn name="Open PDF" go={()=>openSplit(d.storage_path)}/>
- {tab==="active"?<><Btn name="Read PDF with AI" go={()=>readDocument(d)} disabled={busy}/>{d.extracted_data?<Btn name="Review reading with PDF" go={()=>startReview(d)}/>:null}</>:<Btn name="Confirm matching DNote" go={()=>router.push(("/weighbridge-unmatched?scan="+encodeURIComponent(d.scan_document_id)) as any)}/>}</View>
+ {tab==="active"?<><Btn name="Read PDF with AI" go={()=>readDocument(d)} disabled={busy}/>{d.extracted_data?<Btn name="Review reading with PDF" go={()=>startReview(d)}/>:null}</>:<><Btn name="Confirm matching DNote" go={()=>router.push(("/weighbridge-unmatched?scan="+encodeURIComponent(d.scan_document_id)) as any)}/>{d.extracted_data?<Btn name="Review reading" go={()=>startReview(d)}/>:null}</>}</View>
+  {tab==="awaiting_match"?<View style={{flexDirection:"row",flexWrap:"wrap",alignItems:"center",marginTop:8}}><Text style={{marginRight:9,fontWeight:"bold"}}>Correct document type:</Text>{([["customer_dnote","DNote"],["customer_wb","Customer WB"],["grv","GRV"]] as const).map(([type,label])=><Pressable key={type} disabled={busy||d.document_type===type} onPress={()=>void changeType(d,type)} style={{padding:9,marginRight:7,marginBottom:5,borderWidth:1,borderRadius:5,borderColor:d.document_type===type?C.primary:C.border,backgroundColor:d.document_type===type?C.successTint:"white",opacity:busy?0.6:1}}><Text style={{fontWeight:d.document_type===type?"bold":"normal"}}>{label}{d.document_type===type?" ✓":""}</Text></Pressable>)}<Text style={{color:C.textSecondary}}>Check the extracted fields using Review reading before matching.</Text></View>:null}
  {reviewId===d.scan_document_id?<View style={{padding:10,backgroundColor:"#f4f7fa"}}>
  <View style={{flexDirection:"row",alignItems:"flex-start",gap:16}}><View style={{width:420}}>
  {Object.entries(reviewData).map(([k,v])=><View key={k} style={{marginBottom:7}}><Text>{k.replace(/_/g," ")}</Text><TextInput value={v} onChangeText={v=>setReviewData(x=>({...x,[k]:v}))} style={{backgroundColor:"white",padding:8,borderColor:C.border,borderWidth:1}}/></View>)}

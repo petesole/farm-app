@@ -1,0 +1,58 @@
+name: Sync main into development
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-main-into-development
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout development with full history
+        uses: actions/checkout@v4
+        with:
+          ref: development
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Merge main safely
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main development
+          if ! git merge --no-commit --no-ff origin/main; then
+            echo "::error::Cannot automatically merge main into development. Resolve conflicts on development; no changes were pushed."
+            git status --short
+            exit 1
+          fi
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify web production bundle
+        run: npx expo export --platform web --output-dir /tmp/farm-development-web-check
+
+      - name: Commit and push verified merge
+        shell: bash
+        run: |
+          if git rev-parse -q --verify MERGE_HEAD >/dev/null; then
+            git commit -m "Merge main into development (verified web build)"
+            git push origin HEAD:development
+          else
+            echo "Development already contains main; nothing to sync."
+          fi
