@@ -11,7 +11,7 @@ import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, TextInput,
 import { supabase } from "../../../supabase";
 
 const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
-type Item={item_code:string;item_name:string;base_unit:string;active:boolean;quantity:number;ao_quantity:number;input_type:string|null;input_category:string|null;active_ingredient:string|null;last_purchase_price:number|null;weighted_average_price:number|null;last_purchase_supplier:string|null};
+type Item={item_code:string;item_name:string;base_unit:string;active:boolean;opening_heyshott_quantity:number|null;opening_ao_quantity:number|null;historical_unit_cost:number|null;quantity:number;ao_quantity:number;input_type:string|null;input_category:string|null;active_ingredient:string|null;last_purchase_price:number|null;weighted_average_price:number|null;last_purchase_supplier:string|null};
 type OrderLine={owner_code:string;contract_id:number|null;order_id:number;order_number:string;supplier_name:string;item_code:string;item_name:string;base_unit:string;ordered_quantity:number;received_quantity:number;ordered_unit_price:number|null;status:string};
 type SprayLine={job_id:number;external_tracecode_id:number;tracecode_name:string;item_code:string;item_name:string;area_ha:number;rate_per_ha:number;planned_quantity:number;issued_quantity:number;status:string};
 type Doc={document_id:number;document_type:string;document_number:string;item_name:string;quantity:number;tracecode_name:string|null};
@@ -186,14 +186,16 @@ export default function StockV2Workflow(){
     {menu("balanceType",typeFilter||"All input types",[{label:"All input types",value:"all",onSelect:()=>setTypeFilter("")},...inputTypes.map(t=>({label:t,value:t,onSelect:()=>setTypeFilter(t)}))],true)}
     {menu("balanceCategory",categoryFilter||"All input categories",[{label:"All input categories",value:"all",onSelect:()=>setCategoryFilter("")},...inputCategories.map(x=>({label:x,value:x,onSelect:()=>setCategoryFilter(x)}))],true)}
    </View>
-   <ThemedText style={styles.muted}>{balanceRows.length} products · Prices are shown only where actual receipt pricing is available.</ThemedText>
+   <ThemedText style={styles.muted}>{balanceRows.length} products · Imported Access opening quantities are previews only (not posted). On Hand remains the live ledger balance.</ThemedText>
    <JsplTable rows={balanceRows} rowKey={x=>x.item_code}
     columns={[
       {key:"item",title:"Product",width:240,value:x=>x.item_name},
       {key:"ai",title:"Active Ingredient",width:210,value:x=>x.active_ingredient||"—"},
       {key:"js_qty",title:"JS On Hand",kind:"number",width:110,value:x=>x.quantity},
+      {key:"hs_opening",title:"Access Heyshott Opening (Unposted)",kind:"number",width:155,value:x=>x.opening_heyshott_quantity},
       {key:"js_mov",title:"JS Movements",width:116,value:()=>"Movements",onPress:x=>router.push({pathname:"/stock-v2-movements",params:{item_code:x.item_code,owner:"JS"}})},
       {key:"ao_qty",title:"AO On Hand",kind:"number",width:110,value:x=>x.ao_quantity},
+      {key:"ao_opening",title:"Access AO Opening (Unposted)",kind:"number",width:155,value:x=>x.opening_ao_quantity},
       {key:"ao_mov",title:"AO Movements",width:116,value:()=>"Movements",onPress:x=>router.push({pathname:"/stock-v2-movements",params:{item_code:x.item_code,owner:"AO"}})},
       {key:"unit",title:"Unit",width:75,value:x=>x.base_unit},
       {key:"last",title:"JS Last Purchase Price",kind:"number",width:160,value:x=>x.last_purchase_price},
