@@ -42,7 +42,7 @@ export default function StockV2Workflow(){
  const [busy,setBusy]=useState(false),[status,setStatus]=useState(""),[confirmed,setConfirmed]=useState(false);
  const [latestIssueDocument,setLatestIssueDocument]=useState<number|null>(null);
  const [lines,setLines]=useState<Line[]>([emptyLine(1)]),[nextLine,setNextLine]=useState(2);
- const [typeFilter,setTypeFilter]=useState(""),[categoryFilter,setCategoryFilter]=useState("");
+ const [typeFilter,setTypeFilter]=useState(""),[categoryFilter,setCategoryFilter]=useState(""),[inStockOnly,setInStockOnly]=useState(false);
  const [supplier,setSupplier]=useState(""),[orderDate,setOrderDate]=useState(()=>new Date().toLocaleDateString("en-GB")),[orderId,setOrderId]=useState<number|null>(null);
  const [jobId,setJobId]=useState<number|null>(null),[traceId,setTraceId]=useState<number|null>(null),[cropId,setCropId]=useState<number|null>(null);
  const [receiptMode,setReceiptMode]=useState<"dnote"|"invoice">("dnote"),[invoiceNumber,setInvoiceNumber]=useState(""),[receiptDate,setReceiptDate]=useState(()=>new Date().toLocaleDateString("en-GB"));
@@ -82,7 +82,7 @@ export default function StockV2Workflow(){
  const products=snapshot?.items??[];
  const inputTypes=[...new Set(products.map(x=>x.input_type).filter((x):x is string=>!!x))].sort();
  const inputCategories=[...new Set(products.map(x=>x.input_category).filter((x):x is string=>!!x))].sort();
- const balanceRows=products.filter(p=>(!typeFilter||p.input_type===typeFilter)&&(!categoryFilter||p.input_category===categoryFilter));
+ const balanceRows=products.filter(p=>(!typeFilter||p.input_type===typeFilter)&&(!categoryFilter||p.input_category===categoryFilter)&&(!inStockOnly||p.quantity>0||p.ao_quantity>0));
  const orders=useMemo(()=>{
   const map=new Map<number,OrderLine[]>();
   for(const o of snapshot?.orders??[]){if(o.owner_code!==ownerCode)continue;if(!map.has(o.order_id))map.set(o.order_id,[]);map.get(o.order_id)!.push(o)}
@@ -183,6 +183,7 @@ export default function StockV2Workflow(){
   {tab===null?null:tab==="Stock Balances"?<View style={styles.sheet}>
    {header("STOCK BALANCES",["Stock Owners: JS / AO","Warehouse: TEST_WH"])}
    <View style={styles.filters}>
+    <Pressable accessibilityRole="switch" accessibilityState={{checked:inStockOnly}} onPress={()=>setInStockOnly(v=>!v)} style={{backgroundColor:inStockOnly?"#177245":"#dceae2",borderColor:"#177245",borderWidth:2,borderRadius:20,paddingVertical:10,paddingHorizontal:17,minWidth:185,alignItems:"center",justifyContent:"center"}}><ThemedText style={{color:inStockOnly?"#ffffff":"#175b38",fontWeight:"700"}}>{inStockOnly?"● In Stock Only":"○ All Products"}</ThemedText></Pressable>
     {menu("balanceType",typeFilter||"All input types",[{label:"All input types",value:"all",onSelect:()=>setTypeFilter("")},...inputTypes.map(t=>({label:t,value:t,onSelect:()=>setTypeFilter(t)}))],true)}
     {menu("balanceCategory",categoryFilter||"All input categories",[{label:"All input categories",value:"all",onSelect:()=>setCategoryFilter("")},...inputCategories.map(x=>({label:x,value:x,onSelect:()=>setCategoryFilter(x)}))],true)}
    </View>
