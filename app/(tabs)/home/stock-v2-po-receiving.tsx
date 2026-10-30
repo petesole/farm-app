@@ -7,7 +7,7 @@ import {JsplModuleHeader} from "@/components/jspl/JsplModuleHeader";
 import {supabase} from "../../../supabase";
 import {jsplColors,jsplSpacing,jsplRadii} from "@/constants/jspl-design";
 const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
-type DLine={document_id:number;document_date:string;delivery_note:string;delivery_note_date:string|null;supplier_name:string;owner_code:string;item_code:string;item_name:string;base_unit:string;line_id:number;quantity:number;order_id?:number|null};
+type DLine={document_id:number;document_date:string;delivery_note:string;delivery_note_date:string|null;supplier_name:string;owner_code:string;item_code:string;item_name:string;base_unit:string;line_id:number;quantity:number;order_id?:number|null;po_price?:number|null;original_price?:number|null};
 type POLine={order_date:string;owner_code:string;order_id:number;order_number:string;supplier_name:string;item_code:string;item_name:string;base_unit:string;ordered_quantity:number;received_quantity:number;ordered_unit_price:number|null;status:string;order_line_id:number};
 type Product={item_code:string;item_name:string;base_unit:string};
 type Chosen={kind:"DN"|"PO"|"DIRECT";key:string;item_code:string;quantity:string;price:string;source:number;max:number;orderLineId?:number};
@@ -98,7 +98,7 @@ export default function GRVOutstanding(){
      <Pressable style={s.tcell} onPress={()=>pick(r)}><ThemedText style={{fontSize:22,color:jsplColors.primary}}>{e?"☑":"☐"}</ThemedText></Pressable>
      <ThemedText style={s.tcell}>{shortDNote(x.delivery_note,x.document_id)}</ThemedText><ThemedText style={s.tcell}>{shortDate(x.delivery_note_date||x.document_date)}</ThemedText>
      <ThemedText style={[s.tcell,s.wide]}>{x.item_name}</ThemedText><ThemedText style={s.tcell}>{x.quantity}</ThemedText>
-     <ThemedText style={s.tcell}>—</ThemedText><ThemedText style={s.tcell}>{x.quantity} locked</ThemedText>
+     <ThemedText style={s.tcell}>{x.po_price==null?"—":money(Number(x.po_price))}</ThemedText><ThemedText style={s.tcell}>{x.quantity} locked</ThemedText>
      <TextInput style={[s.tcell,e?s.required:null]} editable={!!e} keyboardType="decimal-pad" placeholder={e?"Required":"Select first"} value={e?.price??""} onChangeText={v=>setRowField(r,"price",v)}/>
     </View>}):null}
    {outstandingPO.map(x=>{const key="PO:"+x.order_line_id,e=chosen[key],max=Math.max(0,x.ordered_quantity-x.received_quantity),r:Chosen={kind:"PO",key,item_code:x.item_code,quantity:"",price:"",source:x.order_id,max,orderLineId:x.order_line_id};return <View key={key} style={s.trow}>
