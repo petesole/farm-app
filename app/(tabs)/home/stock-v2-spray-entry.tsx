@@ -59,8 +59,8 @@ export default function StockV2SprayPlanningPreview() {
     return notEnded && crops.some(c=>c.crop_id===t.crop_id && c.active!==false) && (cropId===null || t.crop_id===cropId);
   }),[traces,crops,cropId]);
   const visibleCrops=useMemo(()=>crops.filter(c=>c.active!==false && traces.some(t=>t.crop_id===c.crop_id && (!t.end_date || t.end_date.slice(0,10)>=new Date().toISOString().slice(0,10)))),[crops,traces]);
-  const selected=useMemo(()=>visibleTraces.find(t=>t.tracecode_id===traceId),[traceId,visibleTraces]);
-  useEffect(()=>{if(!visibleTraces.some(t=>t.tracecode_id===traceId))setTraceId(null)},[visibleTraces,traceId]);
+  const selected=useMemo(()=>editing?traces.find(t=>t.tracecode_id===traceId):visibleTraces.find(t=>t.tracecode_id===traceId),[editing,traceId,traces,visibleTraces]);
+  useEffect(()=>{if(!editing&&!visibleTraces.some(t=>t.tracecode_id===traceId))setTraceId(null)},[editing,visibleTraces,traceId]);
   const operationalWeek=addWeeks(monday(new Date()),operationalOffset);
   const budgetWeek=addWeeks(monday(new Date()),budgetOffset);
   const budgetPlantingDate=selected?.actual_planting_date||selected?.planned_planting_date||null;
@@ -90,10 +90,11 @@ export default function StockV2SprayPlanningPreview() {
           const matching=(data.sprays??[]).filter((j:{job_id:number|string})=>Number(j.job_id)===editJobId);
           if(matching.length===0)throw Error("Spray job not found for editing");
           const a=matching[0];if(a.status!=="planned"||matching.some((l:{issued_quantity:number})=>l.issued_quantity>0))throw Error("Cannot edit a spray after any stock has been issued");
+          setCropId((traceResult.data??[]).find(t=>t.tracecode_id===a.external_tracecode_id)?.crop_id??null);
           setTraceId(a.external_tracecode_id);setSprayType(a.spray_type);setWaterRate(String(a.water_litres_per_ha??""));
           setWeekChosen(true);
           setPart(a.part_label?.startsWith("Part ")?a.part_label.slice(5).replace(/ ha$/,""):"");
-          setSprayer(a.sprayer_asset_code??"");
+          setSprayer(a.sprayer_asset_code??"");setJobCode(a.job_tracking_code??"");
           const currentMonday=monday(new Date());
           const savedDate=String(a.planned_week_start??"").slice(0,10);
           const savedMonday=/^\d{4}-\d{2}-\d{2}$/.test(savedDate)?new Date(savedDate+"T12:00:00"):new Date(NaN);
@@ -151,7 +152,7 @@ export default function StockV2SprayPlanningPreview() {
         value={cropId} onChange={value=>{setCropId(typeof value==="number"?value:null);setTraceId(null);setWeekChosen(false);}}
         placeholder="Choose crop"/>
       {cropId!=null?<JsplSearchCombo label="Trace Code" selector="trace"
-        options={visibleTraces.map(t=>({id:t.tracecode_id,label:t.tracecode_name,active:true}))}
+        options={(editing?traces.filter(t=>t.crop_id===cropId):visibleTraces).map(t=>({id:t.tracecode_id,label:t.tracecode_name,active:true}))}
         value={traceId} onChange={value=>{setTraceId(typeof value==="number"?value:null);setWeekChosen(false);}}
         placeholder="Select Trace Code"/>:null}
       {selected?<ThemedText style={styles.muted}>Size: {fmt(Number(selected.tracecode_size??0))} ha · Growing days: {selected.actual_planting_date?Math.max(0,Math.floor((Date.now()-new Date(selected.actual_planting_date.slice(0,10)+"T12:00:00").getTime())/86400000)):"— (not planted)"}</ThemedText>:null}
@@ -172,6 +173,7 @@ export default function StockV2SprayPlanningPreview() {
 
 
         <ThemedText style={styles.muted}>Water required: {fmt(totalWater)} L</ThemedText>
+        {editing?<View><ThemedText style={styles.label}>Sprayer / equipment (optional)</ThemedText><TextInput style={styles.input} value={sprayer} onChangeText={setSprayer}/><ThemedText style={styles.label}>Job code (optional)</ThemedText><TextInput style={styles.input} value={jobCode} onChangeText={setJobCode}/></View>:null}
         <View><ThemedText style={styles.label}>Part (ha) — blank = whole field</ThemedText><TextInput style={styles.input} keyboardType="decimal-pad" value={part} onChangeText={setPart}/></View>
         <ThemedText style={styles.heading}>Inputs & rates</ThemedText>
         {lines.map(x=><View key={x.key} style={styles.line}><View style={{flex:2}}><ThemedText style={styles.label}>Input</ThemedText><TextInput style={styles.input} value={x.input} onFocus={()=>setOpenLine(x.key)} onChangeText={v=>{changeLine(x.key,"input",v);setOpenLine(x.key)}} placeholder="Type product name or letters" autoCorrect={false}/>
