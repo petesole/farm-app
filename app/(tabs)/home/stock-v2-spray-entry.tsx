@@ -101,7 +101,7 @@ export default function StockV2SprayPlanningPreview() {
           setOperationalOffset(Math.round((monday(savedMonday).getTime()-currentMonday.getTime())/604800000));
           setLines(matching.map((j:{item_name:string;rate_per_ha:number},i:number)=>({key:i+1,input:j.item_name,rate:String(j.rate_per_ha)})));
         }
-        const first=typeData.spray_types?.[0];if(first&&!editing){setSprayType(first.spray_type_name);setWaterRate(String(first.spray_rate_per_ha));}
+        if(!editing){setSprayType("");setWaterRate("");}
         }catch(e){setError(e instanceof Error?e.message:String(e))}
       }
     }
