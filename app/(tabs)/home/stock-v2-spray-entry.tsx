@@ -150,7 +150,8 @@ export default function StockV2SprayPlanningPreview() {
     <ScrollView style={styles.foreground} contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
     <StockV2Header title={editing?"Edit Spray Mix":"New Spray Plan"}/>
 
-    {loading?<ActivityIndicator/>:error?<ThemedText style={styles.error}>{error}</ThemedText>:<View style={[styles.traces,wide&&{flexDirection:"row",alignItems:"flex-start",gap:12}]}>\n      <View style={{width:wide?240:"100%",gap:7}}>
+    {loading?<ActivityIndicator/>:error?<ThemedText style={styles.error}>{error}</ThemedText>:<View style={[styles.traces,wide&&{flexDirection:"row",alignItems:"flex-start",gap:12}]}>
+      <View style={{width:wide?240:"100%",gap:7}}>
       <JsplSearchCombo label="Crop" selector="crop"
         options={visibleCrops.map(c=>({id:c.crop_id,label:c.crop_name,active:true}))}
         value={cropId} onChange={value=>{setCropId(typeof value==="number"?value:null);setTraceId(null);setWeekChosen(false);}}
@@ -161,7 +162,23 @@ export default function StockV2SprayPlanningPreview() {
         placeholder="Select Trace Code"/>:null}
       {selected?<ThemedText style={styles.muted}>Size: {fmt(Number(selected.tracecode_size??0))} ha · Growing days: {selected.actual_planting_date?Math.max(0,Math.floor((Date.now()-new Date(selected.actual_planting_date.slice(0,10)+"T12:00:00").getTime())/86400000)):"— (not planted)"}</ThemedText>:null}
       {cropId!=null&&visibleTraces.length===0?<ThemedText style={styles.muted}>No current tracecodes for this crop.</ThemedText>:null}
-      </View>\n      {selected?<View style={{flex:1,minWidth:0,backgroundColor:"#fff",borderRadius:8,borderWidth:1,borderColor:jsplColors.border,padding:10,gap:7}}>\n        <ThemedText style={styles.heading}>Spray history · {selected.tracecode_name}</ThemedText>\n        <View style={{flexDirection:"row",gap:8}}><ThemedText style={{width:95,fontWeight:"700"}}>Date</ThemedText><ThemedText style={{flex:1,fontWeight:"700"}}>Product</ThemedText><ThemedText style={{width:85,fontWeight:"700",textAlign:"right"}}>Rate/ha</ThemedText></View>\n        <ScrollView ref={historyScroll} nestedScrollEnabled style={{maxHeight:190}} onContentSizeChange={()=>historyScroll.current?.scrollToEnd({animated:false})}>\n          {history.map((h,i)=><View key={h.job_id+":"+i} style={{flexDirection:"row",gap:8,paddingVertical:5,borderBottomWidth:1,borderColor:"#eee"}}><ThemedText style={{width:95}}>{String(h.spray_date).slice(8,10)+"/"+String(h.spray_date).slice(5,7)+"/"+String(h.spray_date).slice(0,4)}</ThemedText><ThemedText style={{flex:1}}>{h.product}</ThemedText><ThemedText style={{width:85,textAlign:"right"}}>{fmt(Number(h.rate_per_ha))} {h.base_unit}</ThemedText></View>)}\n          {!history.length?<ThemedText style={styles.muted}>No recorded spray plans for this trace.</ThemedText>:null}\n        </ScrollView>\n        {historyError?<ThemedText style={styles.error}>{historyError}</ThemedText>:null}\n        <ThemedText style={styles.muted}>Saved spray plans by scheduled week (not proof of application). Oldest first; latest at bottom.</ThemedText>\n      </View>:null}\n    </View>}
+      </View>
+      {selected?<View style={{flex:1,minWidth:0,flexDirection:wide?"row":"column",gap:8}}>
+<View style={{flex:1,minWidth:0,backgroundColor:"#fff",borderRadius:7,borderWidth:1,borderColor:jsplColors.border,padding:7,gap:3}}>
+<ThemedText style={{fontSize:14,fontWeight:"700"}}>Spray history</ThemedText>
+<View style={{flexDirection:"row",gap:5}}><ThemedText style={{width:76,fontWeight:"700",fontSize:12}}>Date</ThemedText><ThemedText style={{flex:1,fontWeight:"700",fontSize:12}}>Product</ThemedText><ThemedText style={{width:70,textAlign:"right",fontWeight:"700",fontSize:12}}>Rate/ha</ThemedText></View>
+<ScrollView ref={historyScroll} nestedScrollEnabled style={{height:151}} onContentSizeChange={()=>historyScroll.current?.scrollToEnd({animated:false})}>
+{history.filter(h=>h.status!=="planned").map((h,i)=><View key={h.job_id+":"+i} style={{flexDirection:"row",gap:5,paddingVertical:2,borderBottomWidth:1,borderColor:"#eee"}}><ThemedText style={{width:76,fontSize:12}}>{String(h.spray_date).slice(8,10)+"/"+String(h.spray_date).slice(5,7)+"/"+String(h.spray_date).slice(0,4)}</ThemedText><ThemedText style={{flex:1,fontSize:12}}>{h.product}</ThemedText><ThemedText style={{width:70,fontSize:12,textAlign:"right"}}>{fmt(Number(h.rate_per_ha))}</ThemedText></View>)}
+</ScrollView></View>
+<View style={{flex:1,minWidth:0,backgroundColor:"#fff",borderRadius:7,borderWidth:1,borderColor:jsplColors.border,padding:7,gap:3}}>
+<ThemedText style={{fontSize:14,fontWeight:"700"}}>Planned · Outstanding</ThemedText>
+<View style={{flexDirection:"row",gap:5}}><ThemedText style={{width:76,fontWeight:"700",fontSize:12}}>Date</ThemedText><ThemedText style={{flex:1,fontWeight:"700",fontSize:12}}>Product</ThemedText><ThemedText style={{width:70,textAlign:"right",fontWeight:"700",fontSize:12}}>Rate/ha</ThemedText></View>
+<ScrollView nestedScrollEnabled style={{height:151}} >
+{history.filter(h=>h.status==="planned").map((h,i)=><View key={h.job_id+":"+i} style={{flexDirection:"row",gap:5,paddingVertical:2,borderBottomWidth:1,borderColor:"#eee"}}><ThemedText style={{width:76,fontSize:12}}>{String(h.spray_date).slice(8,10)+"/"+String(h.spray_date).slice(5,7)+"/"+String(h.spray_date).slice(0,4)}</ThemedText><ThemedText style={{flex:1,fontSize:12}}>{h.product}</ThemedText><ThemedText style={{width:70,fontSize:12,textAlign:"right"}}>{fmt(Number(h.rate_per_ha))}</ThemedText></View>)}
+</ScrollView></View>
+{historyError?<ThemedText style={styles.error}>{historyError}</ThemedText>:null}
+</View>:null}
+    </View>}
     {selected?<View style={[styles.panels,wide?styles.sideBySide:styles.stacked]}>
       <View style={styles.panel}>
         <ThemedText type="subtitle">Weekly spray input</ThemedText>
