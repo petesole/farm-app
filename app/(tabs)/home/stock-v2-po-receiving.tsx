@@ -14,14 +14,14 @@ type Product={item_code:string;item_name:string;base_unit:string};
 type Chosen={kind:"DN"|"PO"|"DIRECT";key:string;item_code:string;quantity:string;price:string;source:number;max:number;orderLineId?:number};
 const dateISO=(v:string)=>{const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(v.trim());if(!m)return null;const iso=m[3]+"-"+m[2]+"-"+m[1];const d=new Date(iso+"T12:00:00Z");return !Number.isNaN(d.getTime())&&d.toISOString().slice(0,10)===iso?iso:null;};
 const money=(n:number)=>Number.isFinite(n)?n.toFixed(2):"0.00";
-const shortPO=(value:string)=>{const s=String(value||"");return s.length>16?s.slice(-10):s;};
+const shortPO=(id:number)=>"PO-"+id;
 export default function GRVOutstanding(){
  const [dn,setDn]=useState<DLine[]>([]),[po,setPo]=useState<POLine[]>([]),[products,setProducts]=useState<Product[]>([]);
  const [noPO,setNoPO]=useState(false);
  const [owner,setOwner]=useState(""),[supplier,setSupplier]=useState(""),[type,setType]=useState<""|"dnote"|"grv">("");
- const [date,setDate]=useState(new Date().toLocaleDateString("en-GB")),[number,setNumber]=useState("");
+ const [date,setDate]=useState(""),[number,setNumber]=useState("");
  const [chosen,setChosen]=useState<Record<string,Chosen>>({});
- const setRowField=(row:Chosen,field:"quantity"|"price",value:string)=>setChosen(prev=>{const updated={...(prev[row.key]??row),[field]:value};const next={...prev};if(updated.kind==="PO"&&!updated.quantity.trim()&&!updated.price.trim()||updated.kind==="DN"&&!updated.price.trim())delete next[row.key];else next[row.key]=updated;return next;});
+ const setRowField=(row:Chosen,field:"quantity"|"price",value:string)=>setChosen(prev=>prev[row.key]?{...prev,[row.key]:{...prev[row.key],[field]:value}}:prev);
  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[success,setSuccess]=useState("");
  const load=async()=>{setBusy(true);setError("");try{
   const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");
@@ -43,6 +43,7 @@ export default function GRVOutstanding(){
  const pick=(row:Chosen)=>setChosen(old=>old[row.key]?Object.fromEntries(Object.entries(old).filter(([k])=>k!==row.key)):{...old,[row.key]:row});
  const edit=(key:string,field:"quantity"|"price",value:string)=>setChosen(old=>old[key]?{...old,[key]:{...old[key],[field]:value}}:old);
  const lines=Object.values(chosen);
+ const documentReady=!!dateISO(date)&&!!number.trim();
  const hasPO=outstandingPO.length>0;
  const includeRow=(row:Chosen)=>setChosen(prev=>({...prev,[row.key]:prev[row.key]??row}));
  const valid=!!owner&&!!supplier&&!!type&&!!dateISO(date)&&!!number.trim()&&lines.length>0&&lines.every(x=>(type==="dnote"?(x.price.trim()===""||(Number.isFinite(Number(x.price))&&Number(x.price)>0)):(x.price.trim()!==""&&Number.isFinite(Number(x.price))&&Number(x.price)>0))&&(x.kind==="DN"||(x.quantity.trim()!==""&&Number.isFinite(Number(x.quantity))&&Number(x.quantity)>0&&Number(x.quantity)<=x.max)))&&(type!=="dnote"||lines.every(x=>x.kind==="PO"));
@@ -62,7 +63,7 @@ export default function GRVOutstanding(){
    po_allocations:lines.filter(x=>x.kind==="PO").map(x=>({order_line_id:x.orderLineId,item_code:x.item_code,quantity:Number(x.quantity)}))};
   const response=await fetch(endpoint,{method:"POST",headers:{authorization:"Bearer "+session.access_token,"content-type":"application/json"},body:JSON.stringify({action:"combined_grv",request_id:requestId,payload})});
   const result=await response.json();if(!response.ok)throw Error(result.error||"GRV posting failed");
-  setChosen({});setNumber("");setSupplier("");setType("");setSuccess("Combined GRV saved and valued. Existing D-Note quantities were not posted again.");await load();
+  setChosen({});setNumber("");setDate("");setSupplier("");setType("");setSuccess("Combined GRV saved and valued. Existing D-Note quantities were not posted again.");await load();
  }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
  const submitDNote=async()=>{if(!valid||busy||type!=="dnote")return;
   const selected=lines.filter(x=>x.kind==="PO"),poIds=[...new Set(selected.map(x=>x.source))];
@@ -88,28 +89,30 @@ export default function GRVOutstanding(){
   {!!supplier?<View style={s.panel}><ThemedText style={s.label}>Document Type</ThemedText><View style={s.wrap}>{selection("dnote","Delivery Note",type==="dnote",()=>{setType("dnote");setChosen({});setNoPO(false)})}{selection("grv","Invoice GRV",type==="grv",()=>{setType("grv");setChosen({});setNoPO(false)})}</View></View>:null}
   {!!type?<View style={s.panel}><ThemedText style={s.label}>Date</ThemedText><TextInput style={[s.input,s.required]} value={date} onChangeText={setDate} placeholder="DD/MM/YYYY"/></View>:null}
   {!!type?<View style={s.panel}><ThemedText style={s.label}>{type==="grv"?"Invoice GRV Number":"Delivery Note Number"}</ThemedText><TextInput style={[s.input,s.required]} value={number} onChangeText={setNumber} placeholder="Enter document number"/></View>:null}
-  {!!type?<View style={s.panel}>
-  <ThemedText style={s.label}>Outstanding documents — enter figures in the yellow cells</ThemedText>
+  {!!type&&documentReady?<View style={s.panel}>
+  <ThemedText style={s.label}>Outstanding documents — tick the lines included in this {type==="grv"?"invoice":"delivery note"}</ThemedText>
   <ScrollView horizontal><View style={{minWidth:1040}}>
-   <View style={s.trow}>{["Document","Date","Product","Ordered / Received","PO Price","Actual Qty","Actual Price"].map((h,i)=><ThemedText key={h} style={[s.tcell,i===2&&s.wide,s.bold]}>{h}</ThemedText>)}</View>
+   <View style={s.trow}>{["Select","PO","Date (dd/mm/yyyy)","Product","Ordered / Received","PO Price","Actual Qty","Actual Price"].map((h,i)=><ThemedText key={h} style={[s.tcell,i===3&&s.wide,s.bold]}>{h}</ThemedText>)}</View>
    {type==="grv"?outstandingDN.map(x=>{const key="DN:"+x.line_id,e=chosen[key],r:Chosen={kind:"DN",key,item_code:x.item_code,quantity:String(x.quantity),price:"",source:x.document_id,max:x.quantity};return <View key={key} style={s.trow}>
+     <Pressable style={s.tcell} onPress={()=>pick(r)}><ThemedText style={{fontSize:22,color:jsplColors.primary}}>{e?"☑":"☐"}</ThemedText></Pressable>
      <ThemedText style={s.tcell}>{x.delivery_note}</ThemedText><ThemedText style={s.tcell}>{displayJsplDate(x.delivery_note_date||x.document_date)}</ThemedText>
      <ThemedText style={[s.tcell,s.wide]}>{x.item_name}</ThemedText><ThemedText style={s.tcell}>{x.quantity}</ThemedText>
      <ThemedText style={s.tcell}>—</ThemedText><ThemedText style={s.tcell}>{x.quantity} locked</ThemedText>
-     <TextInput style={[s.tcell,s.required]} keyboardType="decimal-pad" placeholder="Required" value={e?.price??""} onChangeText={v=>setRowField(r,"price",v)}/>
+     <TextInput style={[s.tcell,e?s.required:null]} editable={!!e} keyboardType="decimal-pad" placeholder={e?"Required":"Select first"} value={e?.price??""} onChangeText={v=>setRowField(r,"price",v)}/>
     </View>}):null}
    {outstandingPO.map(x=>{const key="PO:"+x.order_line_id,e=chosen[key],max=Math.max(0,x.ordered_quantity-x.received_quantity),r:Chosen={kind:"PO",key,item_code:x.item_code,quantity:"",price:"",source:x.order_id,max,orderLineId:x.order_line_id};return <View key={key} style={s.trow}>
-     <ThemedText style={s.tcell}>{shortPO(x.order_number)}</ThemedText><ThemedText style={s.tcell}>{displayJsplDate(x.order_date)}</ThemedText>
+     <Pressable style={s.tcell} onPress={()=>pick(r)}><ThemedText style={{fontSize:22,color:jsplColors.primary}}>{e?"☑":"☐"}</ThemedText></Pressable>
+     <ThemedText style={s.tcell}>{shortPO(x.order_id)}</ThemedText><ThemedText style={s.tcell}>{displayJsplDate(x.order_date)}</ThemedText>
      <ThemedText style={[s.tcell,s.wide]}>{x.item_name}</ThemedText><ThemedText style={s.tcell}>{x.ordered_quantity} / {x.received_quantity}</ThemedText>
      <ThemedText style={s.tcell}>{x.ordered_unit_price??"—"}</ThemedText>
-     <TextInput style={[s.tcell,s.required]} keyboardType="decimal-pad" placeholder={"Max "+max} value={e?.quantity??""} onChangeText={v=>setRowField(r,"quantity",v)}/>
-     <TextInput style={[s.tcell,type==="grv"?s.required:s.optional]} keyboardType="decimal-pad" placeholder={type==="grv"?"Required":"Optional"} value={e?.price??""} onChangeText={v=>setRowField(r,"price",v)}/>
+     <TextInput style={[s.tcell,e?s.required:null]} editable={!!e} keyboardType="decimal-pad" placeholder={e?"Max "+max:"Select first"} value={e?.quantity??""} onChangeText={v=>setRowField(r,"quantity",v)}/>
+     <TextInput style={[s.tcell,e?(type==="grv"?s.required:s.optional):null]} editable={!!e} keyboardType="decimal-pad" placeholder={type==="grv"?"Required":"Optional"} value={e?.price??""} onChangeText={v=>setRowField(r,"price",v)}/>
     </View>})}
   </View></ScrollView>
   <ThemedText style={s.muted}>{type==="grv"?"Delivery Note quantities are locked. Enter only price. For PO quantities, enter actual quantity and price.":"Enter actual quantities received from POs. Unit price is optional on Delivery Notes."}</ThemedText>
-  <ThemedText>{lines.length} line(s) to save — rows with quantities or prices entered are included automatically.</ThemedText>
+  <ThemedText>{lines.length} line(s) to save — only checked rows will be saved.</ThemedText>
   {!hasPO&&!outstandingDN.length?<ThemedText>No outstanding documents for this supplier.</ThemedText>:null}
-  <Pressable disabled={busy} onPress={()=>{setError("");if(!valid){setError(!dateISO(date)?"Enter a valid date.":!number.trim()?"Enter the document number.":!lines.length?"Enter a quantity or price in a yellow row.":"Complete all highlighted cells on the selected lines.");return;}if(type==="grv")void submitCombined();else void submitDNote()}} style={[s.submit,busy&&s.disabled]}>
+  <Pressable disabled={busy} onPress={()=>{setError("");if(!valid){setError(!dateISO(date)?"Enter a valid date.":!number.trim()?"Enter the document number.":!lines.length?"Tick at least one outstanding line.":"Complete all highlighted cells on the selected lines.");return;}if(type==="grv")void submitCombined();else void submitDNote()}} style={[s.submit,busy&&s.disabled]}>
   <ThemedText style={s.submitText}>{type==="grv"?"SAVE INVOICE GRV":"SAVE DELIVERY NOTE"}</ThemedText></Pressable>
   </View>:null}
  </ScrollView></ThemedView>;
