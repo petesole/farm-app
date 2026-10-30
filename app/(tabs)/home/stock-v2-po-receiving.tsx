@@ -5,7 +5,6 @@ import {ThemedText} from "@/components/themed-text";
 import {ThemedView} from "@/components/themed-view";
 import {JsplModuleHeader} from "@/components/jspl/JsplModuleHeader";
 import {supabase} from "../../../supabase";
-import {displayJsplDate} from "@/utils/jspl-input";
 import {jsplColors,jsplSpacing,jsplRadii} from "@/constants/jspl-design";
 const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
 type DLine={document_id:number;document_date:string;delivery_note:string;delivery_note_date:string|null;supplier_name:string;owner_code:string;item_code:string;item_name:string;base_unit:string;line_id:number;quantity:number;order_id?:number|null};
@@ -15,6 +14,8 @@ type Chosen={kind:"DN"|"PO"|"DIRECT";key:string;item_code:string;quantity:string
 const dateISO=(v:string)=>{const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(v.trim());if(!m)return null;const iso=m[3]+"-"+m[2]+"-"+m[1];const d=new Date(iso+"T12:00:00Z");return !Number.isNaN(d.getTime())&&d.toISOString().slice(0,10)===iso?iso:null;};
 const money=(n:number)=>Number.isFinite(n)?n.toFixed(2):"0.00";
 const shortPO=(id:number)=>"PO-"+id;
+const shortDNote=(value:string,id:number)=>{const v=String(value??"").trim();return "D-"+(/^(?:DEMO-)?DN-[a-f0-9]{8}-[a-f0-9-]{27,}$/i.test(v)||!v?id:v.replace(/^D(?:N(?:OTE)?)?[-\s#:]*/i,""));};
+const shortDate=(value:string|null|undefined)=>{if(!value)return "—";const v=String(value);if(/^\d{4}-\d{2}-\d{2}/.test(v))return v.slice(8,10)+"/"+v.slice(5,7)+"/"+v.slice(0,4);if(/^\d{2}\/\d{2}\/\d{4}/.test(v))return v.slice(0,10);return "—";};
 export default function GRVOutstanding(){
  const [dn,setDn]=useState<DLine[]>([]),[po,setPo]=useState<POLine[]>([]),[products,setProducts]=useState<Product[]>([]);
  const [noPO,setNoPO]=useState(false);
@@ -92,17 +93,17 @@ export default function GRVOutstanding(){
   {!!type&&documentReady?<View style={s.panel}>
   <ThemedText style={s.label}>Outstanding documents — tick the lines included in this {type==="grv"?"invoice":"delivery note"}</ThemedText>
   <ScrollView horizontal><View style={{minWidth:1040}}>
-   <View style={s.trow}>{["Select","PO","Date (dd/mm/yyyy)","Product","Ordered / Received","PO Price","Actual Qty","Actual Price"].map((h,i)=><ThemedText key={h} style={[s.tcell,i===3&&s.wide,s.bold]}>{h}</ThemedText>)}</View>
+   <View style={s.trow}>{["Select","Document","Date (dd/mm/yyyy)","Product","Ordered / Received","PO Price","Actual Qty","Actual Price"].map((h,i)=><ThemedText key={h} style={[s.tcell,i===3&&s.wide,s.bold]}>{h}</ThemedText>)}</View>
    {type==="grv"?outstandingDN.map(x=>{const key="DN:"+x.line_id,e=chosen[key],r:Chosen={kind:"DN",key,item_code:x.item_code,quantity:String(x.quantity),price:"",source:x.document_id,max:x.quantity};return <View key={key} style={s.trow}>
      <Pressable style={s.tcell} onPress={()=>pick(r)}><ThemedText style={{fontSize:22,color:jsplColors.primary}}>{e?"☑":"☐"}</ThemedText></Pressable>
-     <ThemedText style={s.tcell}>{x.delivery_note}</ThemedText><ThemedText style={s.tcell}>{displayJsplDate(x.delivery_note_date||x.document_date)}</ThemedText>
+     <ThemedText style={s.tcell}>{shortDNote(x.delivery_note,x.document_id)}</ThemedText><ThemedText style={s.tcell}>{shortDate(x.delivery_note_date||x.document_date)}</ThemedText>
      <ThemedText style={[s.tcell,s.wide]}>{x.item_name}</ThemedText><ThemedText style={s.tcell}>{x.quantity}</ThemedText>
      <ThemedText style={s.tcell}>—</ThemedText><ThemedText style={s.tcell}>{x.quantity} locked</ThemedText>
      <TextInput style={[s.tcell,e?s.required:null]} editable={!!e} keyboardType="decimal-pad" placeholder={e?"Required":"Select first"} value={e?.price??""} onChangeText={v=>setRowField(r,"price",v)}/>
     </View>}):null}
    {outstandingPO.map(x=>{const key="PO:"+x.order_line_id,e=chosen[key],max=Math.max(0,x.ordered_quantity-x.received_quantity),r:Chosen={kind:"PO",key,item_code:x.item_code,quantity:"",price:"",source:x.order_id,max,orderLineId:x.order_line_id};return <View key={key} style={s.trow}>
      <Pressable style={s.tcell} onPress={()=>pick(r)}><ThemedText style={{fontSize:22,color:jsplColors.primary}}>{e?"☑":"☐"}</ThemedText></Pressable>
-     <ThemedText style={s.tcell}>{shortPO(x.order_id)}</ThemedText><ThemedText style={s.tcell}>{displayJsplDate(x.order_date)}</ThemedText>
+     <ThemedText style={s.tcell}>{shortPO(x.order_id)}</ThemedText><ThemedText style={s.tcell}>{shortDate(x.order_date)}</ThemedText>
      <ThemedText style={[s.tcell,s.wide]}>{x.item_name}</ThemedText><ThemedText style={s.tcell}>{x.ordered_quantity} / {x.received_quantity}</ThemedText>
      <ThemedText style={s.tcell}>{x.ordered_unit_price??"—"}</ThemedText>
      <TextInput style={[s.tcell,e?s.required:null]} editable={!!e} keyboardType="decimal-pad" placeholder={e?"Max "+max:"Select first"} value={e?.quantity??""} onChangeText={v=>setRowField(r,"quantity",v)}/>
