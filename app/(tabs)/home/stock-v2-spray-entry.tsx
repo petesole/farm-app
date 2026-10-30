@@ -1,5 +1,5 @@
 import {StockV2Header} from "@/components/jspl/StockV2Header";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter,useLocalSearchParams } from "expo-router";
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from "react-native";
 import { ThemedText } from "@/components/themed-text";
@@ -31,6 +31,9 @@ export default function StockV2SprayPlanningPreview() {
   const wide=width>=760;
   const watermarkSize=Math.min(650,Math.max(240,width-jsplSpacing.xl*2),Math.max(240,height-jsplSpacing.xl*2));
   const [traces,setTraces]=useState<Trace[]>([]);
+  const [history,setHistory]=useState<{job_id:number;spray_date:string;status:string;product:string;rate_per_ha:number;base_unit:string}[]>([]);
+  const [historyError,setHistoryError]=useState("");
+  const historyScroll=useRef<ScrollView>(null);
   const [crops,setCrops]=useState<Crop[]>([]);
   const [cropId,setCropId]=useState<number|null>(null);
   const [catalog,setCatalog]=useState<CatalogInput[]>([]);
@@ -110,6 +113,7 @@ export default function StockV2SprayPlanningPreview() {
   })();return()=>{mounted=false};},[editing,editJobId]);
   useEffect(()=>{setArea(selected?.tracecode_size?.toString()??"");setBudgetOffset(0);if(!editing)setLines([])},[traceId,editing]);
   useEffect(()=>{let active=true;(async()=>{if(!traceId){setBudgetLines([]);return}try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)return;const response=await fetch(workflowEndpoint+"?budget_reference=1&tracecode_id="+traceId,{headers:{authorization:"Bearer "+session.access_token}});const data=await response.json();if(!response.ok)throw Error(data.error||"Budget reference unavailable");if(active){setBudgetLines(data.budget??[]);setSelectedBudgetId(data.crop_budget_id??null)}}catch(e){if(active)setError(e instanceof Error?e.message:String(e))}})();return()=>{active=false}},[traceId]);
+  useEffect(()=>{let live=true;setHistory([]);setHistoryError("");if(!traceId)return;void(async()=>{try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");const res=await fetch(workflowEndpoint+"?spray_history=1&tracecode_id="+traceId,{headers:{authorization:"Bearer "+session.access_token}});const json=await res.json();if(!res.ok)throw Error(json.error||"History unavailable");if(live)setHistory(json.rows??[])}catch(e){if(live)setHistoryError(e instanceof Error?e.message:String(e))}})();return()=>{live=false}},[traceId]);
   const linkBudget=async(id:number|null)=>{if(!traceId||!id)return;setBudgetSaving(true);setSaveError("");try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign-in required");const response=await fetch(workflowEndpoint,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.access_token},body:JSON.stringify({action:"link_crop_budget",tracecode_id:traceId,crop_budget_id:id})});const data=await response.json();if(!response.ok)throw Error(data.error||"Could not assign budget");setSelectedBudgetId(id);const rr=await fetch(workflowEndpoint+"?budget_reference=1&tracecode_id="+traceId,{headers:{authorization:"Bearer "+session.access_token}});const bb=await rr.json();if(!rr.ok)throw Error(bb.error||"Could not load budget lines");setBudgetLines(bb.budget??[])}catch(e){setSaveError(e instanceof Error?e.message:String(e))}finally{setBudgetSaving(false)}};
   const addLine=(input="")=>setLines(old=>[...old,{key:nextKey++,input,rate:""}]);
   const copyBudgetInput=(input:string,rate:number)=>setLines(old=>{
@@ -146,7 +150,7 @@ export default function StockV2SprayPlanningPreview() {
     <ScrollView style={styles.foreground} contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
     <StockV2Header title={editing?"Edit Spray Mix":"New Spray Plan"}/>
 
-    {loading?<ActivityIndicator/>:error?<ThemedText style={styles.error}>{error}</ThemedText>:<View style={styles.traces}>
+    {loading?<ActivityIndicator/>:error?<ThemedText style={styles.error}>{error}</ThemedText>:<View style={[styles.traces,wide&&{flexDirection:"row",alignItems:"flex-start",gap:12}]}>\n      <View style={{width:wide?240:"100%",gap:7}}>
       <JsplSearchCombo label="Crop" selector="crop"
         options={visibleCrops.map(c=>({id:c.crop_id,label:c.crop_name,active:true}))}
         value={cropId} onChange={value=>{setCropId(typeof value==="number"?value:null);setTraceId(null);setWeekChosen(false);}}
@@ -157,7 +161,7 @@ export default function StockV2SprayPlanningPreview() {
         placeholder="Select Trace Code"/>:null}
       {selected?<ThemedText style={styles.muted}>Size: {fmt(Number(selected.tracecode_size??0))} ha · Growing days: {selected.actual_planting_date?Math.max(0,Math.floor((Date.now()-new Date(selected.actual_planting_date.slice(0,10)+"T12:00:00").getTime())/86400000)):"— (not planted)"}</ThemedText>:null}
       {cropId!=null&&visibleTraces.length===0?<ThemedText style={styles.muted}>No current tracecodes for this crop.</ThemedText>:null}
-    </View>}
+      </View>\n      {selected?<View style={{flex:1,minWidth:0,backgroundColor:"#fff",borderRadius:8,borderWidth:1,borderColor:jsplColors.border,padding:10,gap:7}}>\n        <ThemedText style={styles.heading}>Spray history · {selected.tracecode_name}</ThemedText>\n        <View style={{flexDirection:"row",gap:8}}><ThemedText style={{width:95,fontWeight:"700"}}>Date</ThemedText><ThemedText style={{flex:1,fontWeight:"700"}}>Product</ThemedText><ThemedText style={{width:85,fontWeight:"700",textAlign:"right"}}>Rate/ha</ThemedText></View>\n        <ScrollView ref={historyScroll} nestedScrollEnabled style={{maxHeight:190}} onContentSizeChange={()=>historyScroll.current?.scrollToEnd({animated:false})}>\n          {history.map((h,i)=><View key={h.job_id+":"+i} style={{flexDirection:"row",gap:8,paddingVertical:5,borderBottomWidth:1,borderColor:"#eee"}}><ThemedText style={{width:95}}>{String(h.spray_date).slice(8,10)+"/"+String(h.spray_date).slice(5,7)+"/"+String(h.spray_date).slice(0,4)}</ThemedText><ThemedText style={{flex:1}}>{h.product}</ThemedText><ThemedText style={{width:85,textAlign:"right"}}>{fmt(Number(h.rate_per_ha))} {h.base_unit}</ThemedText></View>)}\n          {!history.length?<ThemedText style={styles.muted}>No recorded spray plans for this trace.</ThemedText>:null}\n        </ScrollView>\n        {historyError?<ThemedText style={styles.error}>{historyError}</ThemedText>:null}\n        <ThemedText style={styles.muted}>Saved spray plans by scheduled week (not proof of application). Oldest first; latest at bottom.</ThemedText>\n      </View>:null}\n    </View>}
     {selected?<View style={[styles.panels,wide?styles.sideBySide:styles.stacked]}>
       <View style={styles.panel}>
         <ThemedText type="subtitle">Weekly spray input</ThemedText>
