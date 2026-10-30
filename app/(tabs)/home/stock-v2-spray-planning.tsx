@@ -47,11 +47,10 @@ export default function WeeklySprayPlanning(){
    return {id,traceId:a.external_tracecode_id,week:a.planned_week_start??"",trace:a.tracecode_name??"Unknown trace",crop,area:a.area_ha,status:a.status,sprayType:a.spray_type,part:a.part_label??"",sprayer:a.sprayer_asset_code??"",water:a.water_litres_per_ha??0,lines,remainingArea:areas.length?Math.min(...areas):0};
   }).sort((a,b)=>String(a.week??"").localeCompare(String(b.week??""))||String(a.crop??"").localeCompare(String(b.crop??""))||String(a.trace??"").localeCompare(String(b.trace??""))||a.id-b.id);
  },[sprays,traces,crops]);
- const activeIds=new Set(traces.filter(t=>t.start_date&&!t.end_date).map(t=>t.tracecode_id));
- const due=jobs.filter(j=>activeIds.has(j.traceId)&&j.status==="planned"&&j.remainingArea>0.0001);
+ const due=jobs.filter(j=>j.status==="planned"&&j.remainingArea>0.0001);
  const dueCrops=[...new Set(due.map(j=>j.crop))].sort();
  const dueTraces=[...new Map(due.filter(j=>cropFilter==="all"||j.crop===cropFilter).map(j=>[j.traceId,{id:j.traceId,name:j.trace}])).values()].sort((a,b)=>String(a.name??"").localeCompare(String(b.name??"")));
- const visible=jobs.filter(j=>(showCompleted||(activeIds.has(j.traceId)&&j.status==="planned"&&j.remainingArea>0.0001))&&(cropFilter==="all"||j.crop===cropFilter)&&(traceFilter==="all"||String(j.traceId)===traceFilter));
+ const visible=jobs.filter(j=>(showCompleted||(j.status==="planned"&&j.remainingArea>0.0001))&&(cropFilter==="all"||j.crop===cropFilter)&&(traceFilter==="all"||String(j.traceId)===traceFilter));
  const groups=useMemo(()=>{const m=new Map<string,Job[]>();for(const j of visible){const k=j.week+"|"+j.crop+"|"+j.trace;if(!m.has(k))m.set(k,[]);m.get(k)!.push(j)}return [...m.entries()].map(([key,rows])=>({key,rows,week:rows[0].week,crop:rows[0].crop,trace:rows[0].trace}))},[visible]);
  const transfer=async(job:Job)=>{const ha=Number(issueHa);setError("");
   if(!Number.isFinite(ha)||ha<=0||ha>job.remainingArea+0.00001){setError("Enter hectares greater than zero and no more than the outstanding spray area.");return}
