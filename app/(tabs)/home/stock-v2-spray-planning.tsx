@@ -22,6 +22,7 @@ export default function WeeklySprayPlanning(){
  const [loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState("");
  const [expanded,setExpanded]=useState(""),[issueId,setIssueId]=useState<number|null>(null),[issueHa,setIssueHa]=useState(""),[confirm,setConfirm]=useState(false);
  const [showCompleted,setShowCompleted]=useState(false);
+ const [isAdmin,setIsAdmin]=useState(false);
  const [cropFilter,setCropFilter]=useState("all"),[traceFilter,setTraceFilter]=useState("all");
  const [issueHistory,setIssueHistory]=useState<{document_id:number;document_number:string;document_type:string}[]>([]);
  const [latestSlip,setLatestSlip]=useState<number|null>(null);
@@ -43,6 +44,7 @@ export default function WeeklySprayPlanning(){
   setSprays(data.sprays??[]);setProducts(data.items??[]);setIssueHistory(data.documents??[]);setTraces((tc.data??[]) as Trace[]);setCrops((cr.data??[]) as Crop[]);
  }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setLoading(false)}},[]);
  useEffect(()=>{void load()},[load]);
+ useEffect(()=>{void supabase.auth.getUser().then(async r=>{if(!r.data.user)return;const x=await supabase.from("app_admin").select("user_id").eq("user_id",r.data.user.id).maybeSingle();setIsAdmin(!!x.data)})},[]);
  const jobs=useMemo(()=>{
   const map=new Map<number,Spray[]>();
   for(const s of sprays){if(!map.has(s.job_id))map.set(s.job_id,[]);map.get(s.job_id)!.push(s)}
@@ -58,6 +60,9 @@ export default function WeeklySprayPlanning(){
  const dueTraces=[...new Map(due.filter(j=>cropFilter==="all"||j.crop===cropFilter).map(j=>[j.traceId,{id:j.traceId,name:j.trace}])).values()].sort((a,b)=>String(a.name??"").localeCompare(String(b.name??"")));
  const visible=jobs.filter(j=>(showCompleted?j.status==="completed":(j.status==="planned"&&j.remainingArea>0.0001))&&(cropFilter==="all"||j.crop===cropFilter)&&(traceFilter==="all"||String(j.traceId)===traceFilter));
  const groups=useMemo(()=>{const m=new Map<string,Job[]>();for(const j of visible){const k=j.week+"|"+j.crop+"|"+j.trace;if(!m.has(k))m.set(k,[]);m.get(k)!.push(j)}return [...m.entries()].map(([key,rows])=>({key,rows,week:rows[0].week,crop:rows[0].crop,trace:rows[0].trace}))},[visible]);
+ const deleteSpray=async(job:Job)=>{if(!isAdmin||job.status!=="planned"||job.lines.some(l=>l.issued_quantity>0)){setError("Only an admin can delete a spray without stock issues.");return}
+  setSaving(true);setError("");
+  try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");const res=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.access_token},body:JSON.stringify({action:"delete_unissued_spray",job_id:job.id})});const data=await res.json();if(!res.ok)throw Error(data.error||"Delete failed");await load()}catch(e){setError("NOT DELETED: "+(e instanceof Error?e.message:String(e)))}finally{setSaving(false)}};
  const openReturn=async(job:Job)=>{setError("");setReturnJob(job.id);setReturnDoc(null);setReturnIssues([]);setReturnAmounts({});setReturnComplete(false);setReturnConfirm(false);try{
   const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");
   const res=await fetch(endpoint+"?spray_return_issues=1&job_id="+job.id,{headers:{authorization:"Bearer "+session.access_token}});
@@ -112,6 +117,7 @@ export default function WeeklySprayPlanning(){
  <View style={styles.actions}>
   <Pressable style={styles.secondary} onPress={()=>router.push({pathname:"/stock-v2-application",params:{jobId:String(job.id)}})}><ThemedText>Application / Print Tank Mix</ThemedText></Pressable>
   {job.status==="planned"&&job.lines.every(l=>l.issued_quantity===0)?<Pressable style={styles.secondary} onPress={()=>router.push({pathname:"/stock-v2-spray-entry",params:{editJobId:String(job.id)}})}><ThemedText>Edit Mix</ThemedText></Pressable>:null}
+  {isAdmin&&job.status==="planned"&&job.lines.every(l=>l.issued_quantity===0)?<Pressable disabled={saving} style={styles.secondary} onPress={()=>{if(typeof window!=="undefined"&&window.confirm("Delete unissued spray #"+job.id+"? This cannot be undone."))void deleteSpray(job)}}><ThemedText style={styles.error}>Delete Spray (Admin)</ThemedText></Pressable>:null}
   {job.status==="completed"?<Pressable style={styles.secondary} onPress={()=>void openReturn(job)}><ThemedText>Stock Return</ThemedText></Pressable>:null}
   {job.status==="planned"&&job.remainingArea>0?<Pressable style={styles.primary} onPress={()=>{setIssueId(job.id);setIssueHa(String(Number(job.remainingArea.toFixed(3))));setConfirm(false)}}><ThemedText style={styles.white}>Transfer / Issue</ThemedText></Pressable>:null}
  </View>
