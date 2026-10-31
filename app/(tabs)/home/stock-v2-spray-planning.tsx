@@ -44,7 +44,7 @@ export default function WeeklySprayPlanning(){
   setSprays(data.sprays??[]);setProducts(data.items??[]);setIssueHistory(data.documents??[]);setTraces((tc.data??[]) as Trace[]);setCrops((cr.data??[]) as Crop[]);
  }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setLoading(false)}},[]);
  useEffect(()=>{void load()},[load]);
- useEffect(()=>{void supabase.auth.getUser().then(async r=>{if(!r.data.user)return;const x=await supabase.from("app_admin").select("user_id").eq("user_id",r.data.user.id).maybeSingle();setIsAdmin(!!x.data)})},[]);
+ useEffect(()=>{void(async()=>{try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)return;const res=await fetch(endpoint+"?spray_admin=1",{headers:{authorization:"Bearer "+session.access_token}});if(res.ok){const data=await res.json();setIsAdmin(!!data.is_admin)}}catch{}})()},[]);
  const jobs=useMemo(()=>{
   const map=new Map<number,Spray[]>();
   for(const s of sprays){if(!map.has(s.job_id))map.set(s.job_id,[]);map.get(s.job_id)!.push(s)}
