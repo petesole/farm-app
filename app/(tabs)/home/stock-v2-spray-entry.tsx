@@ -33,6 +33,7 @@ export default function StockV2SprayPlanningPreview() {
   const [traces,setTraces]=useState<Trace[]>([]);
   const [history,setHistory]=useState<{job_id:number;spray_date:string;status:string;product:string;rate_per_ha:number;base_unit:string}[]>([]);
   const [historyError,setHistoryError]=useState("");
+  const [assigned,setAssigned]=useState<Record<string,number>>({});
   const historyScroll=useRef<ScrollView>(null);
   const [crops,setCrops]=useState<Crop[]>([]);
   const [cropId,setCropId]=useState<number|null>(null);
@@ -114,6 +115,7 @@ export default function StockV2SprayPlanningPreview() {
   useEffect(()=>{setArea(selected?.tracecode_size?.toString()??"");setBudgetOffset(0);if(!editing)setLines([])},[traceId,editing]);
   useEffect(()=>{let active=true;(async()=>{if(!traceId){setBudgetLines([]);return}try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)return;const response=await fetch(workflowEndpoint+"?budget_reference=1&tracecode_id="+traceId,{headers:{authorization:"Bearer "+session.access_token}});const data=await response.json();if(!response.ok)throw Error(data.error||"Budget reference unavailable");if(active){setBudgetLines(data.budget??[]);setSelectedBudgetId(data.crop_budget_id??null)}}catch(e){if(active)setError(e instanceof Error?e.message:String(e))}})();return()=>{active=false}},[traceId]);
   useEffect(()=>{let live=true;setHistory([]);setHistoryError("");if(!traceId)return;void(async()=>{try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");const res=await fetch(workflowEndpoint+"?spray_history=1&tracecode_id="+traceId,{headers:{authorization:"Bearer "+session.access_token}});const json=await res.json();if(!res.ok)throw Error(json.error||"History unavailable");if(live)setHistory(json.rows??[])}catch(e){if(live)setHistoryError(e instanceof Error?e.message:String(e))}})();return()=>{live=false}},[traceId]);
+  useEffect(()=>{let live=true;setAssigned({});void(async()=>{try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)return;const res=await fetch(workflowEndpoint+"?spray_assignments=1&through_week="+operationalWeek.toISOString().slice(0,10),{headers:{authorization:"Bearer "+session.access_token}});const data=await res.json();if(!res.ok)throw Error(data.error||"Assigned unavailable");if(live)setAssigned(Object.fromEntries((data.rows??[]).map((x:{item_code:string;assigned:number})=>[x.item_code,Number(x.assigned)])))}catch(e){if(live)setSaveError(e instanceof Error?e.message:String(e))}})();return()=>{live=false}},[operationalOffset]);
   const linkBudget=async(id:number|null)=>{if(!traceId||!id)return;setBudgetSaving(true);setSaveError("");try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign-in required");const response=await fetch(workflowEndpoint,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.access_token},body:JSON.stringify({action:"link_crop_budget",tracecode_id:traceId,crop_budget_id:id})});const data=await response.json();if(!response.ok)throw Error(data.error||"Could not assign budget");setSelectedBudgetId(id);const rr=await fetch(workflowEndpoint+"?budget_reference=1&tracecode_id="+traceId,{headers:{authorization:"Bearer "+session.access_token}});const bb=await rr.json();if(!rr.ok)throw Error(bb.error||"Could not load budget lines");setBudgetLines(bb.budget??[])}catch(e){setSaveError(e instanceof Error?e.message:String(e))}finally{setBudgetSaving(false)}};
   const addLine=(input="")=>setLines(old=>[...old,{key:nextKey++,input,rate:""}]);
   const copyBudgetInput=(input:string,rate:number)=>setLines(old=>{
@@ -204,17 +206,17 @@ export default function StockV2SprayPlanningPreview() {
               {matches(x.input).length===0?<ThemedText style={styles.muted}>No matching input in the current master.</ThemedText>:null}
             </ScrollView>
             <Pressable onPress={()=>setOpenLine(null)} style={styles.chip}><ThemedText>Close list</ThemedText></Pressable>
-          </View>:null}</View><View style={{flex:1}}><ThemedText style={styles.label}>Rate/ha</ThemedText><TextInput style={styles.input} keyboardType="decimal-pad" value={x.rate} onChangeText={v=>changeLine(x.key,"rate",v)}/></View><View style={{flex:1}}><ThemedText style={styles.label}>Required</ThemedText><ThemedText>{fmt(sprayArea*Number(x.rate))}</ThemedText></View><View style={{flex:1}}><ThemedText style={styles.label}>Stock</ThemedText><ThemedText>{catalog.find(p=>p.inputs_name===x.input)?`${fmt(catalog.find(p=>p.inputs_name===x.input)!.quantity)} ${catalog.find(p=>p.inputs_name===x.input)!.base_unit}`:"—"}</ThemedText></View><Pressable onPress={()=>setLines(v=>v.filter(y=>y.key!==x.key))}><ThemedText style={styles.error}>Remove</ThemedText></Pressable></View>)}
+          </View>:null}</View><View style={{flex:1}}><ThemedText style={styles.label}>Rate/ha</ThemedText><TextInput style={styles.input} keyboardType="decimal-pad" value={x.rate} onChangeText={v=>changeLine(x.key,"rate",v)}/></View><View style={{width:75}}><ThemedText style={styles.label}>Required</ThemedText><ThemedText>{fmt(sprayArea*Number(x.rate))}</ThemedText></View><View style={{width:75}}><ThemedText style={styles.label}>Assigned</ThemedText><ThemedText>{fmt(assigned[catalog.find(p=>p.inputs_name===x.input)?.item_code??""]??0)}</ThemedText></View><View style={{width:95}}><ThemedText style={styles.label}>Stock</ThemedText><ThemedText style={(catalog.find(p=>p.inputs_name===x.input)?.quantity??Infinity)<sprayArea*Number(x.rate)?styles.error:undefined}>{catalog.find(p=>p.inputs_name===x.input)?`${fmt(catalog.find(p=>p.inputs_name===x.input)!.quantity)} ${catalog.find(p=>p.inputs_name===x.input)!.base_unit}`:"—"}</ThemedText></View><Pressable onPress={()=>setLines(v=>v.filter(y=>y.key!==x.key))}><ThemedText style={styles.error}>Remove</ThemedText></Pressable></View>)}
         <Pressable style={styles.action} onPress={()=>addLine()}><ThemedText>+ Add input</ThemedText></Pressable>
         {saveError?<ThemedText style={styles.error}>NOT SAVED: {saveError}</ThemedText>:null}
         <Pressable disabled={saving||loading||!!error} style={[styles.saveButton,(saving||loading||!!error)&&{opacity:0.5}]} onPress={savePlan}><ThemedText style={styles.saveText}>{saving?"Saving…":editing?"Save Mix Changes":"Save New Spray"}</ThemedText></Pressable>
         </>:null}
       </View>
-      {weekChosen&&sprayType&&Number(waterRate)>0?<View style={styles.panel}>
+      {weekChosen&&sprayType&&Number(waterRate)>0?<View style={[styles.panel,wide&&{flex:0.72}]}>
         <ThemedText type="subtitle">Crop budget reference</ThemedText>
         <JsplSearchCombo label="Crop budget assigned to this trace" selector="crop-budget" options={budgetTemplates.map(b=>({id:b.crop_budget_id,label:b.budget_name+" · "+b.crop_name+" · "+(b.irrigation_type??"Any irrigation"),active:true}))} value={selectedBudgetId} onChange={v=>void linkBudget(typeof v==="number"?v:null)} placeholder={budgetSaving?"Saving budget…":"Select crop budget for this trace"}/>
         <View style={styles.weekNav}><Pressable style={styles.chip} onPress={()=>setBudgetOffset(x=>x-1)}><ThemedText>‹ Previous</ThemedText></Pressable><ThemedText>{weekLabel(budgetWeek)}</ThemedText><Pressable style={styles.chip} onPress={()=>setBudgetOffset(x=>x+1)}><ThemedText>Next ›</ThemedText></Pressable></View>
-        <ThemedText style={styles.muted}>Budget weeks move independently of the operational spray week.</ThemedText>
+
         <View style={styles.empty}>
           <ThemedText style={styles.heading}>Crop budget reference — {selected?.tracecode_name??"Select trace"}</ThemedText>
           {budgetLines.length===0?<ThemedText style={styles.warning}>No crop budget reference linked to this tracecode yet. No sample products are used.</ThemedText>:null}
@@ -225,7 +227,7 @@ export default function StockV2SprayPlanningPreview() {
             <ThemedText style={styles.copy}>{row.item_code?"+ Copy":"Unmatched"}</ThemedText>
           </Pressable>)}
           {budgetLines.length>0&&selectedBudgetRows.length===0?<ThemedText style={styles.muted}>No budget applications for this week.</ThemedText>:null}
-          <ThemedText style={styles.muted}>Tap a budget item to copy its recorded rate into this spray job.</ThemedText>
+
         </View>
       </View>:null}
     </View>:null}
