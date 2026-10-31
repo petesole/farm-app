@@ -56,7 +56,7 @@ export default function WeeklySprayPlanning(){
  const due=jobs.filter(j=>j.status==="planned"&&j.remainingArea>0.0001);
  const dueCrops=[...new Set(due.map(j=>j.crop))].sort();
  const dueTraces=[...new Map(due.filter(j=>cropFilter==="all"||j.crop===cropFilter).map(j=>[j.traceId,{id:j.traceId,name:j.trace}])).values()].sort((a,b)=>String(a.name??"").localeCompare(String(b.name??"")));
- const visible=jobs.filter(j=>(showCompleted||(j.status==="planned"&&j.remainingArea>0.0001))&&(cropFilter==="all"||j.crop===cropFilter)&&(traceFilter==="all"||String(j.traceId)===traceFilter));
+ const visible=jobs.filter(j=>(showCompleted?j.status==="completed":(j.status==="planned"&&j.remainingArea>0.0001))&&(cropFilter==="all"||j.crop===cropFilter)&&(traceFilter==="all"||String(j.traceId)===traceFilter));
  const groups=useMemo(()=>{const m=new Map<string,Job[]>();for(const j of visible){const k=j.week+"|"+j.crop+"|"+j.trace;if(!m.has(k))m.set(k,[]);m.get(k)!.push(j)}return [...m.entries()].map(([key,rows])=>({key,rows,week:rows[0].week,crop:rows[0].crop,trace:rows[0].trace}))},[visible]);
  const openReturn=async(job:Job)=>{setError("");setReturnJob(job.id);setReturnDoc(null);setReturnIssues([]);setReturnAmounts({});setReturnComplete(false);setReturnConfirm(false);try{
   const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");
@@ -94,11 +94,8 @@ export default function WeeklySprayPlanning(){
  <StockV2Header title="Weekly Spray Planning" onRefresh={()=>void load()}/>
  <View style={styles.actions}>
   <Pressable style={styles.primary} onPress={()=>router.push("/stock-v2-spray-entry")}><ThemedText style={styles.white}>+ New Spray</ThemedText></Pressable>
-  <Pressable style={styles.secondary} onPress={()=>setShowCompleted(v=>!v)}><ThemedText>{showCompleted?"Hide completed":"Show history"}</ThemedText></Pressable>
+  <Pressable style={styles.secondary} onPress={()=>setShowCompleted(v=>!v)}><ThemedText>{showCompleted?"Show outstanding":"Show completed only"}</ThemedText></Pressable>
  </View>
- {showCompleted?<View style={styles.panel}><ThemedText style={styles.bold}>Posted issue slips · Reprint</ThemedText>
-  {[...new Map(issueHistory.filter(d=>d.document_type==="issue").map(d=>[d.document_id,d])).values()].map(d=><Pressable key={d.document_id} style={styles.secondary} onPress={()=>router.push({pathname:"/stock-v2-issue-slip",params:{documentId:String(d.document_id)}})}><ThemedText>Reprint {d.document_number}</ThemedText></Pressable>)}
- </View>:null}
  {latestSlip?<Pressable style={styles.primary} onPress={()=>router.push({pathname:"/stock-v2-issue-slip",params:{documentId:String(latestSlip)}})}><ThemedText style={styles.white}>Print Issue Slip #{latestSlip}</ThemedText></Pressable>:null}
  <View style={{flexDirection:"row",flexWrap:"wrap",gap:8,alignItems:"center"}}><ThemedText style={styles.bold}>Due sprays:</ThemedText><ScrollView horizontal style={{flexGrow:0,maxWidth:"100%"}}>{[["all","All crops"],...dueCrops.map(c=>[c,c])].map(([id,label])=><Pressable key={id} onPress={()=>{setCropFilter(id);setTraceFilter("all")}} style={[styles.secondary,{marginRight:6,backgroundColor:cropFilter===id?"#c9ead5":"#fff"}]}><ThemedText>{label}</ThemedText></Pressable>)}</ScrollView></View>
  <View style={{flexDirection:"row",flexWrap:"wrap",gap:6}}><Pressable style={[styles.secondary,{backgroundColor:traceFilter==="all"?"#c9ead5":"#fff"}]} onPress={()=>setTraceFilter("all")}><ThemedText>All due traces</ThemedText></Pressable>{dueTraces.map(t=><Pressable key={t.id} style={[styles.secondary,{backgroundColor:traceFilter===String(t.id)?"#c9ead5":"#fff"}]} onPress={()=>setTraceFilter(String(t.id))}><ThemedText>{t.name}</ThemedText></Pressable>)}</View>
@@ -115,7 +112,7 @@ export default function WeeklySprayPlanning(){
  <View style={styles.actions}>
   <Pressable style={styles.secondary} onPress={()=>router.push({pathname:"/stock-v2-application",params:{jobId:String(job.id)}})}><ThemedText>Application / Print Tank Mix</ThemedText></Pressable>
   {job.status==="planned"&&job.lines.every(l=>l.issued_quantity===0)?<Pressable style={styles.secondary} onPress={()=>router.push({pathname:"/stock-v2-spray-entry",params:{editJobId:String(job.id)}})}><ThemedText>Edit Mix</ThemedText></Pressable>:null}
-  <Pressable style={styles.secondary} onPress={()=>void openReturn(job)}><ThemedText>Stock Return</ThemedText></Pressable>
+  {job.status==="completed"?<Pressable style={styles.secondary} onPress={()=>void openReturn(job)}><ThemedText>Stock Return</ThemedText></Pressable>:null}
   {job.status==="planned"&&job.remainingArea>0?<Pressable style={styles.primary} onPress={()=>{setIssueId(job.id);setIssueHa(String(Number(job.remainingArea.toFixed(3))));setConfirm(false)}}><ThemedText style={styles.white}>Transfer / Issue</ThemedText></Pressable>:null}
  </View>
  {returnJob===job.id?<View style={styles.issue}>
