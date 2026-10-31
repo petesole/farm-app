@@ -25,6 +25,12 @@ export default function WeeklySprayPlanning(){
  const [cropFilter,setCropFilter]=useState("all"),[traceFilter,setTraceFilter]=useState("all");
  const [issueHistory,setIssueHistory]=useState<{document_id:number;document_number:string;document_type:string}[]>([]);
  const [latestSlip,setLatestSlip]=useState<number|null>(null);
+ const [returnJob,setReturnJob]=useState<number|null>(null);
+ const [returnIssues,setReturnIssues]=useState<{document_id:number;document_number:string;source_line_id:number;item_name:string;base_unit:string;available_to_return:number}[]>([]);
+ const [returnDoc,setReturnDoc]=useState<number|null>(null);
+ const [returnAmounts,setReturnAmounts]=useState<Record<number,string>>({});
+ const [returnComplete,setReturnComplete]=useState(false);
+ const [returnConfirm,setReturnConfirm]=useState(false);
  const load=useCallback(async()=>{setLoading(true);setError("");try{
   const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Supabase sign-in required");
   const [res,tc,cr]=await Promise.all([
@@ -52,6 +58,24 @@ export default function WeeklySprayPlanning(){
  const dueTraces=[...new Map(due.filter(j=>cropFilter==="all"||j.crop===cropFilter).map(j=>[j.traceId,{id:j.traceId,name:j.trace}])).values()].sort((a,b)=>String(a.name??"").localeCompare(String(b.name??"")));
  const visible=jobs.filter(j=>(showCompleted||(j.status==="planned"&&j.remainingArea>0.0001))&&(cropFilter==="all"||j.crop===cropFilter)&&(traceFilter==="all"||String(j.traceId)===traceFilter));
  const groups=useMemo(()=>{const m=new Map<string,Job[]>();for(const j of visible){const k=j.week+"|"+j.crop+"|"+j.trace;if(!m.has(k))m.set(k,[]);m.get(k)!.push(j)}return [...m.entries()].map(([key,rows])=>({key,rows,week:rows[0].week,crop:rows[0].crop,trace:rows[0].trace}))},[visible]);
+ const openReturn=async(job:Job)=>{setError("");setReturnJob(job.id);setReturnDoc(null);setReturnIssues([]);setReturnAmounts({});setReturnComplete(false);setReturnConfirm(false);try{
+  const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");
+  const res=await fetch(endpoint+"?spray_return_issues=1&job_id="+job.id,{headers:{authorization:"Bearer "+session.access_token}});
+  const data=await res.json();if(!res.ok)throw Error(data.error||"Cannot load issue lines");
+  setReturnIssues(data.rows??[]);
+ }catch(e){setError(e instanceof Error?e.message:String(e))}};
+ const postReturn=async(job:Job)=>{const selected=returnIssues.filter(x=>x.document_id===returnDoc);
+ const lines=selected.map(x=>({source_line_id:x.source_line_id,quantity:Number(returnAmounts[x.source_line_id]||0)})).filter(x=>x.quantity>0);
+ if(!returnDoc||!lines.length){setError("Choose an issue and enter at least one return quantity.");return}
+ for(const l of lines){const source=selected.find(x=>x.source_line_id===l.source_line_id)!;if(!Number.isFinite(l.quantity)||l.quantity>source.available_to_return+0.00001){setError("Return quantity exceeds the issued balance for "+source.item_name);return}}
+ if(!returnConfirm){setError("Confirm the return before posting.");return}
+ setSaving(true);setError("");
+ try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");
+ const res=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.access_token},body:JSON.stringify({action:"spray_return",payload:{job_id:job.id,issue_document_id:returnDoc,spray_complete:returnComplete,lines}})});
+ const data=await res.json();if(!res.ok)throw Error(data.error||"Return failed");
+ if(!data.result?.document_id)throw Error("Return not confirmed");
+ setReturnJob(null);setReturnDoc(null);setReturnConfirm(false);await load();
+ }catch(e){setError("RETURN NOT POSTED: "+(e instanceof Error?e.message:String(e)))}finally{setSaving(false)}};
  const transfer=async(job:Job)=>{const ha=Number(issueHa);setError("");
   if(!Number.isFinite(ha)||ha<=0||ha>job.remainingArea+0.00001){setError("Enter hectares greater than zero and no more than the outstanding spray area.");return}
   const lines=job.lines.map(l=>({item_code:l.item_code,quantity:Number((ha*l.rate_per_ha).toFixed(4))}));
@@ -91,8 +115,24 @@ export default function WeeklySprayPlanning(){
  <View style={styles.actions}>
   <Pressable style={styles.secondary} onPress={()=>router.push({pathname:"/stock-v2-application",params:{jobId:String(job.id)}})}><ThemedText>Application / Print Tank Mix</ThemedText></Pressable>
   {job.status==="planned"&&job.lines.every(l=>l.issued_quantity===0)?<Pressable style={styles.secondary} onPress={()=>router.push({pathname:"/stock-v2-spray-entry",params:{editJobId:String(job.id)}})}><ThemedText>Edit Mix</ThemedText></Pressable>:null}
+  <Pressable style={styles.secondary} onPress={()=>void openReturn(job)}><ThemedText>Stock Return</ThemedText></Pressable>
   {job.status==="planned"&&job.remainingArea>0?<Pressable style={styles.primary} onPress={()=>{setIssueId(job.id);setIssueHa(String(Number(job.remainingArea.toFixed(3))));setConfirm(false)}}><ThemedText style={styles.white}>Transfer / Issue</ThemedText></Pressable>:null}
  </View>
+ {returnJob===job.id?<View style={styles.issue}>
+  <ThemedText style={styles.bold}>Return unused stock · Spray #{job.id}</ThemedText>
+  <ThemedText>Select original issue</ThemedText>
+  {[...new Map(returnIssues.map(x=>[x.document_id,x.document_number])).entries()].map(([id,num])=><Pressable key={id} style={[styles.secondary,returnDoc===id&&{backgroundColor:"#dcefe1"}]} onPress={()=>{setReturnDoc(id);setReturnAmounts({});setReturnConfirm(false)}}><ThemedText>{num}</ThemedText></Pressable>)}
+  {!returnIssues.length?<ThemedText>No returnable stock issued for this spray.</ThemedText>:null}
+  {returnIssues.filter(x=>x.document_id===returnDoc).map(x=><View key={x.source_line_id} style={{flexDirection:"row",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+  <ThemedText style={{flex:1,minWidth:140}}>{x.item_name} · max {fmt(x.available_to_return)} {x.base_unit}</ThemedText>
+  <TextInput style={[styles.input,{width:110}]} keyboardType="decimal-pad" placeholder="Return qty" value={returnAmounts[x.source_line_id]??""} onChangeText={v=>{setReturnAmounts(old=>({...old,[x.source_line_id]:v}));setReturnConfirm(false)}}/>
+  </View>)}
+  <ThemedText style={styles.bold}>Spray status after return</ThemedText>
+  <Pressable onPress={()=>{setReturnComplete(false);setReturnConfirm(false)}}><ThemedText>{returnComplete?"◯":"◉"} Spray Incomplete — keep outstanding for reissue</ThemedText></Pressable>
+  <Pressable onPress={()=>{setReturnComplete(true);setReturnConfirm(false)}}><ThemedText>{returnComplete?"◉":"◯"} Spray Complete — close spray</ThemedText></Pressable>
+  <Pressable onPress={()=>setReturnConfirm(v=>!v)}><ThemedText>{returnConfirm?"☑":"☐"} Confirm stock return</ThemedText></Pressable>
+  <Pressable disabled={saving||!returnConfirm} style={[styles.primary,(saving||!returnConfirm)&&{opacity:.5}]} onPress={()=>void postReturn(job)}><ThemedText style={styles.white}>{saving?"Posting…":"Post Stock Return"}</ThemedText></Pressable>
+ </View>:null}
  {issueId===job.id?<View style={styles.issue}>
   <ThemedText style={styles.bold}>Transfer / Issue</ThemedText>
   <ThemedText>Planned area: {fmt(job.area)} ha · Remaining: {fmt(job.remainingArea)} ha</ThemedText>
