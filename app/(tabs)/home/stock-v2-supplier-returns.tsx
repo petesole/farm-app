@@ -8,8 +8,8 @@ import {supabase} from "../../../supabase";
 import {jsplColors} from "@/constants/jspl-design";
 const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
 type Product={item_code:string;item_name:string;quantity:number;base_unit:string;ao_quantity?:number};
-type Receipt={receipt_line_id:number;document_number:string;document_date:string;item_code:string;item_name:string;received_quantity:number;previously_returned:number};
-type Return={document_id:number;document_number:string;supplier_name:string;credit_status:string;lines:{quantity:number;agreed_price:number;item_name:string;inventory_value:number;valuation_difference:number;sources:{grv:string;quantity:number}[]}[]};
+type Receipt={receipt_line_id:number;document_number:string;document_date:string;item_code:string;item_name:string;received_quantity:number;previously_returned:number;original_unit_price:number|null};
+type Return={document_id:number;document_number:string;supplier_name:string;credit_status:string;lines:{quantity:number;agreed_price:number;item_name:string;inventory_value:number;valuation_difference:number;original_grv_value:number|null;sources:{grv:string;quantity:number}[]}[]};
 const iso=(s:string)=>{const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s);if(!m)return "";const d=new Date(m[3]+"-"+m[2]+"-"+m[1]+"T12:00:00");return d.getDate()===Number(m[1])&&d.getMonth()===Number(m[2])-1?m[3]+"-"+m[2]+"-"+m[1]:""};
 export default function SupplierReturns(){
  const router=useRouter();const [owner,setOwner]=useState("JS"),[supplier,setSupplier]=useState(""),[reference,setReference]=useState(""),[reason,setReason]=useState("");
@@ -41,13 +41,13 @@ export default function SupplierReturns(){
  <TextInput style={[styles.input,{flex:1}]} placeholder="Credit $/unit" keyboardType="decimal-pad" value={lines[p.item_code]?.price??""} onChangeText={v=>setLines(old=>({...old,[p.item_code]:{qty:old[p.item_code]?.qty??"",price:v}}))}/>
  </View>)}
  {receipts.filter(r=>Number(lines[r.item_code]?.qty)>0).map(r=><View key={r.receipt_line_id} style={styles.product}>
- <View style={{flex:3}}><ThemedText>{r.item_name} · {r.document_number}</ThemedText><ThemedText>Available from GRV: {Number(r.received_quantity)-Number(r.previously_returned)}</ThemedText></View>
+ <View style={{flex:3}}><ThemedText>{r.item_name} · {r.document_number}</ThemedText><ThemedText>Available from GRV: {Number(r.received_quantity)-Number(r.previously_returned)} · Original price: {r.original_unit_price==null?"Unpriced":"$"+Number(r.original_unit_price).toFixed(2)}</ThemedText></View>
  <TextInput style={[styles.input,{flex:1}]} placeholder="Return qty" keyboardType="decimal-pad" value={alloc[r.receipt_line_id]??""} onChangeText={v=>setAlloc(old=>({...old,[r.receipt_line_id]:v}))}/>
  </View>)}
  <Pressable disabled={saving} style={styles.button} onPress={()=>void post()}><ThemedText style={styles.white}>{saving?"Posting…":"Post Physical Supplier Return"}</ThemedText></Pressable>
  <ThemedText style={styles.heading}>Supplier Returns / Credit Notes</ThemedText>
  {returns.map(r=><View key={r.document_id} style={styles.panel}><ThemedText style={styles.strong}>{r.document_number} · {r.supplier_name}</ThemedText><ThemedText>{r.credit_status==="awaiting"?"Awaiting supplier credit note":"Credit note confirmed"}</ThemedText>
- {r.lines.map((l,i)=><ThemedText key={i}>{l.item_name}: {l.quantity} × ${l.agreed_price} · Credit ${(Number(l.quantity)*Number(l.agreed_price)).toFixed(2)} · Stock value ${Number(l.inventory_value||0).toFixed(2)} · Difference ${Number(l.valuation_difference||0).toFixed(2)}</ThemedText>)}
+ {r.lines.map((l,i)=><ThemedText key={i}>{l.item_name}: {l.quantity} × ${l.agreed_price} · Credit ${(Number(l.quantity)*Number(l.agreed_price)).toFixed(2)} · Stock value ${Number(l.inventory_value||0).toFixed(2)} · Valuation difference ${Number(l.valuation_difference||0).toFixed(2)} · Original GRVs {l.original_grv_value==null?"unpriced":"$"+Number(l.original_grv_value).toFixed(2)}</ThemedText>)}
  {r.lines.map((l,i)=><ThemedText key={"source-"+i}>{(l.sources??[]).map(x=>x.grv+" ("+x.quantity+")").join(", ")}</ThemedText>)}
  {r.credit_status==="awaiting"?<Pressable style={styles.choice} onPress={()=>{setCreditId(r.document_id);setCreditNo("");setCreditDate("")}}><ThemedText>Record supplier credit note</ThemedText></Pressable>:null}
  {creditId===r.document_id?<View style={{gap:8}}><TextInput style={styles.input} placeholder="Credit note number" value={creditNo} onChangeText={setCreditNo}/><TextInput style={styles.input} placeholder="Credit note date dd/mm/yyyy" value={creditDate} onChangeText={setCreditDate}/><Pressable disabled={saving} style={styles.button} onPress={()=>void confirmCredit()}><ThemedText style={styles.white}>Confirm Credit Note</ThemedText></Pressable></View>:null}
