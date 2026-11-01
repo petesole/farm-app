@@ -9,12 +9,13 @@ import {jsplColors,jsplSpacing,jsplRadii,jsplSizes} from "@/constants/jspl-desig
 
 const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
 type Product={item_code:string;item_name:string;base_unit:string;quantity:number};
-type Spray={job_id:number;external_tracecode_id:number;tracecode_name:string;planned_week_start:string;area_ha:number;spray_type:string;part_label:string|null;sprayer_asset_code:string|null;water_litres_per_ha:number|null;status:string;item_code:string;item_name:string;base_unit:string;rate_per_ha:number;planned_quantity:number;issued_quantity:number};
+type Spray={job_id:number;external_tracecode_id:number;tracecode_name:string;planned_week_start:string;completed_date?:string|null;crop_name?:string|null;area_ha:number;spray_type:string;part_label:string|null;sprayer_asset_code:string|null;water_litres_per_ha:number|null;status:string;item_code:string;item_name:string;base_unit:string;rate_per_ha:number;planned_quantity:number;issued_quantity:number};
 type Crop={crop_id:number;crop_name:string};
 type Trace={tracecode_id:number;crop_id:number|null;end_date:string|null;start_date:string|null};
-type Job={id:number;traceId:number;week:string;trace:string;crop:string;area:number;status:string;sprayType:string;part:string;sprayer:string;water:number;lines:Spray[];remainingArea:number};
+type Job={id:number;traceId:number;week:string;completedDate:string;trace:string;crop:string;area:number;status:string;sprayType:string;part:string;sprayer:string;water:number;lines:Spray[];remainingArea:number};
 const fmt=(n:number)=>Number.isFinite(n)?n.toLocaleString("en-GB",{maximumFractionDigits:3}):"—";
-const weekLabel=(s:string)=>{const d=new Date(s+"T12:00:00Z");const th=new Date(d);th.setUTCDate(d.getUTCDate()+3-((d.getUTCDay()+6)%7));const yr=th.getUTCFullYear();const jan4=new Date(Date.UTC(yr,0,4));const first=new Date(jan4);first.setUTCDate(jan4.getUTCDate()-((jan4.getUTCDay()+6)%7));return yr+"/"+String(1+Math.round((d.getTime()-first.getTime())/604800000)).padStart(2,"0")};
+const dateLabel=(v:string|null|undefined)=>{const s=String(v??"").slice(0,10);return /^\d{4}-\d{2}-\d{2}$/.test(s)?s.slice(8,10)+"/"+s.slice(5,7)+"/"+s.slice(0,4):"—"};
+const weekLabel=(v:string)=>dateLabel(v);
 const uuid=()=>"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const r=Math.floor(Math.random()*16);return(c==="x"?r:(r&3)|8).toString(16)});
 export default function WeeklySprayPlanning(){
  const router=useRouter();
@@ -50,9 +51,9 @@ export default function WeeklySprayPlanning(){
   for(const s of sprays){if(!map.has(s.job_id))map.set(s.job_id,[]);map.get(s.job_id)!.push(s)}
   return [...map.entries()].map(([id,lines]):Job=>{
    const a=lines[0],cropId=traces.find(t=>t.tracecode_id===a.external_tracecode_id)?.crop_id;
-   const crop=crops.find(c=>c.crop_id===cropId)?.crop_name??"—";
+   const crop=a.crop_name||crops.find(c=>c.crop_id===cropId)?.crop_name||"—";
    const areas=lines.map(l=>l.rate_per_ha>0?Math.max(0,(l.planned_quantity-l.issued_quantity)/l.rate_per_ha):0);
-   return {id,traceId:a.external_tracecode_id,week:a.planned_week_start??"",trace:a.tracecode_name??"Unknown trace",crop,area:a.area_ha,status:a.status,sprayType:a.spray_type,part:a.part_label??"",sprayer:a.sprayer_asset_code??"",water:a.water_litres_per_ha??0,lines,remainingArea:areas.length?Math.min(...areas):0};
+   return {id,traceId:a.external_tracecode_id,week:String(a.planned_week_start??"").slice(0,10),completedDate:String(a.completed_date??"").slice(0,10),trace:a.tracecode_name??"Unknown trace",crop,area:a.area_ha,status:a.status,sprayType:a.spray_type,part:a.part_label??"",sprayer:a.sprayer_asset_code??"",water:a.water_litres_per_ha??0,lines,remainingArea:areas.length?Math.min(...areas):0};
   }).sort((a,b)=>String(a.week??"").localeCompare(String(b.week??""))||String(a.crop??"").localeCompare(String(b.crop??""))||String(a.trace??"").localeCompare(String(b.trace??""))||a.id-b.id);
  },[sprays,traces,crops]);
  const due=jobs.filter(j=>j.status==="planned"&&j.remainingArea>0.0001);
@@ -106,14 +107,14 @@ export default function WeeklySprayPlanning(){
  <View style={{flexDirection:"row",flexWrap:"wrap",gap:6}}><Pressable style={[styles.secondary,{backgroundColor:traceFilter==="all"?"#c9ead5":"#fff"}]} onPress={()=>setTraceFilter("all")}><ThemedText>All due traces</ThemedText></Pressable>{dueTraces.map(t=><Pressable key={t.id} style={[styles.secondary,{backgroundColor:traceFilter===String(t.id)?"#c9ead5":"#fff"}]} onPress={()=>setTraceFilter(String(t.id))}><ThemedText>{t.name}</ThemedText></Pressable>)}</View>
  {error?<ThemedText style={styles.error}>{error}</ThemedText>:null}
  {loading?<ActivityIndicator/>:<View style={styles.panel}>
- <View style={styles.tableHeader}><ThemedText style={[styles.bold,{flex:1}]}>Week</ThemedText><ThemedText style={[styles.bold,{flex:1}]}>Crop</ThemedText><ThemedText style={[styles.bold,{flex:2}]}>Trace Code</ThemedText><ThemedText style={[styles.bold,{width:55,textAlign:"right"}]}>Sprays</ThemedText><View style={{width:75}}/></View>
+ <View style={styles.tableHeader}><ThemedText style={[styles.bold,{flex:1}]}>Week</ThemedText><ThemedText style={[styles.bold,{flex:1}]}>Crop</ThemedText><ThemedText style={[styles.bold,{flex:2}]}>Trace Code</ThemedText><ThemedText style={[styles.bold,{width:65,textAlign:"right"}]}>Spray #</ThemedText><View style={{width:75}}/></View>
  {groups.length===0?<ThemedText style={styles.note}>No outstanding spray jobs. Use New Spray to create one.</ThemedText>:groups.map(g=><View key={g.key}>
- <View style={styles.groupRow}><ThemedText style={{flex:1}}>{weekLabel(g.week)}</ThemedText><ThemedText style={{flex:1}}>{g.crop}</ThemedText><ThemedText style={{flex:2}}>{g.trace}</ThemedText><ThemedText style={{width:55,textAlign:"right",fontWeight:"700"}}>{g.rows.length}</ThemedText><Pressable style={styles.secondary} onPress={()=>{setExpanded(v=>v===g.key?"":g.key);setIssueId(null)}}><ThemedText>{expanded===g.key?"Close":"Open"}</ThemedText></Pressable></View>
+ <View style={styles.groupRow}><ThemedText style={{flex:1}}>{weekLabel(g.week)}</ThemedText><ThemedText style={{flex:1}}>{g.crop}</ThemedText><ThemedText style={{flex:2}}>{g.trace}</ThemedText><ThemedText style={{width:65,textAlign:"right",fontWeight:"700"}}>{g.rows.map(j=>"#"+j.id).join(", ")}</ThemedText><Pressable style={styles.secondary} onPress={()=>{setExpanded(v=>v===g.key?"":g.key);setIssueId(null)}}><ThemedText>{expanded===g.key?"Close":"Open"}</ThemedText></Pressable></View>
  {expanded===g.key?g.rows.map(job=><View style={styles.mix} key={job.id}>
- <View style={styles.mixHeader}><ThemedText style={styles.bold}>Spray #{job.id} · {job.sprayType}</ThemedText><ThemedText>{job.status==="planned"?"Outstanding "+fmt(job.remainingArea)+" / "+fmt(job.area)+" ha":"Completed"}</ThemedText></View>
+ <View style={styles.mixHeader}><ThemedText style={styles.bold}>Spray #{job.id} · {job.sprayType}</ThemedText><ThemedText>{job.status==="planned"?"Outstanding "+fmt(job.remainingArea)+" / "+fmt(job.area)+" ha":"Completed · "+dateLabel(job.completedDate)}</ThemedText></View>
  <ThemedText style={styles.note}>Sprayer: {job.sprayer||"Not specified"} · Water: {fmt(job.water)} L/ha · {job.part}</ThemedText>
  <View style={styles.tableHeader}><ThemedText style={{flex:2,fontWeight:"700"}}>Input</ThemedText><ThemedText style={{flex:1,textAlign:"right",fontWeight:"700"}}>Rate/ha</ThemedText><ThemedText style={{flex:1,textAlign:"right",fontWeight:"700"}}>Required</ThemedText><ThemedText style={{flex:1,textAlign:"right",fontWeight:"700"}}>Stock</ThemedText><ThemedText style={{flex:1,textAlign:"right",fontWeight:"700"}}>Issued</ThemedText></View>
- {job.lines.map(l=><View style={styles.line} key={l.item_code}><ThemedText style={{flex:2}}>{l.item_name}</ThemedText><ThemedText style={styles.num}>{fmt(l.rate_per_ha)} {l.base_unit}</ThemedText><ThemedText style={styles.num}>{fmt(l.planned_quantity)}</ThemedText><ThemedText style={[styles.num,(products.find(p=>p.item_code===l.item_code)?.quantity??0)<Math.max(0,l.planned_quantity-l.issued_quantity)&&styles.stockShort]}>{products.some(p=>p.item_code===l.item_code)?fmt(products.find(p=>p.item_code===l.item_code)!.quantity):"—"}</ThemedText><ThemedText style={styles.num}>{fmt(l.issued_quantity)}</ThemedText></View>)}
+ {job.lines.map(l=><View style={styles.line} key={l.item_code}><ThemedText style={{flex:2}}>{l.item_name}</ThemedText><ThemedText style={styles.num}>{fmt(job.status==="completed"?l.issued_quantity/job.area:l.rate_per_ha)} {l.base_unit}</ThemedText><ThemedText style={styles.num}>{fmt(l.planned_quantity)}</ThemedText><ThemedText style={[styles.num,(products.find(p=>p.item_code===l.item_code)?.quantity??0)<Math.max(0,l.planned_quantity-l.issued_quantity)&&styles.stockShort]}>{products.some(p=>p.item_code===l.item_code)?fmt(products.find(p=>p.item_code===l.item_code)!.quantity):"—"}</ThemedText><ThemedText style={styles.num}>{fmt(l.issued_quantity)}</ThemedText></View>)}
  <View style={styles.actions}>
   <Pressable style={styles.secondary} onPress={()=>router.push({pathname:"/stock-v2-application",params:{jobId:String(job.id)}})}><ThemedText>Application / Print Tank Mix</ThemedText></Pressable>
   {job.status==="planned"&&job.lines.every(l=>l.issued_quantity===0)?<Pressable style={styles.secondary} onPress={()=>router.push({pathname:"/stock-v2-spray-entry",params:{editJobId:String(job.id)}})}><ThemedText>Edit Mix</ThemedText></Pressable>:null}
