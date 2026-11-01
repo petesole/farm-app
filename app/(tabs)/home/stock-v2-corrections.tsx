@@ -32,7 +32,7 @@ export default function StockCorrections(){
  {selected?<View style={styles.panel}><ThemedText style={styles.title}>Correct D-Note {selected.delivery_note}</ThemedText>
  <ThemedText>Original: {selected.delivery_note} · {selected.supplier_name} · {format(selected.delivery_note_date||selected.document_date)}</ThemedText>
  <ThemedText style={styles.strong}>D-Note Number</ThemedText><TextInput style={styles.input} value={number} onChangeText={setNumber}/>
- <ThemedText style={styles.strong}>Supplier</ThemedText><TextInput style={styles.input} value={supplier} onChangeText={setSupplier}/>
+ <ThemedText style={styles.strong}>Supplier (locked)</ThemedText><ThemedText>{supplier}</ThemedText>
  <ThemedText style={styles.strong}>D-Note Date (dd/mm/yyyy)</ThemedText><TextInput style={styles.input} value={date} onChangeText={setDate}/>
  <ThemedText style={styles.strong}>Reason for correction</ThemedText><TextInput style={styles.input} value={reason} onChangeText={setReason} multiline placeholder="Required"/>
  <ThemedText style={styles.title}>Uninvoiced Stock Corrections</ThemedText>
