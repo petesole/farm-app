@@ -6,7 +6,7 @@ import {ThemedText} from "@/components/themed-text";
 import {ThemedView} from "@/components/themed-view";
 import {supabase} from "../../../supabase";
 const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
-const dateLabel=(s:string)=>/^\\d{4}-\\d{2}-\\d{2}/.test(s)?s.slice(8,10)+"/"+s.slice(5,7)+"/"+s.slice(0,4):s;
+const dateLabel=(s:string)=>/^\d{4}-\d{2}-\d{2}/.test(s)?s.slice(8,10)+"/"+s.slice(5,7)+"/"+s.slice(0,4):s;
 type Take={take_id:number;take_number:string;status:string;owner_code:string;location_code:string;take_date:string;lines:number};
 type Count={item_code:string;item_name:string;base_unit:string;system_quantity:number;counted_quantity:number|null};
 type Stock={item_code:string;item_name:string;base_unit:string;owner_code:string;location_code:string;quantity:number};
