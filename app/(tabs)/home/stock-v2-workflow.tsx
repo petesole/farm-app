@@ -209,7 +209,7 @@ export default function StockV2Workflow(){
       {key:"supplier",title:"JS Last Purchase Supplier",width:210,value:x=>x.last_purchase_supplier||"—"},
       {key:"avg",title:"JS Weighted Avg Price*",kind:"number",width:170,value:x=>x.weighted_average_price}
      ]}/>
-   <ThemedText style={styles.muted}>* Weighted receipt price is a provisional indicator, not a verified perpetual inventory cost. Missing opening stock costs and issue valuations are shown as unavailable.</ThemedText>
+
   </View>:<View style={styles.sheet}>
    {header(tab.toUpperCase(),["Owner: TEST_JS","Warehouse: TEST_WH","Date: "+new Date().toLocaleDateString("en-GB")])}
    {(tab==="Purchase Orders"||tab==="POs Outstanding")?<View style={{gap:10,paddingBottom:14}}>
