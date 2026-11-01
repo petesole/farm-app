@@ -23,7 +23,7 @@ const emptyLine=(id:number,item_code=""):Line=>({id,item_code,quantity:"",unit_p
 const uuid=()=>"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const r=Math.floor(Math.random()*16);return(c==="x"?r:(r&3)|8).toString(16)});
 const number=(x:string)=>Number(x);
 const currency=(n:number)=>Number.isFinite(n)?n.toFixed(2):"—";
-const tabs=["Purchase Orders","POs Outstanding","GRV","Stock Balances","Spray Planning","Stock Transfer","Direct Issue"] as const;
+const tabs=["Purchase Orders","POs Outstanding","GRV","Stock Balances","Spray Planning","Stock Transfer","Direct Issue","Corrections"] as const;
 // Screen states also include the retained Planned Issue flow, beyond the dashboard buttons.
 type Tab=typeof tabs[number]|"Planned Issue";
 function Field({label,value,onChange,numeric=false}:{label:string;value:string;onChange:(v:string)=>void;numeric?:boolean}){
@@ -80,7 +80,7 @@ export default function StockV2Workflow(){
  const changeLine=(id:number,key:keyof Line,value:string)=>{setLines(old=>old.map(l=>l.id===id?{...l,[key]:value}:l));resetEdit()};
  const addLine=()=>{setLines(old=>[...old,emptyLine(nextLine)]);setNextLine(n=>n+1);resetEdit()};
  const removeLine=(id:number)=>{setLines(old=>old.filter(l=>l.id!==id));resetEdit()};
- const switchTab=(v:Tab|null)=>{if(v==="POs Outstanding"){router.push("/stock-v2-po-receiving");return;}if(v==="GRV"){router.push("/stock-v2-grv-outstanding");return;}if(v==="Stock Transfer"){router.push("/stock-v2-owner-transactions");return;}setTab(v);if(v==="Planned Issue")void refresh(false);setLines([emptyLine(nextLine)]);setNextLine(n=>n+1);setOrderId(null);setJobId(null);setDropdown(null);setStatus("");setReceiptMode("dnote");setInvoiceNumber("");setDeliveryNote("");resetEdit()};
+ const switchTab=(v:Tab|null)=>{if(v==="POs Outstanding"){router.push("/stock-v2-po-receiving");return;}if(v==="GRV"){router.push("/stock-v2-grv-outstanding");return;}if(v==="Stock Transfer"){router.push("/stock-v2-owner-transactions");return;}if(v==="Corrections"){router.push("/stock-v2-corrections");return;}setTab(v);if(v==="Planned Issue")void refresh(false);setLines([emptyLine(nextLine)]);setNextLine(n=>n+1);setOrderId(null);setJobId(null);setDropdown(null);setStatus("");setReceiptMode("dnote");setInvoiceNumber("");setDeliveryNote("");resetEdit()};
  const products=snapshot?.items??[];
  const inputTypes=[...new Set(products.map(x=>x.input_type).filter((x):x is string=>!!x))].sort();
  const inputCategories=[...new Set(products.map(x=>x.input_category).filter((x):x is string=>!!x))].sort();
