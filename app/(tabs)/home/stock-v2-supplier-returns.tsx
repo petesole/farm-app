@@ -8,19 +8,21 @@ import {supabase} from "../../../supabase";
 import {jsplColors} from "@/constants/jspl-design";
 const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
 type Product={item_code:string;item_name:string;quantity:number;base_unit:string;ao_quantity?:number};
-type Return={document_id:number;document_number:string;supplier_name:string;credit_status:string;lines:{quantity:number;agreed_price:number;item_name:string}[]};
+type Receipt={receipt_line_id:number;document_number:string;document_date:string;item_code:string;item_name:string;received_quantity:number;previously_returned:number};
+type Return={document_id:number;document_number:string;supplier_name:string;credit_status:string;lines:{quantity:number;agreed_price:number;item_name:string;inventory_value:number;valuation_difference:number;sources:{grv:string;quantity:number}[]}[]};
 const iso=(s:string)=>{const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s);if(!m)return "";const d=new Date(m[3]+"-"+m[2]+"-"+m[1]+"T12:00:00");return d.getDate()===Number(m[1])&&d.getMonth()===Number(m[2])-1?m[3]+"-"+m[2]+"-"+m[1]:""};
 export default function SupplierReturns(){
  const router=useRouter();const [owner,setOwner]=useState("JS"),[supplier,setSupplier]=useState(""),[reference,setReference]=useState(""),[reason,setReason]=useState("");
  const [products,setProducts]=useState<Product[]>([]),[returns,setReturns]=useState<Return[]>([]),[search,setSearch]=useState("");
- const [lines,setLines]=useState<Record<string,{qty:string;price:string}>>({});
+ const [lines,setLines]=useState<Record<string,{qty:string;price:string}>>({});const [receipts,setReceipts]=useState<Receipt[]>([]);const [alloc,setAlloc]=useState<Record<number,string>>({});
  const [creditId,setCreditId]=useState<number|null>(null),[creditNo,setCreditNo]=useState(""),[creditDate,setCreditDate]=useState("");
  const [loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
  const getSession=async()=>{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");return session.access_token};
  const load=async()=>{setLoading(true);try{const token=await getSession();const [a,b]=await Promise.all([fetch(endpoint,{headers:{authorization:"Bearer "+token}}),fetch(endpoint+"?supplier_returns=1",{headers:{authorization:"Bearer "+token}})]);const x=await a.json(),y=await b.json();if(!a.ok||!b.ok)throw Error(x.error||y.error||"Could not load stock");setProducts(x.items??[]);setReturns(y.rows??[])}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setLoading(false)}};
  useEffect(()=>{void load()},[]);
- const post=async()=>{const chosen=Object.entries(lines).filter(([,v])=>Number(v.qty)>0).map(([item_code,v])=>({item_code,quantity:Number(v.qty),agreed_price:Number(v.price)}));if(!chosen.length||chosen.some(l=>!Number.isFinite(l.agreed_price)||l.agreed_price<0||!lines[l.item_code].price.trim())){setError("Enter return quantities and negotiated credit prices");return}
- setSaving(true);setError("");try{const token=await getSession();const r=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+token},body:JSON.stringify({action:"supplier_return_post",owner_code:owner,supplier_name:supplier,return_reference:reference,reason,lines:chosen})});const d=await r.json();if(!r.ok)throw Error(d.error||"Return failed");setNotice("Posted "+d.result.document_number+" — awaiting supplier credit note");setLines({});setSupplier("");setReference("");setReason("");await load()}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setSaving(false)}};
+ const fetchReceipts=async()=>{setError("");try{const token=await getSession();const r=await fetch(endpoint+"?supplier_return_sources=1&supplier="+encodeURIComponent(supplier.trim()),{headers:{authorization:"Bearer "+token}});const d=await r.json();if(!r.ok)throw Error(d.error||"Could not load GRVs");setReceipts(d.rows??[]);setAlloc({})}catch(e){setError(e instanceof Error?e.message:String(e))}};
+ const post=async()=>{const chosen=Object.entries(lines).filter(([,v])=>Number(v.qty)>0).map(([item_code,v])=>({item_code,quantity:Number(v.qty),agreed_price:Number(v.price),sources:receipts.filter(x=>x.item_code===item_code&&Number(alloc[x.receipt_line_id])>0).map(x=>({receipt_line_id:x.receipt_line_id,quantity:Number(alloc[x.receipt_line_id])}))}));if(!chosen.length||chosen.some(l=>!Number.isFinite(l.agreed_price)||l.agreed_price<0||!lines[l.item_code].price.trim())){setError("Enter return quantities and negotiated credit prices");return}
+ setSaving(true);setError("");try{const token=await getSession();const r=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+token},body:JSON.stringify({action:"supplier_return_post",owner_code:owner,supplier_name:supplier,return_reference:reference,reason,lines:chosen})});const d=await r.json();if(!r.ok)throw Error(d.error||"Return failed");setNotice("Posted "+d.result.document_number+" — awaiting supplier credit note");setLines({});setReceipts([]);setAlloc({});setSupplier("");setReference("");setReason("");await load()}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setSaving(false)}};
  const confirmCredit=async()=>{setSaving(true);setError("");try{const token=await getSession();const r=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+token},body:JSON.stringify({action:"supplier_return_credit",document_id:creditId,credit_note_number:creditNo,credit_note_date:iso(creditDate)})});const d=await r.json();if(!r.ok)throw Error(d.error||"Credit note failed");setCreditId(null);setNotice("Supplier credit note recorded");await load()}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setSaving(false)}};
  return <ThemedView style={styles.root}><ScrollView contentContainerStyle={styles.page}>
  <StockV2Header title="Supplier Returns / Credit Notes"/>
@@ -30,16 +32,23 @@ export default function SupplierReturns(){
  <TextInput style={styles.input} placeholder="Supplier" value={supplier} onChangeText={setSupplier}/>
  <TextInput style={styles.input} placeholder="Supplier return / collection reference" value={reference} onChangeText={setReference}/>
  <TextInput style={styles.input} placeholder="Reason for return (required)" value={reason} onChangeText={setReason}/>
+ <Pressable style={styles.choice} onPress={()=>void fetchReceipts()}><ThemedText>Load Original GRVs for Supplier</ThemedText></Pressable>
+ <ThemedText>Select original GRV lines and enter the quantities being returned against each. They must total the return quantity.</ThemedText>
  <TextInput style={styles.input} placeholder="Find product" value={search} onChangeText={setSearch}/>
  {loading?<ActivityIndicator/>:products.filter(p=>p.item_name.toLowerCase().includes(search.toLowerCase())||p.item_code.toLowerCase().includes(search.toLowerCase())).filter(p=>Number(owner==="JS"?p.quantity:p.ao_quantity)>0).slice(0,45).map(p=><View key={p.item_code} style={styles.product}>
  <View style={{flex:2}}><ThemedText style={styles.strong}>{p.item_name}</ThemedText><ThemedText>{p.item_code} · Available {owner==="JS"?p.quantity:p.ao_quantity} {p.base_unit==="UNVERIFIED"?"":p.base_unit}</ThemedText></View>
  <TextInput style={[styles.input,{flex:1}]} placeholder="Qty" keyboardType="decimal-pad" value={lines[p.item_code]?.qty??""} onChangeText={v=>setLines(old=>({...old,[p.item_code]:{qty:v,price:old[p.item_code]?.price??""}}))}/>
  <TextInput style={[styles.input,{flex:1}]} placeholder="Credit $/unit" keyboardType="decimal-pad" value={lines[p.item_code]?.price??""} onChangeText={v=>setLines(old=>({...old,[p.item_code]:{qty:old[p.item_code]?.qty??"",price:v}}))}/>
  </View>)}
+ {receipts.filter(r=>Number(lines[r.item_code]?.qty)>0).map(r=><View key={r.receipt_line_id} style={styles.product}>
+ <View style={{flex:3}}><ThemedText>{r.item_name} · {r.document_number}</ThemedText><ThemedText>Available from GRV: {Number(r.received_quantity)-Number(r.previously_returned)}</ThemedText></View>
+ <TextInput style={[styles.input,{flex:1}]} placeholder="Return qty" keyboardType="decimal-pad" value={alloc[r.receipt_line_id]??""} onChangeText={v=>setAlloc(old=>({...old,[r.receipt_line_id]:v}))}/>
+ </View>)}
  <Pressable disabled={saving} style={styles.button} onPress={()=>void post()}><ThemedText style={styles.white}>{saving?"Posting…":"Post Physical Supplier Return"}</ThemedText></Pressable>
  <ThemedText style={styles.heading}>Supplier Returns / Credit Notes</ThemedText>
  {returns.map(r=><View key={r.document_id} style={styles.panel}><ThemedText style={styles.strong}>{r.document_number} · {r.supplier_name}</ThemedText><ThemedText>{r.credit_status==="awaiting"?"Awaiting supplier credit note":"Credit note confirmed"}</ThemedText>
- {r.lines.map((l,i)=><ThemedText key={i}>{l.item_name}: {l.quantity} × ${l.agreed_price}</ThemedText>)}
+ {r.lines.map((l,i)=><ThemedText key={i}>{l.item_name}: {l.quantity} × ${l.agreed_price} · Credit ${(Number(l.quantity)*Number(l.agreed_price)).toFixed(2)} · Stock value ${Number(l.inventory_value||0).toFixed(2)} · Difference ${Number(l.valuation_difference||0).toFixed(2)}</ThemedText>)}
+ {r.lines.map((l,i)=><ThemedText key={"source-"+i}>{(l.sources??[]).map(x=>x.grv+" ("+x.quantity+")").join(", ")}</ThemedText>)}
  {r.credit_status==="awaiting"?<Pressable style={styles.choice} onPress={()=>{setCreditId(r.document_id);setCreditNo("");setCreditDate("")}}><ThemedText>Record supplier credit note</ThemedText></Pressable>:null}
  {creditId===r.document_id?<View style={{gap:8}}><TextInput style={styles.input} placeholder="Credit note number" value={creditNo} onChangeText={setCreditNo}/><TextInput style={styles.input} placeholder="Credit note date dd/mm/yyyy" value={creditDate} onChangeText={setCreditDate}/><Pressable disabled={saving} style={styles.button} onPress={()=>void confirmCredit()}><ThemedText style={styles.white}>Confirm Credit Note</ThemedText></Pressable></View>:null}
  </View>)}
