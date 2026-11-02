@@ -8,7 +8,7 @@ import {supabase} from "../../../supabase";
 import {jsplColors} from "@/constants/jspl-design";
 const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
 type Product={item_code:string;item_name:string;quantity:number;base_unit:string;ao_quantity?:number};
-type Receipt={document_id:number;receipt_line_id:number;document_number:string;document_date:string;item_code:string;item_name:string;received_quantity:number;previously_returned:number;original_unit_price:number|null};
+type Receipt={display_no:number;document_id:number;receipt_line_id:number;document_number:string;document_date:string;item_code:string;item_name:string;received_quantity:number;previously_returned:number;original_unit_price:number|null};
 type Return={document_id:number;document_number:string;supplier_name:string;credit_status:string;return_mode:string;lines:{quantity:number;agreed_price:number;item_name:string;inventory_value:number;valuation_difference:number;original_grv_value:number|null;sources:{grv:string;quantity:number}[]}[]};
 const displayDate=(s:string)=>/^\d{4}-\d{2}-\d{2}/.test(s)?s.slice(8,10)+"/"+s.slice(5,7)+"/"+s.slice(0,4):s;
 const iso=(s:string)=>{const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s);if(!m)return "";const d=new Date(m[3]+"-"+m[2]+"-"+m[1]+"T12:00:00");return d.getDate()===Number(m[1])&&d.getMonth()===Number(m[2])-1?m[3]+"-"+m[2]+"-"+m[1]:""};
@@ -40,8 +40,8 @@ export default function SupplierReturns(){
  <TextInput style={styles.input} placeholder="Supplier return / collection reference" value={reference} onChangeText={setReference}/>
  <TextInput style={styles.input} placeholder="Reason for return (required)" value={reason} onChangeText={setReason}/>
  {mode==="specific_grv"?<View style={{gap:8}}><Pressable style={styles.choice} onPress={()=>void fetchReceipts()}><ThemedText>Load GRVs for Selected Supplier</ThemedText></Pressable>
- {receipts.length>0?<><ThemedText style={styles.strong}>Original GRV (number and date)</ThemedText><Pressable style={styles.choice} onPress={()=>setGrvOpen(v=>!v)}><ThemedText>{grvId?(()=>{const r=receipts.find(x=>x.document_id===grvId);return r?r.document_number+" · "+displayDate(r.document_date):"Select GRV"})():"Select GRV ▾"}</ThemedText></Pressable>
- {grvOpen?<ScrollView nestedScrollEnabled style={{maxHeight:200,backgroundColor:"#fff"}}>{receipts.filter((v,i,a)=>a.findIndex(x=>x.document_id===v.document_id)===i).map(x=><Pressable key={x.document_id} style={styles.choice} onPress={()=>{setGrvId(x.document_id);setGrvOpen(false);setLines({});setAlloc({})}}><ThemedText>{x.document_number} · {displayDate(x.document_date)}</ThemedText></Pressable>)}</ScrollView>:null}</>:null}
+ {receipts.length>0?<><ThemedText style={styles.strong}>Original GRV (number and date)</ThemedText><Pressable style={styles.choice} onPress={()=>setGrvOpen(v=>!v)}><ThemedText>{grvId?(()=>{const r=receipts.find(x=>x.document_id===grvId);return r?"GRV "+r.display_no+" · "+displayDate(r.document_date):"Select GRV"})():"Select GRV ▾"}</ThemedText></Pressable>
+ {grvOpen?<ScrollView nestedScrollEnabled style={{maxHeight:200,backgroundColor:"#fff"}}>{receipts.filter((v,i,a)=>a.findIndex(x=>x.document_id===v.document_id)===i).map(x=><Pressable key={x.document_id} style={styles.choice} onPress={()=>{setGrvId(x.document_id);setGrvOpen(false);setLines({});setAlloc({})}}><ThemedText>GRV {x.display_no} · {displayDate(x.document_date)}</ThemedText></Pressable>)}</ScrollView>:null}</>:null}
  </View>:null}
  <ThemedText>{mode==="specific_grv"?"Allocate each returned quantity against its original GRV.":"Return any available stock to the selected supplier without linking it to a specific GRV. Inventory value and negotiated credit are reconciled separately."}</ThemedText>
  {mode==="supplier_stock"?<View style={{gap:6}}> <TextInput style={styles.input} placeholder="Find product" value={search} onChangeText={setSearch}/>
