@@ -7,7 +7,7 @@ import {ThemedView} from "@/components/themed-view";
 import {supabase} from "../../../supabase";
 import {jsplColors} from "@/constants/jspl-design";
 const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
-type Doc={document_id:number;document_date:string;delivery_note:string;delivery_note_date:string|null;supplier_name:string;invoice_number:string|null;line_count:number};
+type Doc={display_no:number;document_id:number;document_date:string;delivery_note:string;delivery_note_date:string|null;supplier_name:string;invoice_number:string|null;line_count:number};
 type CorrectionLine={line_id:number;item_code:string;item_name:string;base_unit:string;received_quantity:number;invoiced_quantity:number;reduced_quantity:number};
 const format=(s:string|null)=>s&&/^\d{4}-\d{2}-\d{2}/.test(s)?s.slice(8,10)+"/"+s.slice(5,7)+"/"+s.slice(0,4):"";
 const parse=(s:string)=>{const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s);if(!m)return null;const d=new Date(m[3]+"-"+m[2]+"-"+m[1]+"T12:00:00");return Number.isNaN(d.getTime())||d.getDate()!==Number(m[1])?null:m[3]+"-"+m[2]+"-"+m[1]};
@@ -28,9 +28,9 @@ export default function StockCorrections(){
  <ThemedText>D-Note number and date can be corrected. Only remaining uninvoiced quantities can be reduced through an audited stock adjustment. Invoiced quantities are locked.</ThemedText>
  {error?<ThemedText style={styles.error}>{error}</ThemedText>:null}{message?<ThemedText style={styles.success}>{message}</ThemedText>:null}
  <TextInput style={styles.input} placeholder="Search D-Note number or supplier" value={search} onChangeText={setSearch}/>
- {loading?<ActivityIndicator/>:all.filter(x=>(x.delivery_note+" "+x.supplier_name+" "+x.document_id).toLowerCase().includes(search.toLowerCase())).slice(0,60).map(d=><Pressable key={d.document_id} style={styles.row} onPress={()=>choose(d)}><ThemedText style={styles.strong}>D-Note {d.delivery_note}</ThemedText><ThemedText>{d.supplier_name} · {format(d.delivery_note_date||d.document_date)} · {d.line_count} lines</ThemedText></Pressable>)}
- {selected?<View style={styles.panel}><ThemedText style={styles.title}>Correct D-Note {selected.delivery_note}</ThemedText>
- <ThemedText>Original: {selected.delivery_note} · {selected.supplier_name} · {format(selected.delivery_note_date||selected.document_date)}</ThemedText>
+ {loading?<ActivityIndicator/>:all.filter(x=>(x.delivery_note+" "+x.supplier_name+" "+x.document_id).toLowerCase().includes(search.toLowerCase())).slice(0,60).map(d=><Pressable key={d.document_id} style={styles.row} onPress={()=>choose(d)}><ThemedText style={styles.strong}>D-Note {d.display_no}</ThemedText><ThemedText>{d.supplier_name} · {format(d.delivery_note_date||d.document_date)} · {d.line_count} lines</ThemedText></Pressable>)}
+ {selected?<View style={styles.panel}><ThemedText style={styles.title}>Correct D-Note {selected.display_no}</ThemedText>
+ <ThemedText>Supplier D-Note Ref: {selected.delivery_note} · {selected.supplier_name} · {format(selected.delivery_note_date||selected.document_date)}</ThemedText>
  <ThemedText style={styles.strong}>D-Note Number</ThemedText><TextInput style={styles.input} value={number} onChangeText={setNumber}/>
  <ThemedText style={styles.strong}>Supplier (locked)</ThemedText><ThemedText>{supplier}</ThemedText>
  <ThemedText style={styles.strong}>D-Note Date (dd/mm/yyyy)</ThemedText><TextInput style={styles.input} value={date} onChangeText={setDate}/>
