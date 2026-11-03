@@ -11,7 +11,7 @@ type CreditLine={line_id:number;item_code:string;item_name:string;quantity:numbe
 type ReturnRow={document_id:number;document_number:string;document_date:string;owner_code:string;supplier_name:string;return_reference:string;reason:string;lines:CreditLine[]};
 type Allocation={return_line_id:number;quantity:number;unit_credit_price:number};
 type Credit={credit_id:number;credit_note_number:string;credit_note_date:string;supplier_name:string;owner_code:string;total_amount:number;credit_kind:string;notes:string;allocations:any[]};
-type Receipt={document_id:number;display_no:number;document_date:string;item_code:string;item_name:string;receipt_line_id:number};
+type Receipt={document_id:number;document_number:string;document_date:string;supplier_name:string;owner_code:string;item_id:number;item_code:string;item_name:string;receipt_line_id:number};
 const display=(s:string|null|undefined)=>s&&/^\d{4}-\d{2}-\d{2}/.test(s)?s.substring(8,10)+"/"+s.substring(5,7)+"/"+s.substring(0,4):s||"";
 const toISO=(s:string)=>{const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s.trim());if(!m)return "";const iso=m[3]+"-"+m[2]+"-"+m[1];const d=new Date(iso+"T12:00:00Z");return !Number.isNaN(d.valueOf())&&d.toISOString().substring(0,10)===iso?iso:""};
 const value=(v:unknown)=>Number(v||0);
@@ -24,12 +24,12 @@ export default function SupplierCredits(){
  const [receipts,setReceipts]=useState<Receipt[]>([]),[receiptSearch,setReceiptSearch]=useState(""),[receiptLine,setReceiptLine]=useState<Receipt|null>(null),[reason,setReason]=useState("");
  const token=async()=>{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Please sign in");return session.access_token};
  const request=async(url:string,payload?:unknown)=>{const t=await token();const r=await fetch(url,{method:payload?"POST":"GET",headers:{authorization:"Bearer "+t,...(payload?{"content-type":"application/json"}:{})},...(payload?{body:JSON.stringify(payload)}:{})});const j=await r.json();if(!r.ok)throw Error(j.error||"Request failed");return j};
- const load=useCallback(async()=>{setBusy(true);setError("");try{const x=await request(creditApi);setReturns(x.returns||[]);setCredits(x.credits||[])}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}},[]);
+ const load=useCallback(async()=>{setBusy(true);setError("");try{const x=await request(creditApi);setReturns(x.returns||[]);setCredits(x.credits||[]);setReceipts(x.receipts||[])}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}},[]);
  useEffect(()=>{void load()},[]);
- const supplierNames=useMemo(()=>Array.from(new Set(returns.filter(x=>x.owner_code===owner).map(x=>x.supplier_name))).sort(),[returns,owner]);
+ const supplierNames=useMemo(()=>Array.from(new Set([...returns.filter(x=>x.owner_code===owner).map(x=>x.supplier_name),...receipts.filter(x=>x.owner_code==="TEST_"+owner).map(x=>x.supplier_name)])).sort(),[returns,receipts,owner]);
  const available=useMemo(()=>returns.filter(r=>r.owner_code===owner&&(!supplier||r.supplier_name===supplier)).flatMap(r=>r.lines.filter(l=>value(l.quantity)>value(l.credited_quantity)+0.000001).map(l=>({...l,ret:r}))),[returns,owner,supplier]);
  const expected=useMemo(()=>available.reduce((n,l)=>{const e=edits[l.line_id];return n+(e?value(e.qty)*value(e.price):0)},0),[available,edits]);
- const reset=()=>{setCreditNo("");setDate("");setAmount("");setNotes("");setReason("");setEdits({});setReceiptLine(null);setReceipts([]);setReceiptSearch("");setError("")};
+ const reset=()=>{setCreditNo("");setDate("");setAmount("");setNotes("");setReason("");setEdits({});setReceiptLine(null);setReceiptSearch("");setError("")};
  const open=(type:"return"|"price",s?:string)=>{reset();if(s)setSupplier(s);setWindow(type)};
  const close=()=>{setWindow(null);setSelectedCredit(null);setError("")};
  const add=(l:CreditLine)=>{const left=value(l.quantity)-value(l.credited_quantity);setEdits(prev=>({...prev,[l.line_id]:{qty:prev[l.line_id]?.qty??String(left),price:prev[l.line_id]?.price??String(l.agreed_price)}}))};
@@ -42,11 +42,11 @@ export default function SupplierCredits(){
   }else{
    if(!receiptLine)throw Error("Select original D-Note/GRV and product");
    if(reason.trim().length<5)throw Error("Enter reason for price-only credit");
-   await request(creditApi,{action:"price_credit",owner_code:owner,supplier_name:supplier,credit_note_number:creditNo.trim(),credit_note_date:toISO(date),total_amount:Number(amount),notes,receipt_document_id:receiptLine.document_id,item_id:null,reason});
+   await request(creditApi,{action:"price_credit",owner_code:owner,supplier_name:supplier,credit_note_number:creditNo.trim(),credit_note_date:toISO(date),total_amount:Number(amount),notes,receipt_document_id:receiptLine.document_id,item_id:receiptLine.item_id,reason});
   }
   close();await load();setNotice("Supplier credit note "+creditNo+" posted and recorded");
  }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
- const fetchReceipts=async()=>{setBusy(true);setError("");try{const r=await request(stockApi+"?supplier_return_sources=1&supplier="+encodeURIComponent(supplier)+"&owner="+owner);setReceipts(r.rows||[])}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
+ const fetchReceipts=async()=>{await load()};
  const button=(title:string,onPress:()=>void,disabled=false)=><Pressable disabled={disabled||busy} style={[styles.button,(disabled||busy)&&styles.dim]} onPress={onPress}><Text style={styles.buttonText}>{title}</Text></Pressable>;
  return <View style={styles.root}><ScrollView contentContainerStyle={styles.page}>
   <StockV2Header title="Supplier Credit Notes"/>
@@ -55,7 +55,7 @@ export default function SupplierCredits(){
   {notice?<Text style={styles.success}>{notice}</Text>:null}{!window&&error?<Text style={styles.error}>{error}</Text>:null}
   <View style={styles.row}>{["JS","AO"].map(o=><Pressable key={o} onPress={()=>{setOwner(o);setSupplier("")}} style={[styles.choice,owner===o&&styles.selected]}><Text>{o}</Text></Pressable>)}</View>
   <Text style={styles.label}>Supplier</Text><ScrollView horizontal contentContainerStyle={styles.row}>{supplierNames.map(s=><Pressable key={s} style={[styles.choice,supplier===s&&styles.selected]} onPress={()=>setSupplier(s)}><Text>{s}</Text></Pressable>)}</ScrollView>
-  {button("Record Supplier Credit Note",()=>open("return"),!supplier)}
+  <View style={styles.row}>{button("Credit Returned Stock",()=>open("return"),!supplier)}{button("Price-only Credit",()=>open("price"),!supplier)}</View>
   <Text style={styles.heading}>Outstanding Returns</Text>
   {busy&&!window?<ActivityIndicator/>:null}
   {returns.filter(r=>r.owner_code===owner&&(!supplier||r.supplier_name===supplier)).map(r=>{
@@ -90,7 +90,7 @@ export default function SupplierCredits(){
     {window==="price"?<>
       <Text style={styles.label}>Original Receipt</Text>{button("Load Receipts",()=>void fetchReceipts())}
       <TextInput style={styles.input} placeholder="Search product or GRV" value={receiptSearch} onChangeText={setReceiptSearch}/>
-      {receipts.filter(r=>(r.item_name+" "+r.display_no).toLowerCase().includes(receiptSearch.toLowerCase())).slice(0,40).map(r=><Pressable key={r.receipt_line_id} style={[styles.panel,receiptLine?.receipt_line_id===r.receipt_line_id&&styles.selected]} onPress={()=>setReceiptLine(r)}><Text>GRV {r.display_no} · {r.item_name} · {display(r.document_date)}</Text></Pressable>)}
+      {receipts.filter(r=>r.owner_code==="TEST_"+owner&&r.supplier_name.trim().toLowerCase()===supplier.trim().toLowerCase()&&(r.item_name+" "+r.document_number).toLowerCase().includes(receiptSearch.toLowerCase())).slice(0,40).map(r=><Pressable key={r.receipt_line_id} style={[styles.panel,receiptLine?.receipt_line_id===r.receipt_line_id&&styles.selected]} onPress={()=>setReceiptLine(r)}><Text>{r.document_number} · {r.item_name} · {display(r.document_date)}</Text></Pressable>)}
       <Text style={styles.label}>Reason for price-only credit</Text><TextInput style={styles.input} value={reason} onChangeText={setReason}/>
     </>:null}
     <Text style={styles.label}>Actual supplier credit note total ($)</Text><TextInput style={styles.input} keyboardType="decimal-pad" value={amount} onChangeText={setAmount} placeholder="Exact amount on supplier credit"/>
