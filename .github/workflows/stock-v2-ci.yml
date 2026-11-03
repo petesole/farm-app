@@ -2,6 +2,8 @@ name: Stock V2 Typecheck and Web Build
 on:
   push:
     branches: [development]
+  pull_request:
+    branches: [development]
   workflow_dispatch:
 jobs:
   verify:
