@@ -63,10 +63,13 @@ export default function SupplierCredits(){
     const credited=r.lines.reduce((n,l)=>n+value(l.credited_value),0);
     const expectedForCredited=r.lines.reduce((n,l)=>n+value(l.credited_quantity)*value(l.agreed_price),0);
     const difference=credited-expectedForCredited;
+    const stockValue=r.lines.reduce((n,l)=>n+(value(l.quantity)>0?value(l.inventory_value)*value(l.credited_quantity)/value(l.quantity):0),0);
+    const valuationDifference=credited-stockValue;
     return <Pressable key={r.document_id} style={styles.panel} onPress={()=>open("return",r.supplier_name)}>
      <Text style={styles.bold}>{r.document_number} · {r.supplier_name}</Text><Text>{display(r.document_date)} · {r.lines.length} products · {outstanding>0?"Outstanding qty "+outstanding:"Fully quantity credited"}</Text>
      <Text>Credit received: ${credited.toFixed(2)} · {outstanding>0?"Open":"Qty credited"}</Text>
-     {Math.abs(difference)>0.01?<Text style={styles.error}>Credit difference: ${difference.toFixed(2)} — review required</Text>:null}
+     {Math.abs(difference)>0.01?<Text style={styles.error}>Expected vs actual credit: ${difference.toFixed(2)} — review required</Text>:null}
+     {credited>0?<Text>Stock value of credited quantities: ${stockValue.toFixed(2)} · Credit less stock value: ${valuationDifference.toFixed(2)}</Text>:null}
     </Pressable>})}
   <Text style={styles.heading}>Recorded Credit Notes</Text>
   {credits.filter(c=>c.owner_code===owner&&(!supplier||c.supplier_name===supplier)).map(c=><Pressable key={c.credit_id} style={styles.panel} onPress={()=>{setSelectedCredit(c);setWindow("history")}}>
