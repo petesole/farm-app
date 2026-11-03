@@ -61,9 +61,12 @@ export default function SupplierCredits(){
   {returns.filter(r=>r.owner_code===owner&&(!supplier||r.supplier_name===supplier)).map(r=>{
     const outstanding=r.lines.reduce((n,l)=>n+Math.max(0,value(l.quantity)-value(l.credited_quantity)),0);
     const credited=r.lines.reduce((n,l)=>n+value(l.credited_value),0);
+    const expectedForCredited=r.lines.reduce((n,l)=>n+value(l.credited_quantity)*value(l.agreed_price),0);
+    const difference=credited-expectedForCredited;
     return <Pressable key={r.document_id} style={styles.panel} onPress={()=>open("return",r.supplier_name)}>
      <Text style={styles.bold}>{r.document_number} · {r.supplier_name}</Text><Text>{display(r.document_date)} · {r.lines.length} products · {outstanding>0?"Outstanding qty "+outstanding:"Fully quantity credited"}</Text>
-     <Text>Credit received: ${credited.toFixed(2)} · {outstanding>0?"Open":"Credited"}</Text>
+     <Text>Credit received: ${credited.toFixed(2)} · {outstanding>0?"Open":"Qty credited"}</Text>
+     {Math.abs(difference)>0.01?<Text style={styles.error}>Credit difference: ${difference.toFixed(2)} — review required</Text>:null}
     </Pressable>})}
   <Text style={styles.heading}>Recorded Credit Notes</Text>
   {credits.filter(c=>c.owner_code===owner&&(!supplier||c.supplier_name===supplier)).map(c=><Pressable key={c.credit_id} style={styles.panel} onPress={()=>{setSelectedCredit(c);setWindow("history")}}>
@@ -73,7 +76,8 @@ export default function SupplierCredits(){
  <Modal visible={window!==null} animationType="slide" onRequestClose={close}>
   <View style={styles.root}><ScrollView contentContainerStyle={styles.page}>
    <View style={styles.top}><Text style={styles.heading}>{window==="history"?"Supplier Credit Note":window==="price"?"Price-only Credit":"Record Supplier Credit"}</Text><Pressable onPress={close}><Text style={styles.link}>✕ Close</Text></Pressable></View>
-   {window==="history"&&selectedCredit?<View style={styles.panel}><Text style={styles.bold}>{selectedCredit.credit_note_number} · {selectedCredit.supplier_name}</Text><Text>{display(selectedCredit.credit_note_date)} · ${value(selectedCredit.total_amount).toFixed(2)}</Text><Text>{selectedCredit.notes}</Text>{(selectedCredit.allocations||[]).map((a,i)=><Text key={i}>{a.return_number} · {a.item_name} · {a.quantity} × ${a.unit_credit_price}</Text>)}</View>:null}
+   {window==="history"&&selectedCredit?<View style={styles.panel}><Text style={styles.bold}>{selectedCredit.credit_note_number} · {selectedCredit.supplier_name}</Text><Text>{display(selectedCredit.credit_note_date)} · ${value(selectedCredit.total_amount).toFixed(2)}</Text><Text>{selectedCredit.notes}</Text>{(selectedCredit.allocations||[]).map((a,i)=><Text key={i}>{a.return_number} · {a.item_name} · {a.quantity} × ${a.unit_credit_price} actual (expected ${Number(a.agreed_price).toFixed(2)}/unit; variance ${(Number(a.actual_value)-Number(a.expected_value)).toFixed(2)})</Text>)}
+    {selectedCredit.credit_kind==="return"?<Text style={styles.bold}>Line allocations ${selectedCredit.allocations.reduce((n,a)=>n+Number(a.actual_value),0).toFixed(2)} · Actual supplier credit ${value(selectedCredit.total_amount).toFixed(2)} · Difference ${(value(selectedCredit.total_amount)-selectedCredit.allocations.reduce((n,a)=>n+Number(a.actual_value),0)).toFixed(2)}</Text>:null}</View>:null}
    {window==="return"||window==="price"?<>
     <Text style={styles.label}>Supplier: {supplier} · Owner: {owner}</Text>
     <Text style={styles.label}>Credit Note Number</Text><TextInput style={styles.input} value={creditNo} onChangeText={setCreditNo} placeholder="Supplier CN reference"/>
@@ -85,7 +89,7 @@ export default function SupplierCredits(){
       <Text>Outstanding {left} · Expected ${value(l.agreed_price).toFixed(2)}/unit</Text>
       {edit?<View style={styles.row}><View style={styles.flex}><Text style={styles.label}>Quantity</Text><TextInput style={styles.input} keyboardType="decimal-pad" value={edit.qty} onChangeText={qty=>setEdits(v=>({...v,[l.line_id]:{...v[l.line_id],qty}}))}/></View><View style={styles.flex}><Text style={styles.label}>Actual credit $/unit</Text><TextInput style={styles.input} keyboardType="decimal-pad" value={edit.price} onChangeText={price=>setEdits(v=>({...v,[l.line_id]:{...v[l.line_id],price}}))}/></View><Pressable onPress={()=>setEdits(v=>{const next={...v};delete next[l.line_id];return next})}><Text style={styles.link}>Remove</Text></Pressable></View>:null}
      </View>})}
-     <Text style={styles.bold}>Allocated value: ${expected.toFixed(2)}</Text>
+     <Text style={styles.bold}>Selected line credit value: ${expected.toFixed(2)}</Text><Text>Enter the actual supplier credit total below. Any difference must be explained in Notes.</Text>
     </>:null}
     {window==="price"?<>
       <Text style={styles.label}>Original Receipt</Text>{button("Load Receipts",()=>void fetchReceipts())}
