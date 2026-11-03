@@ -51,7 +51,7 @@ export default function StockV2MovementReport(){
  </ThemedView>;
 }
 const styles=StyleSheet.create({
- root:{flex:1,backgroundColor:jsplColors.background},header:{padding:jsplSpacing.lg,gap:8,borderBottomWidth:1,borderColor:jsplColors.border},
+ root:{flex:1,backgroundColor:jsplColors.background},header:{padding:jsplSpacing.lg,gap:8,borderBottomWidth:1,borderColor:jsplColors.border},productHeading:{flexDirection:"row",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap"},stockBox:{padding:12,borderColor:jsplColors.border,borderWidth:1,borderRadius:jsplRadii.md,backgroundColor:"#eaf3ec",minWidth:160},stockLabel:{fontSize:12,color:jsplColors.textSecondary,fontWeight:"700"},stockValue:{fontSize:21,fontWeight:"800",color:jsplColors.primaryDark},
  back:{alignSelf:"flex-start",minHeight:jsplSizes.buttonHeight,justifyContent:"center",paddingHorizontal:jsplSpacing.md,borderWidth:1,borderColor:jsplColors.border,borderRadius:jsplRadii.sm},
  heading:{fontWeight:"800",fontSize:27,color:jsplColors.primaryDark},sub:{color:jsplColors.textSecondary},error:{padding:20,color:jsplColors.danger},
  list:{flex:1},table:{minWidth:1040,padding:12},rowHead:{flexDirection:"row",paddingVertical:9,backgroundColor:"#dce5ed"},row:{flexDirection:"row",paddingVertical:7,borderBottomWidth:1,borderColor:jsplColors.border},alt:{backgroundColor:"#f1f3f5"},
