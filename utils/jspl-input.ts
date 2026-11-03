@@ -14,14 +14,14 @@ export function displayJsplDate(iso: string): string {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
 }
 export type JsplOption = { id: string | number; label: string; active?: boolean };
-export type JsplSelector = 'crop' | 'trace' | 'product';
+export type JsplSelector = 'crop' | 'trace' | 'product' | 'spray-type' | 'crop-budget';
 export function filterJsplOptions(
   options: readonly JsplOption[], selector: JsplSelector, search: string,
   includeInactive = false,
 ): JsplOption[] {
   const prefix = search.trim().toLocaleLowerCase();
   return options.filter(o =>
-    (includeInactive || selector === 'product' || o.active === true) &&
+    (includeInactive || selector === 'product' || selector === 'spray-type' || selector === 'crop-budget' || o.active === true) &&
     o.label.toLocaleLowerCase().startsWith(prefix)
   );
 }
