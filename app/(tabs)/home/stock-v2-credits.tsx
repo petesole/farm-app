@@ -11,7 +11,7 @@ type CreditLine={line_id:number;item_code:string;item_name:string;quantity:numbe
 type ReturnRow={document_id:number;document_number:string;document_date:string;owner_code:string;supplier_name:string;return_reference:string;reason:string;lines:CreditLine[]};
 type Allocation={return_line_id:number;quantity:number;unit_credit_price:number};
 type Credit={credit_id:number;credit_note_number:string;credit_note_date:string;supplier_name:string;owner_code:string;total_amount:number;credit_kind:string;notes:string;allocations:any[];price_adjustment?:{receipt_number:string;item_name:string;amount:number;reason:string}|null};
-type Receipt={document_id:number;document_number:string;document_date:string;supplier_name:string;owner_code:string;item_id:number;item_code:string;item_name:string;receipt_line_id:number};
+type Receipt={document_id:number;document_number:string;display_no:number;document_date:string;supplier_name:string;owner_code:string;item_id:number;item_code:string;item_name:string;receipt_line_id:number};
 const display=(s:string|null|undefined)=>s&&/^\d{4}-\d{2}-\d{2}/.test(s)?s.substring(8,10)+"/"+s.substring(5,7)+"/"+s.substring(0,4):s||"";
 const toISO=(s:string)=>{const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s.trim());if(!m)return "";const iso=m[3]+"-"+m[2]+"-"+m[1];const d=new Date(iso+"T12:00:00Z");return !Number.isNaN(d.valueOf())&&d.toISOString().substring(0,10)===iso?iso:""};
 const value=(v:unknown)=>Number(v||0);
@@ -94,7 +94,7 @@ export default function SupplierCredits(){
     {window==="price"?<>
       <Text style={styles.label}>Original Receipt</Text>{button("Load Receipts",()=>void fetchReceipts())}
       <TextInput style={styles.input} placeholder="Search product or GRV" value={receiptSearch} onChangeText={setReceiptSearch}/>
-      {receipts.filter(r=>r.owner_code==="TEST_"+owner&&r.supplier_name.trim().toLowerCase()===supplier.trim().toLowerCase()&&(r.item_name+" "+r.document_number).toLowerCase().includes(receiptSearch.toLowerCase())).slice(0,40).map(r=><Pressable key={r.receipt_line_id} style={[styles.panel,receiptLine?.receipt_line_id===r.receipt_line_id&&styles.selected]} onPress={()=>setReceiptLine(r)}><Text>{r.document_number} · {r.item_name} · {display(r.document_date)}</Text></Pressable>)}
+      {receipts.filter(r=>r.owner_code==="TEST_"+owner&&r.supplier_name.trim().toLowerCase()===supplier.trim().toLowerCase()&&(r.item_name+" "+r.display_no).toLowerCase().includes(receiptSearch.toLowerCase())).slice(0,40).map(r=><Pressable key={r.receipt_line_id} style={[styles.panel,receiptLine?.receipt_line_id===r.receipt_line_id&&styles.selected]} onPress={()=>setReceiptLine(r)}><Text>GRV {r.display_no} · {r.item_name} · {display(r.document_date)}</Text></Pressable>)}
       <Text style={styles.label}>Reason for price-only credit</Text><TextInput style={styles.input} value={reason} onChangeText={setReason}/>
     </>:null}
     <Text style={styles.label}>Actual supplier credit note total ($)</Text><TextInput style={styles.input} keyboardType="decimal-pad" value={amount} onChangeText={setAmount} placeholder="Exact amount on supplier credit"/>
