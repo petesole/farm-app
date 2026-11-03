@@ -1,6 +1,6 @@
 import {useEffect,useState} from "react";
 import {useRouter} from "expo-router";
-import {ActivityIndicator,Pressable,ScrollView,StyleSheet,TextInput,View} from "react-native";
+import {ActivityIndicator,Modal,Pressable,ScrollView,StyleSheet,TextInput,View} from "react-native";
 import {StockV2Header} from "@/components/jspl/StockV2Header";
 import {ThemedText} from "@/components/themed-text";
 import {ThemedView} from "@/components/themed-view";
@@ -18,19 +18,21 @@ export default function POCorrections(){
  <ThemedText>Cancel all or part of the unreceived balance. Received stock and posted GRVs remain unchanged. All cancellations are audited.</ThemedText>
  {error?<ThemedText style={st.error}>{error}</ThemedText>:null}{notice?<ThemedText>{notice}</ThemedText>:null}
  <TextInput style={st.input} placeholder="Search PO, supplier or product" value={search} onChangeText={setSearch}/>
- {rows.filter(r=>(r.order_number+" "+r.supplier_name+" "+r.item_name).toLowerCase().includes(search.toLowerCase())).slice(0,150).map(r=><View key={r.order_line_id}>
- <Pressable style={[st.line,selected?.order_line_id===r.order_line_id&&st.selectedLine]} onPress={()=>{if(selected?.order_line_id===r.order_line_id){setSelected(null);return;}setSelected(r);setQty(String(Math.max(0,r.outstanding_quantity)));setReason("");setError("")}}>
- <ThemedText style={st.bold}>{selected?.order_line_id===r.order_line_id?"▾":"▸"} {r.order_number} · {r.supplier_name} · {r.item_name}</ThemedText>
- <ThemedText>Ordered {r.originally_ordered} · Received {r.received_quantity} · Cancelled {r.cancelled_quantity} · Outstanding {r.outstanding_quantity}</ThemedText>
- </Pressable>
- {selected?.order_line_id===r.order_line_id?<View style={st.panel}>
- <ThemedText style={st.title}>Correct {r.order_number}</ThemedText>
- <ThemedText>{r.item_name} · Maximum cancellation: {r.outstanding_quantity}</ThemedText>
- {r.status==="approved"&&r.outstanding_quantity>0?<><TextInput style={st.input} keyboardType="decimal-pad" placeholder="Quantity to cancel" value={qty} onChangeText={setQty}/><TextInput style={st.input} placeholder="Reason for cancellation" value={reason} onChangeText={setReason}/><Pressable disabled={busy} onPress={()=>void post()} style={st.button}><ThemedText style={{color:"white",fontWeight:"700"}}>Cancel Outstanding Quantity</ThemedText></Pressable></>:<ThemedText>This line has no cancellable outstanding balance.</ThemedText>}
- <Pressable onPress={()=>setSelected(null)}><ThemedText>Close</ThemedText></Pressable>
- </View>:null}
- </View>)}
+ {rows.filter(r=>(r.order_number+" "+r.supplier_name+" "+r.item_name).toLowerCase().includes(search.toLowerCase())).slice(0,150).map(r=><Pressable key={r.order_line_id} style={st.line} onPress={()=>{setSelected(r);setQty(String(Math.max(0,r.outstanding_quantity)));setReason("");setError("")}}>
+  <ThemedText style={st.bold}>{r.order_number} · {r.supplier_name} · {r.item_name} ›</ThemedText>
+  <ThemedText>Ordered {r.originally_ordered} · Received {r.received_quantity} · Cancelled {r.cancelled_quantity} · Outstanding {r.outstanding_quantity}</ThemedText>
+ </Pressable>)}
  {busy?<ActivityIndicator/>:null}
- </ScrollView></ThemedView>;
+ </ScrollView>
+ <Modal visible={!!selected} animationType="slide" onRequestClose={()=>setSelected(null)}>
+ <ThemedView style={{flex:1}}><ScrollView contentContainerStyle={st.page}>
+  <View style={{flexDirection:"row",justifyContent:"space-between",alignItems:"center"}}><ThemedText style={st.title}>Purchase Order {selected?.order_number}</ThemedText><Pressable onPress={()=>setSelected(null)}><ThemedText>✕ Close</ThemedText></Pressable></View>
+  <ThemedText style={st.bold}>{selected?.supplier_name} · {selected?.item_name}</ThemedText>
+  <ThemedText>Ordered {selected?.originally_ordered} · Received {selected?.received_quantity} · Previously cancelled {selected?.cancelled_quantity}</ThemedText>
+  <ThemedText style={st.bold}>Unreceived balance: {selected?.outstanding_quantity}</ThemedText>
+  <ThemedText>Previously received stock is locked. Only the outstanding quantity can be cancelled; it will not change physical stock.</ThemedText>
+  {selected?.status==="approved"&&Number(selected?.outstanding_quantity)>0?<><ThemedText>Quantity to cancel</ThemedText><TextInput style={st.input} keyboardType="decimal-pad" value={qty} onChangeText={setQty}/><ThemedText>Reason for cancellation</ThemedText><TextInput style={st.input} value={reason} onChangeText={setReason}/><Pressable style={st.button} disabled={busy} onPress={()=>void post()}><ThemedText style={{color:"#fff",fontWeight:"700"}}>Cancel Outstanding Balance</ThemedText></Pressable></>:<ThemedText>This purchase order line is locked. No outstanding balance can be cancelled.</ThemedText>}
+  {error?<ThemedText style={st.error}>{error}</ThemedText>:null}
+ </ScrollView></ThemedView></Modal></ThemedView>;
 }
 const st=StyleSheet.create({page:{padding:16,gap:12},title:{fontSize:20,fontWeight:"700"},input:{borderWidth:1,borderColor:"#bccbc2",backgroundColor:"#fff",padding:11,borderRadius:6},line:{backgroundColor:"#fff",padding:12,borderBottomWidth:1,borderColor:"#dedede",gap:4},bold:{fontWeight:"700"},selectedLine:{backgroundColor:"#e5f3e9"},panel:{backgroundColor:"#fff",padding:16,gap:10,borderRadius:8},button:{backgroundColor:"#145e36",padding:13,borderRadius:6,alignSelf:"flex-start"},error:{color:"#af241c"}});
