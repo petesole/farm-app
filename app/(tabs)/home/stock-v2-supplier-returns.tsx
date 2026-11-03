@@ -30,7 +30,16 @@ export default function SupplierReturns(){
  return <ThemedView style={styles.root}><ScrollView contentContainerStyle={styles.page}>
  <StockV2Header title="Supplier Returns / Credit Notes"/>
  <Pressable onPress={()=>router.back()}><ThemedText style={styles.link}>‹ Back to Stock</ThemedText></Pressable>
- <ThemedText style={styles.heading}>New Supplier Return</ThemedText>
+ <ThemedText style={styles.heading}>Outstanding Credit Notes ({returns.filter(r=>r.credit_status!=="confirmed").length})</ThemedText>
+ <ThemedText>Select the supplier return below to enter its credit note number and date.</ThemedText>
+  {returns.filter(r=>r.credit_status!=="confirmed").map(r=><View key={r.document_id} style={styles.panel}><ThemedText style={styles.strong}>{r.document_number} · {r.supplier_name} · {r.return_mode==="supplier_stock"?"General supplier return":"Specific GRV return"}</ThemedText><ThemedText>{r.credit_status==="awaiting"?"Awaiting supplier credit note":"Credit note confirmed"}</ThemedText>
+ {r.lines.map((l,i)=><ThemedText key={i}>{l.item_name}: {l.quantity} × ${l.agreed_price} · Credit ${(Number(l.quantity)*Number(l.agreed_price)).toFixed(2)} · Stock value ${Number(l.inventory_value||0).toFixed(2)} · Valuation difference ${Number(l.valuation_difference||0).toFixed(2)} · Original GRVs {l.original_grv_value==null?"unpriced":"$"+Number(l.original_grv_value).toFixed(2)}</ThemedText>)}
+ <ThemedText style={styles.strong}>Total supplier credit: ${r.lines.reduce((n,l)=>n+Number(l.quantity)*Number(l.agreed_price),0).toFixed(2)} · Stock value: ${r.lines.reduce((n,l)=>n+Number(l.inventory_value||0),0).toFixed(2)} · Difference: ${r.lines.reduce((n,l)=>n+Number(l.valuation_difference||0),0).toFixed(2)}</ThemedText>
+ {r.lines.map((l,i)=><ThemedText key={"source-"+i}>{(l.sources??[]).map(x=>x.grv+" ("+x.quantity+")").join(", ")}</ThemedText>)}
+ {r.credit_status==="awaiting"?<Pressable style={styles.choice} onPress={()=>{setCreditId(r.document_id);setCreditNo("");setCreditDate("")}}><ThemedText>Record supplier credit note</ThemedText></Pressable>:null}
+ {creditId===r.document_id?<View style={{gap:8}}><TextInput style={styles.input} placeholder="Credit note number" value={creditNo} onChangeText={setCreditNo}/><TextInput style={styles.input} placeholder="Credit note date dd/mm/yyyy" value={creditDate} onChangeText={setCreditDate}/><Pressable disabled={saving} style={styles.button} onPress={()=>void confirmCredit()}><ThemedText style={styles.white}>Confirm Credit Note</ThemedText></Pressable></View>:null}
+ </View>)}
+  <ThemedText style={styles.heading}>New Supplier Return</ThemedText>
  <View style={styles.row}>{["JS","AO"].map(x=><Pressable key={x} onPress={()=>{setOwner(x);setGrvId(null);setLines({});setReceipts([]);setAlloc({})}} style={[styles.choice,owner===x&&styles.active]}><ThemedText>{x}</ThemedText></Pressable>)}</View>
  <ThemedText style={styles.strong}>Return Type</ThemedText>
  <View style={styles.row}>{([{value:"specific_grv",label:"Against Specific GRV"},{value:"supplier_stock",label:"General Return to Supplier"}] as const).map(x=><Pressable key={x.value} style={[styles.choice,mode===x.value&&styles.active]} onPress={()=>{setMode(x.value);setGrvId(null);setAlloc({});setReceipts([]);setLines({})}}><ThemedText>{x.label}</ThemedText></Pressable>)}</View>
@@ -59,13 +68,8 @@ export default function SupplierReturns(){
  </View>})}</View>:null}
  <Pressable disabled={saving} style={styles.button} onPress={()=>void post()}><ThemedText style={styles.white}>{saving?"Posting…":"Post Physical Supplier Return"}</ThemedText></Pressable>
  <ThemedText style={styles.heading}>Supplier Returns / Credit Notes</ThemedText>
- {returns.map(r=><View key={r.document_id} style={styles.panel}><ThemedText style={styles.strong}>{r.document_number} · {r.supplier_name} · {r.return_mode==="supplier_stock"?"General supplier return":"Specific GRV return"}</ThemedText><ThemedText>{r.credit_status==="awaiting"?"Awaiting supplier credit note":"Credit note confirmed"}</ThemedText>
- {r.lines.map((l,i)=><ThemedText key={i}>{l.item_name}: {l.quantity} × ${l.agreed_price} · Credit ${(Number(l.quantity)*Number(l.agreed_price)).toFixed(2)} · Stock value ${Number(l.inventory_value||0).toFixed(2)} · Valuation difference ${Number(l.valuation_difference||0).toFixed(2)} · Original GRVs {l.original_grv_value==null?"unpriced":"$"+Number(l.original_grv_value).toFixed(2)}</ThemedText>)}
- <ThemedText style={styles.strong}>Total supplier credit: ${r.lines.reduce((n,l)=>n+Number(l.quantity)*Number(l.agreed_price),0).toFixed(2)} · Stock value: ${r.lines.reduce((n,l)=>n+Number(l.inventory_value||0),0).toFixed(2)} · Difference: ${r.lines.reduce((n,l)=>n+Number(l.valuation_difference||0),0).toFixed(2)}</ThemedText>
- {r.lines.map((l,i)=><ThemedText key={"source-"+i}>{(l.sources??[]).map(x=>x.grv+" ("+x.quantity+")").join(", ")}</ThemedText>)}
- {r.credit_status==="awaiting"?<Pressable style={styles.choice} onPress={()=>{setCreditId(r.document_id);setCreditNo("");setCreditDate("")}}><ThemedText>Record supplier credit note</ThemedText></Pressable>:null}
- {creditId===r.document_id?<View style={{gap:8}}><TextInput style={styles.input} placeholder="Credit note number" value={creditNo} onChangeText={setCreditNo}/><TextInput style={styles.input} placeholder="Credit note date dd/mm/yyyy" value={creditDate} onChangeText={setCreditDate}/><Pressable disabled={saving} style={styles.button} onPress={()=>void confirmCredit()}><ThemedText style={styles.white}>Confirm Credit Note</ThemedText></Pressable></View>:null}
- </View>)}
+ <ThemedText style={styles.heading}>Credited Returns (History)</ThemedText>
+ {returns.filter(r=>r.credit_status==="confirmed").map(r=><View key={r.document_id} style={styles.panel}><ThemedText style={styles.strong}>{r.document_number} · {r.supplier_name}</ThemedText><ThemedText>Credit note confirmed · {r.lines.length} product lines</ThemedText></View>)}
  {error?<ThemedText style={styles.error}>{error}</ThemedText>:null}{notice?<ThemedText style={styles.link}>{notice}</ThemedText>:null}
  </ScrollView></ThemedView>;
 }
