@@ -15,7 +15,7 @@ export default function LabourReports(){
  const [date,setDate]=useState(""),[week,setWeek]=useState(""),[weeks,setWeeks]=useState<string[]>([]);
  const [daily,setDaily]=useState<DailyRow[]>([]),[weekly,setWeekly]=useState<WeeklyRow[]>([]);
  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[searched,setSearched]=useState(false);
- useEffect(()=>{(async()=>{const {data,error:e}=await supabase.from("labour_v2_weekly_report").select("labour_week").order("labour_week",{ascending:false}).limit(5000);if(e){setError(e.message);return;}const unique=Array.from(new Set((data||[]).map(x=>x.labour_week)));setWeeks(unique);if(unique.length)setWeek(unique[0]);})()},[]);
+ useEffect(()=>{(async()=>{const {data,error:e}=await supabase.from("labour_v2_week_options").select("labour_week").order("labour_week",{ascending:false}).limit(500);if(e){setError(e.message);return;}const unique=Array.from(new Set((data||[]).map(x=>x.labour_week)));setWeeks(unique);if(unique.length)setWeek(unique[0]);})()},[]);
  async function load(){
   setBusy(true);setError("");setSearched(false);
   try{
