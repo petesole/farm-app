@@ -73,7 +73,7 @@ export default function LabourDashboard() {
     if (!validDate) {setError("Enter date as dd/mm/yyyy (e.g. 04/11/2026).");return;}
     if (!selected) {setError("Select a labour activity.");return;}
     const q=Number(qty),k=Number(kgs),p=Number(rate);
-    if ((!qty && selected.labour_measure !== "Kgs") || !Number.isFinite(q) || q<0 || (selected.labour_measure==="Unit" && q<=0)) {setError("Enter a valid Labour Qty.");return;}
+    if (!qty || !Number.isFinite(q) || q<=0) {setError("Enter Labour Qty greater than zero.");return;}
     if (selected.labour_measure==="Kgs" && (!kgs || !Number.isFinite(k) || k<=0)) {setError("Enter kilograms greater than zero.");return;}
     if (!rate || !Number.isFinite(p) || p<0) {setError("Enter a valid unit cost.");return;}
     setBusy(true);setError("");
