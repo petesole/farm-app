@@ -28,7 +28,7 @@ export default function LabourHistory(){
  {loading?<ActivityIndicator/>:<Text style={styles.hint}>{rows.length} records displayed · historical Access records are read-only</Text>}</View>
  {chosen&&<View style={styles.panel}><Text style={styles.title}>Admin correction · #{chosen.source_id} · {formatJsplDate(chosen.labour_date)}</Text>
  <Text style={styles.hint}>Only saved App entries can be corrected. All actions are audited, and the date cannot be changed.</Text>
- <View style={styles.picker}><Picker selectedValue={action} onValueChange={x=>setAction(String(x))}><Picker.Item label="Correct this entry" value="UPDATE"/><Picker.Item label="Delete incorrect entry (audited)" value="DELETE"/></Picker></View>
+ <View style={styles.picker}><Picker selectedValue={action} onValueChange={x=>setAction(String(x))}><Picker.Item label="Correct this entry" value="UPDATE"/><Picker.Item label="Add a missing line to this saved date" value="INSERT"/><Picker.Item label="Delete incorrect entry (audited)" value="DELETE"/></Picker></View>
  {action!=="DELETE"&&<>
  <Text style={styles.label}>Trace</Text><View style={styles.picker}><Picker selectedValue={traceId} onValueChange={x=>setTraceId(String(x))}>{traces.map(t=><Picker.Item key={t.tracecode_id} value={String(t.tracecode_id)} label={t.tracecode_name+" / "+t.tracecode_id+(t.access_tc_id!=null?" / Access "+t.access_tc_id:"")}/>)}</Picker></View>
  <Text style={styles.label}>Activity</Text><View style={styles.picker}><Picker selectedValue={activityId} onValueChange={x=>setActivityId(String(x))}>{activities.map(a=><Picker.Item key={a.activity_id} label={a.activity_name} value={String(a.activity_id)}/>)}</Picker></View>
