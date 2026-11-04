@@ -81,13 +81,13 @@ export default function LabourDashboard() {
     (async () => {
       try {
         const [day, lines] = await Promise.all([
-          supabase.from("labour_v2_day").select("labour_date,submitted_at,line_count").eq("labour_date", isoDate).maybeSingle(),
+          supabase.rpc("labour_v2_is_date_locked", { p_date: isoDate }),
           supabase.from("labour_v2_costs").select("id,labour_date,tracecode_id,activity_id,activity_name,labour_measure,labour_qty,kgs,unit_cost,total_cost,cost_per_ha").eq("labour_date", isoDate).order("id", { ascending: true }).limit(250),
         ]);
         if (day.error) throw day.error;
         if (lines.error) throw lines.error;
         if (alive) {
-          setLocked(!!day.data);
+          setLocked(Boolean(day.data));
           setSaved((lines.data || []) as SavedLine[]);
           setCheckedDate(isoDate);
           setError("");
@@ -136,8 +136,8 @@ export default function LabourDashboard() {
     } catch (e: any) {
       setError(e.message || "Unable to submit the day's Labour");
       // Refresh lock status in case the save succeeded but the follow-up read failed.
-      const status = await supabase.from("labour_v2_day").select("labour_date").eq("labour_date", isoDate).maybeSingle();
-      if (!status.error && status.data) setLocked(true);
+      const status = await supabase.rpc("labour_v2_is_date_locked", { p_date: isoDate });
+      if (!status.error && status.data === true) setLocked(true);
     } finally { setBusy(false); }
   }
 
