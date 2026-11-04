@@ -159,6 +159,7 @@ export default function LabourDashboard() {
     <View style={styles.row}>
       <Pressable style={styles.outline} onPress={() => router.push("/labour-history")}><Text style={styles.outlineText}>Labour Input History</Text></Pressable>
       <Pressable style={styles.outline} onPress={() => router.push("/labour-reports")}><Text style={styles.outlineText}>Daily / Weekly / AO Reports</Text></Pressable>
+      <Pressable style={styles.outline} onPress={() => router.push("/labour-summary")}><Text style={styles.outlineText}>Current / Last Week Summaries</Text></Pressable>
     </View>
     {!!error && <View style={styles.error}><Text style={{ color: C.danger }}>{error}</Text></View>}
     {loading ? <ActivityIndicator color={C.primary} /> : <>
