@@ -44,8 +44,7 @@ export default function LabourMain(){
   finally{if(active)setLoading(false);}
  })();return()=>{active=false}},[week,previousWeek]);
  const tiles=[
- {title:"Labour Form",description:"Enter Labour against a date",path:"/labour-entry"},
- {title:"Labour Input",description:"View original Labour input register",path:"/labour-history"},
+ {title:"Labour Input",description:"Enter daily Labour records",path:"/labour-entry"},
  {title:"Daily Report",description:"Select date, print report",path:"/labour-reports?mode=daily"},
  {title:"Weekly Report",description:"Select week, print or export to Excel",path:"/labour-reports?mode=weekly"},
  {title:"Input History",description:"Look up historical Labour records",path:"/labour-history"},
