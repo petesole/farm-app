@@ -37,10 +37,32 @@ export default function LabourHistory(){
  <Text style={styles.label}>Reason for correction (required)</Text><TextInput multiline style={[styles.input,{minHeight:70}]} value={reason} onChangeText={setReason} placeholder="Explain the error and correction"/>
  <View style={styles.row}><Pressable disabled={busy} style={styles.primary} onPress={saveCorrection}><Text style={styles.white}>{busy?"Saving…":"Confirm audited "+(action==="DELETE"?"deletion":"correction")}</Text></Pressable><Pressable style={styles.button} onPress={()=>setChosen(null)}><Text style={styles.btn}>Cancel</Text></Pressable></View>
  </View>}
- {rows.map(r=><View key={r.source_type+":"+r.source_id} style={styles.line}>
- <View style={{flex:1}}><Text style={styles.title}>{formatJsplDate(r.labour_date)} · {r.tracecode_name} · {r.crop_name}</Text><Text style={styles.hint}>#{r.source_id} [{r.source_type}] · {r.activity_name}</Text><Text style={styles.hint}>Qty {r.labour_qty} · Kgs {r.kgs??"—"} · Rate {amount(r.unit_cost)} · Total {amount(r.total_cost)}</Text></View>
- {isAdmin&&r.source_type==="App"&&<Pressable style={styles.button} onPress={()=>edit(r)}><Text style={styles.btn}>Correct</Text></Pressable>}
- </View>)}
+ <ScrollView horizontal contentContainerStyle={{minWidth:"100%"}}>
+  <View style={{minWidth:1050,width:"100%",backgroundColor:"#FFF",borderWidth:1,borderColor:C.border,borderRadius:8}}>
+   <View style={styles.historyHeader}>
+    <Text style={[styles.historyCell,{width:90}]}>ID</Text>
+    <Text style={[styles.historyCell,{width:100}]}>Date</Text>
+    <Text style={[styles.historyCell,{width:135}]}>Field</Text>
+    <Text style={[styles.historyCell,{width:110}]}>Crop</Text>
+    <Text style={[styles.historyCell,{flex:1}]}>Labour Activity</Text>
+    <Text style={[styles.historyCell,{width:72}]}>Qty</Text>
+    <Text style={[styles.historyCell,{width:75}]}>Kgs</Text>
+    <Text style={[styles.historyCell,{width:90}]}>Unit Cost</Text>
+    {isAdmin&&<Text style={[styles.historyCell,{width:85}]}>Action</Text>}
+   </View>
+   {rows.map(r=><View key={r.source_type+":"+r.source_id} style={styles.historyLine}>
+    <Text style={[styles.historyCell,{width:90}]}>{r.source_id}</Text>
+    <Text style={[styles.historyCell,{width:100}]}>{formatJsplDate(r.labour_date)}</Text>
+    <Text style={[styles.historyCell,{width:135}]}>{r.tracecode_name}</Text>
+    <Text style={[styles.historyCell,{width:110}]}>{r.crop_name}</Text>
+    <Text style={[styles.historyCell,{flex:1}]}>{r.activity_name}</Text>
+    <Text style={[styles.historyCell,{width:72}]}>{r.labour_qty}</Text>
+    <Text style={[styles.historyCell,{width:75}]}>{r.kgs??"—"}</Text>
+    <Text style={[styles.historyCell,{width:90}]}>{amount(r.unit_cost)}</Text>
+    {isAdmin&&<View style={{width:85,padding:4}}>{r.source_type==="App"&&<Pressable style={styles.button} onPress={()=>edit(r)}><Text style={styles.btn}>Correct</Text></Pressable>}</View>}
+   </View>)}
+  </View>
+ </ScrollView>
  </ScrollView>
 }
-const styles=StyleSheet.create({page:{padding:22,gap:14,backgroundColor:C.background,flexGrow:1},header:{backgroundColor:C.primaryDark,borderRadius:12,padding:18,flexDirection:"row",gap:12,alignItems:"center"},headerTitle:{fontSize:23,fontWeight:"800",color:"#FFF"},sub:{color:"#E2EEE5",marginTop:5},logo:{width:65,height:65,resizeMode:"contain",backgroundColor:"#FFF",borderRadius:8},row:{flexDirection:"row",gap:10,flexWrap:"wrap",alignItems:"center"},panel:{backgroundColor:"#FFF",borderWidth:1,borderColor:C.border,borderRadius:10,padding:15,gap:10},line:{flexDirection:"row",gap:12,alignItems:"center",backgroundColor:"#FFF",borderRadius:8,borderWidth:1,borderColor:C.border,padding:12},title:{color:C.primaryDark,fontWeight:"700",fontSize:15},label:{color:C.text,fontWeight:"700"},hint:{color:C.textSecondary,fontSize:12},input:{borderWidth:1,borderColor:C.border,borderRadius:7,padding:10,minWidth:110,backgroundColor:"#FFF",color:C.text},picker:{borderWidth:1,borderColor:C.border,borderRadius:7,overflow:"hidden"},primary:{backgroundColor:C.primary,borderRadius:7,padding:12},white:{color:"#FFF",fontWeight:"700"},button:{borderWidth:1,borderColor:C.primary,borderRadius:7,padding:11},btn:{color:C.primaryDark,fontWeight:"700"},error:{color:C.danger,fontWeight:"700"}});
+const styles=StyleSheet.create({historyHeader:{flexDirection:"row",backgroundColor:"#DCEADD",borderBottomWidth:1,borderColor:C.border,paddingVertical:7},historyLine:{flexDirection:"row",alignItems:"center",borderBottomWidth:1,borderColor:C.border,minHeight:42},historyCell:{paddingHorizontal:7,color:C.text,fontSize:12,fontWeight:"500"},page:{padding:22,gap:14,backgroundColor:C.background,flexGrow:1},header:{backgroundColor:C.primaryDark,borderRadius:12,padding:18,flexDirection:"row",gap:12,alignItems:"center"},headerTitle:{fontSize:23,fontWeight:"800",color:"#FFF"},sub:{color:"#E2EEE5",marginTop:5},logo:{width:65,height:65,resizeMode:"contain",backgroundColor:"#FFF",borderRadius:8},row:{flexDirection:"row",gap:10,flexWrap:"wrap",alignItems:"center"},panel:{backgroundColor:"#FFF",borderWidth:1,borderColor:C.border,borderRadius:10,padding:15,gap:10},line:{flexDirection:"row",gap:12,alignItems:"center",backgroundColor:"#FFF",borderRadius:8,borderWidth:1,borderColor:C.border,padding:12},title:{color:C.primaryDark,fontWeight:"700",fontSize:15},label:{color:C.text,fontWeight:"700"},hint:{color:C.textSecondary,fontSize:12},input:{borderWidth:1,borderColor:C.border,borderRadius:7,padding:10,minWidth:110,backgroundColor:"#FFF",color:C.text},picker:{borderWidth:1,borderColor:C.border,borderRadius:7,overflow:"hidden"},primary:{backgroundColor:C.primary,borderRadius:7,padding:12},white:{color:"#FFF",fontWeight:"700"},button:{borderWidth:1,borderColor:C.primary,borderRadius:7,padding:11},btn:{color:C.primaryDark,fontWeight:"700"},error:{color:C.danger,fontWeight:"700"}});
