@@ -4,7 +4,8 @@ import {Picker} from "@react-native-picker/picker";
 import {router,useLocalSearchParams} from "expo-router";
 import {supabase} from "@/supabase";
 import {jsplColors as C,formatJsplDate,formatJsplNumber} from "@/constants/jspl-design";
-import {labourExportCSV,labourPrintReport} from "@/lib/labour-report-export";
+import {labourPrintReport} from "@/lib/labour-report-export";
+import {labourExportXLSX} from "@/lib/labour-xlsx-export";
 
 type ReportMode="daily"|"weekly"|"ao";
 type ReportRow={source_type?:string;source_id?:number;labour_date?:string;labour_week?:string;report_farm?:string;farm_name?:string;tracecode_name:string;crop_name:string;activity_name:string;labour_qty?:number;total_labour_qty?:number;kgs?:number|null;total_kgs?:number|null;unit_cost:number;avg_kgs_per_person?:number|null;total_cost:number};
@@ -92,7 +93,7 @@ export default function LabourReports(){
  }
  function exportExcel(){
   if(!loaded||!rows.length){setError("Open a report before exporting.");return}
-  try{labourExportCSV(reportTitle,columns,printable,totalValue)}catch(e:any){setError(e.message||"Unable to export")}
+  try{labourExportXLSX(reportTitle,columns,printable,totalValue)}catch(e:any){setError(e.message||"Unable to export")}
  }
  return <ScrollView contentContainerStyle={styles.page}>
   <View style={styles.header}><View style={{flex:1}}><Text style={styles.head}>{mode==="daily"?"Daily Labour Report":mode==="ao"?"AO Weekly Labour Report":"Weekly Labour Report"}</Text><Text style={styles.headSub}>John Sole (Private) Limited</Text></View><Image style={styles.logo} source={require("../assets/images/jspl_farm_logo.png")}/></View>
