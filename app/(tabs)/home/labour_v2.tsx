@@ -1,8 +1,8 @@
-import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
+import { router } from "expo-router";
 import { jsplColors as C } from "@/constants/jspl-design";
 import { supabase } from "../../../supabase";
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 // Development-only Labour screen. Access: LabourFNew/LabourSubformNew.
 // No data is written until the labour_v2_development.sql schema and
@@ -61,7 +61,7 @@ export default function LabourScreen(){
   if(res.error){setError(res.error.message);return;}reset();await loadRows();
  }
  return <ScrollView contentContainerStyle={s.page}>
-  <JsplModuleHeader title="Labour" subtitle="Daily Labour • Access workflow" backLabel="Back to Dashboard" backHref="/(tabs)/main-dashboard"/>
+  <View style={s.banner}><View style={{flex:1}}><Text style={s.bannerTitle}>Labour</Text><Text style={s.bannerSub}>John Sole (Private) Limited</Text><Pressable onPress={()=>router.replace("/(tabs)/main-dashboard" as any)}><Text style={s.back}>← Back to Dashboard</Text></Pressable></View><Image source={require("../../../assets/images/jspl_farm_logo.png")} resizeMode="contain" style={s.logo}/></View>
   <Text style={s.heading}>Daily Labour Entry</Text>
   <Text style={s.label}>Date (dd/mm/yyyy)</Text>
   <TextInput style={s.input} value={date} onChangeText={setDate} placeholder="dd/mm/yyyy" keyboardType="numbers-and-punctuation" maxLength={10}/>
@@ -83,4 +83,4 @@ export default function LabourScreen(){
   <Text style={s.footer}>Development only. Uses Access quantity/kg calculation. AO allocation and weekly report parity will be verified before release.</Text>
  </ScrollView>;
 }
-const s=StyleSheet.create({page:{padding:16,paddingBottom:52,backgroundColor:"#F5F8F5",gap:9},heading:{fontSize:20,fontWeight:"800",color:C.primaryDark,marginTop:10},label:{fontWeight:"700",color:"#264631",marginTop:5},input:{backgroundColor:"#FFFFFF",borderColor:"#B9CBBB",borderWidth:1,borderRadius:9,minHeight:44,padding:11,justifyContent:"center"},row:{flexDirection:"row",gap:10},half:{flex:1},picker:{backgroundColor:"#FFFFFF",maxHeight:185,overflow:"scroll",borderWidth:1,borderColor:"#BCD0BE",borderRadius:8},option:{padding:11,borderBottomWidth:1,borderBottomColor:"#E4EBE5"},total:{backgroundColor:"#DDEBDF",padding:15,borderRadius:10},totalLabel:{color:"#245331",fontWeight:"700"},totalText:{color:C.primaryDark,fontSize:24,fontWeight:"800"},button:{backgroundColor:C.primaryDark,borderRadius:10,padding:15,alignItems:"center"},buttonText:{color:"#FFFFFF",fontWeight:"800"},cancel:{color:C.primaryDark,textAlign:"center",textDecorationLine:"underline"},error:{color:"#AC2020",padding:8},record:{backgroundColor:"#FFFFFF",borderRadius:9,borderWidth:1,borderColor:"#D5E0D5",padding:12},recordMain:{fontWeight:"700",color:"#23412B"},recordSub:{marginTop:4,color:"#57705B"},empty:{color:"#66766A"},footer:{marginTop:20,fontSize:12,color:"#66766A"}});
+const s=StyleSheet.create({banner:{backgroundColor:C.primaryDark,borderRadius:12,padding:14,flexDirection:"row",alignItems:"center"},logo:{width:64,height:64,marginLeft:12,backgroundColor:"#FFFFFF",borderRadius:6},bannerTitle:{color:"#FFFFFF",fontSize:22,fontWeight:"800"},bannerSub:{color:"#E0EDE0",fontSize:12},back:{color:"#FFFFFF",fontWeight:"700",marginTop:10},page:{padding:16,paddingBottom:52,backgroundColor:"#F5F8F5",gap:9},heading:{fontSize:20,fontWeight:"800",color:C.primaryDark,marginTop:10},label:{fontWeight:"700",color:"#264631",marginTop:5},input:{backgroundColor:"#FFFFFF",borderColor:"#B9CBBB",borderWidth:1,borderRadius:9,minHeight:44,padding:11,justifyContent:"center"},row:{flexDirection:"row",gap:10},half:{flex:1},picker:{backgroundColor:"#FFFFFF",maxHeight:185,overflow:"scroll",borderWidth:1,borderColor:"#BCD0BE",borderRadius:8},option:{padding:11,borderBottomWidth:1,borderBottomColor:"#E4EBE5"},total:{backgroundColor:"#DDEBDF",padding:15,borderRadius:10},totalLabel:{color:"#245331",fontWeight:"700"},totalText:{color:C.primaryDark,fontSize:24,fontWeight:"800"},button:{backgroundColor:C.primaryDark,borderRadius:10,padding:15,alignItems:"center"},buttonText:{color:"#FFFFFF",fontWeight:"800"},cancel:{color:C.primaryDark,textAlign:"center",textDecorationLine:"underline"},error:{color:"#AC2020",padding:8},record:{backgroundColor:"#FFFFFF",borderRadius:9,borderWidth:1,borderColor:"#D5E0D5",padding:12},recordMain:{fontWeight:"700",color:"#23412B"},recordSub:{marginTop:4,color:"#57705B"},empty:{color:"#66766A"},footer:{marginTop:20,fontSize:12,color:"#66766A"}});
