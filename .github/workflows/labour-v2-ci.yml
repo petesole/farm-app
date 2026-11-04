@@ -1,0 +1,25 @@
+name: Labour V2 TypeScript Gate
+on:
+  push:
+    branches: [development]
+  workflow_dispatch:
+jobs:
+  labour-typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Fail on Labour module TypeScript errors
+        shell: bash
+        run: |
+          npx tsc --noEmit > /tmp/jspl-labour-tsc.log 2>&1 || true
+          if grep -E '^app/(\(tabs\)/)?labour|^lib/labour-' /tmp/jspl-labour-tsc.log; then
+            echo "Labour TypeScript gate FAILED"
+            exit 1
+          fi
+          echo "Labour TypeScript gate passed. Unrelated legacy TypeScript errors are reported by the existing checks."
