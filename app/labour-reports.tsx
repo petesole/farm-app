@@ -39,7 +39,6 @@ export default function LabourReports(){
   const ws=(w.data||[]).map(x=>x.labour_week);
   setDates(ds);setWeeks(ws);setDate(old=>old||ds[0]||"");setWeek(old=>old||ws[0]||"");
  })();return()=>{alive=false}},[]);
- function choose(valueMode:ReportMode){setMode(valueMode);setLoaded(false);setRows([]);setError("")}
  async function openReport(){
   setBusy(true);setError("");setLoaded(false);setRows([]);
   try{
@@ -99,8 +98,7 @@ export default function LabourReports(){
   <View style={styles.header}><View style={{flex:1}}><Text style={styles.head}>{mode==="daily"?"Daily Labour Report":mode==="ao"?"AO Weekly Labour Report":"Weekly Labour Report"}</Text><Text style={styles.headSub}>John Sole (Private) Limited</Text></View><Image style={styles.logo} source={require("../assets/images/jspl_farm_logo.png")}/></View>
   <View style={styles.nav}><Pressable onPress={()=>router.replace("/(tabs)/labour")} style={styles.back}><Text style={styles.backText}>← Labour Main</Text></Pressable></View>
   <View style={styles.selector}>
-   <View style={styles.modes}><Pressable onPress={()=>choose("daily")} style={mode==="daily"?styles.selected:styles.switch}><Text style={mode==="daily"?styles.white:styles.dark}>Daily Report</Text></Pressable><Pressable onPress={()=>choose("weekly")} style={mode==="weekly"?styles.selected:styles.switch}><Text style={mode==="weekly"?styles.white:styles.dark}>Weekly Report</Text></Pressable><Pressable onPress={()=>choose("ao")} style={mode==="ao"?styles.selected:styles.switch}><Text style={mode==="ao"?styles.white:styles.dark}>AO Weekly</Text></Pressable></View>
-   <Text style={styles.label}>{mode==="daily"?"Date":"Week"}</Text>
+   <Text style={styles.label}>{mode==="daily"?"Select Daily Labour Date":"Select Weekly Labour Week"}</Text>
    <View style={styles.pick}><Picker selectedValue={mode==="daily"?date:week} onValueChange={x=>{mode==="daily"?setDate(String(x)):setWeek(String(x));setLoaded(false);setRows([])}}>
      <Picker.Item value="" label={mode==="daily"?"Select Date":"Select Week"}/>
      {mode==="daily"?dates.map(d=><Picker.Item key={d} value={d} label={formatJsplDate(d)}/>):weeks.map(w=><Picker.Item key={w} value={w} label={w}/>)}
