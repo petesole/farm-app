@@ -3,6 +3,8 @@ import {ActivityIndicator,Image,Pressable,ScrollView,StyleSheet,Text,TextInput,V
 import {Picker} from "@react-native-picker/picker";
 import {router} from "expo-router";
 import {supabase} from "@/supabase";
+import {Platform} from "react-native";
+import {labourExportCSV,labourPrintReport} from "@/lib/labour-report-export";
 import {formatJsplDate,formatJsplNumber,jsplColors as C} from "@/constants/jspl-design";
 type DailyRow={source_type:string;source_id:number;labour_date:string;labour_week:string;farm_name:string;report_farm:string;tracecode_name:string;crop_name:string;activity_name:string;labour_qty:number;kgs:number|null;unit_cost:number;total_cost:number};
 type WeeklyRow={labour_week:string;report_farm:string;crop_name:string;tracecode_name:string;activity_name:string;unit_cost:number;total_labour_qty:number;total_kgs:number|null;avg_kgs_per_person:number|null;total_cost:number;cost_per_ha:number|null};
@@ -29,6 +31,13 @@ export default function LabourReports(){
    setSearched(true);
   }catch(e:any){setError(e.message||"Unable to load report");}finally{setBusy(false)}
  }
+ const reportTitle=mode==="daily"?"Labour Daily Report "+date:mode==="ao"?"Agri Orange Weekly Labour Report "+week:"Labour Weekly Report "+week;
+ const columns=mode==="daily"?
+  [{label:"Date",field:"labour_date"},{label:"Farm",field:"farm_name"},{label:"Trace",field:"tracecode_name"},{label:"Crop",field:"crop_name"},{label:"Activity",field:"activity_name"},{label:"Qty",field:"labour_qty"},{label:"Kgs",field:"kgs"},{label:"Unit Cost",field:"unit_cost"},{label:"Value",field:"total_cost"}]:
+  [{label:"Farm",field:"report_farm"},{label:"Trace",field:"tracecode_name"},{label:"Crop",field:"crop_name"},{label:"Activity",field:"activity_name"},{label:"Qty",field:"total_labour_qty"},{label:"Kgs",field:"total_kgs"},{label:"Unit Cost",field:"unit_cost"},{label:"Kgs/Person",field:"avg_kgs_per_person"},{label:"Value",field:"total_cost"},{label:"Cost/ha",field:"cost_per_ha"}];
+ const exportRows=(mode==="daily"?daily:weekly) as unknown as Record<string,unknown>[];
+ function printReport(){try{labourPrintReport(reportTitle,columns,exportRows,total)}catch(e:any){setError(e.message||"Unable to print")}}
+ function excelReport(){try{labourExportCSV(reportTitle,columns,exportRows,total)}catch(e:any){setError(e.message||"Unable to export")}}
  const resultCount=mode==="daily"?daily.length:weekly.length;
  const qty=useMemo(()=>mode==="daily"?daily.reduce((s,r)=>s+Number(r.labour_qty||0),0):weekly.reduce((s,r)=>s+Number(r.total_labour_qty||0),0),[mode,daily,weekly]);
  const kilos=useMemo(()=>mode==="daily"?daily.reduce((s,r)=>s+Number(r.kgs||0),0):weekly.reduce((s,r)=>s+Number(r.total_kgs||0),0),[mode,daily,weekly]);
@@ -44,6 +53,7 @@ export default function LabourReports(){
    {busy&&<ActivityIndicator color={C.primary}/>}
   </View>
   {searched&&<View style={styles.panel}><Text style={styles.title}>{mode==="daily"?"Labour Daily Report — "+date:"Labour "+(mode==="ao"?"Agri Orange ":"")+"Weekly Report — "+week}</Text><Text style={styles.hint}>Report rows {resultCount} · Labour Qty {formatJsplNumber(qty)} · Kgs {formatJsplNumber(kilos)} · Value {money(total)}</Text>
+   {Platform.OS==="web"&&resultCount>0&&<View style={styles.row}><Pressable style={styles.outline} onPress={printReport}><Text style={styles.dark}>Print Preview</Text></Pressable><Pressable style={styles.outline} onPress={excelReport}><Text style={styles.dark}>Excel CSV</Text></Pressable></View>}
    {resultCount===0?<Text style={styles.hint}>No matching Labour records.</Text>:
    mode==="daily"? daily.map(r=><View style={styles.line} key={r.source_type+":"+r.source_id}>
     <Text style={styles.lineTitle}>{r.farm_name} · {r.tracecode_name} · {r.crop_name}</Text><Text style={styles.hint}>{r.activity_name}</Text>
@@ -54,7 +64,7 @@ export default function LabourReports(){
     <Text style={styles.hint}>Qty {formatJsplNumber(Number(r.total_labour_qty))} · Kgs {formatJsplNumber(Number(r.total_kgs||0))} · Kgs/person {r.avg_kgs_per_person==null?"—":formatJsplNumber(Number(r.avg_kgs_per_person))}</Text><Text style={styles.value}>Value {money(Number(r.total_cost))} · Cost/ha {r.cost_per_ha==null?"—":money(Number(r.cost_per_ha))}</Text>
    </View>)}
    <Text style={styles.title}>Grand total: {money(total)}</Text>
-   <Text style={styles.hint}>Read-only Access-calculated reports. Print/Excel parity and support cost-centre labels are still under review.</Text>
+   <Text style={styles.hint}>Read-only Access-calculated reports. The browser print layout and Excel CSV export require comparison with the original Access output before publication.</Text>
   </View>}
  </ScrollView>
 }
