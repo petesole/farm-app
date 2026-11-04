@@ -49,11 +49,15 @@ export default function LabourReports(){
    <View style={styles.row}>{([{mode:"daily",label:"Daily Report"},{mode:"weekly",label:"Weekly Report"},{mode:"ao",label:"AO Weekly"}] as const).map(x=><Pressable key={x.mode} style={mode===x.mode?styles.primary:styles.outline} onPress={()=>{setMode(x.mode);setSearched(false)}}><Text style={mode===x.mode?styles.white:styles.dark}>{x.label}</Text></Pressable>)}</View>
    {mode==="daily"?<><Text style={styles.label}>Labour Date (dd/mm/yyyy)</Text><TextInput style={styles.input} placeholder="dd/mm/yyyy" value={date} onChangeText={setDate}/></>:<><Text style={styles.label}>Week (yy/ww)</Text><View style={styles.picker}><Picker selectedValue={week} onValueChange={x=>setWeek(String(x))}><Picker.Item label="Select week" value=""/>{weeks.map(w=><Picker.Item key={w} value={w} label={w}/>)}</Picker></View></>}
    <Pressable style={styles.primary} onPress={load} disabled={busy}><Text style={styles.white}>{busy?"Loading…":"View "+(mode==="daily"?"Daily":mode==="ao"?"AO Weekly":"Weekly")+" Report"}</Text></Pressable>
+   {Platform.OS==="web"&&<View style={styles.row}>
+     <Pressable style={styles.outline} onPress={async()=>{if(!searched){await load();return;}printReport()}} disabled={busy}><Text style={styles.dark}>Print Report</Text></Pressable>
+     <Pressable style={styles.outline} onPress={async()=>{if(!searched){await load();return;}excelReport()}} disabled={busy}><Text style={styles.dark}>Export to Excel</Text></Pressable>
+   </View>}
    {!!error&&<Text style={styles.error}>{error}</Text>}
    {busy&&<ActivityIndicator color={C.primary}/>}
   </View>
   {searched&&<View style={styles.panel}><Text style={styles.title}>{mode==="daily"?"Labour Daily Report — "+date:"Labour "+(mode==="ao"?"Agri Orange ":"")+"Weekly Report — "+week}</Text><Text style={styles.hint}>Report rows {resultCount} · Labour Qty {formatJsplNumber(qty)} · Kgs {formatJsplNumber(kilos)} · Value {money(total)}</Text>
-   {Platform.OS==="web"&&resultCount>0&&<View style={styles.row}><Pressable style={styles.outline} onPress={printReport}><Text style={styles.dark}>Print Preview</Text></Pressable><Pressable style={styles.outline} onPress={excelReport}><Text style={styles.dark}>Excel CSV</Text></Pressable></View>}
+
    {resultCount===0?<Text style={styles.hint}>No matching Labour records.</Text>:
    mode==="daily"? daily.map(r=><View style={styles.line} key={r.source_type+":"+r.source_id}>
     <Text style={styles.lineTitle}>{r.farm_name} · {r.tracecode_name} · {r.crop_name}</Text><Text style={styles.hint}>{r.activity_name}</Text>
