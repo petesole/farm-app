@@ -23,3 +23,37 @@ jobs:
             exit 1
           fi
           echo "Labour TypeScript gate passed. Unrelated legacy TypeScript errors are reported by the existing checks."
+      - name: Generate XLSX Labour sample and validate ZIP / XML
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+          const ts = require("typescript");
+          const Module = require("module");
+          const source = fs.readFileSync("lib/labour-xlsx-export.ts", "utf8");
+          const js = ts.transpileModule(source, {compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020}}).outputText;
+          const m = new Module("/tmp/labour-xlsx-export.js", module);
+          m.filename = "/tmp/labour-xlsx-export.js";
+          m.paths = module.paths;
+          m._compile(js, m.filename);
+          const cols = [{label:"Field",field:"tracecode_name"},{label:"Activity",field:"activity_name"},{label:"Value",field:"total_cost"}];
+          const rows = [{tracecode_name:"HSCP1",activity_name:"Planting",total_cost:102.75},{tracecode_name:"HSCP2",activity_name:"Weeding",total_cost:57.25}];
+          const bytes = m.exports.labourWorkbookBytes("Labour Weekly Report", cols, rows, 160);
+          fs.writeFileSync("/tmp/labour-export-test.xlsx", Buffer.from(bytes));
+          if (bytes.length < 2500) throw Error("Unexpectedly small XLSX");
+          NODE
+          python3 <<'PY'
+          import zipfile
+          import xml.etree.ElementTree as ET
+          p="/tmp/labour-export-test.xlsx"
+          with zipfile.ZipFile(p) as z:
+              assert z.testzip() is None
+              files=set(z.namelist())
+              assert {"xl/workbook.xml","xl/worksheets/sheet1.xml","xl/styles.xml","[Content_Types].xml"}.issubset(files)
+              for fn in files:
+                  if fn.endswith(".xml") or fn.endswith(".rels"):
+                      ET.fromstring(z.read(fn))
+              xml=z.read("xl/worksheets/sheet1.xml").decode()
+              assert "HSCP1" in xml and "HSCP2" in xml and "102.75" in xml
+          print("PASS: genuine XLSX is a valid Excel ZIP container with valid XML and expected data")
+          PY
