@@ -3,8 +3,7 @@
  */
 export type LabourExcelColumn={label:string;field:string};
 type AnyRow=Record<string,unknown>;
-const enc=new TextEncoder();
-const str=(s:string)=>enc.encode(s);
+const str=(s:string)=>{if(typeof TextEncoder==="undefined")throw Error("Excel export requires a desktop browser.");return new TextEncoder().encode(s)};
 const xml=(s:string)=>s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&apos;");
 const bytesToU32=(v:number)=>v>>>0;
 const CRC_TABLE=(()=>{
