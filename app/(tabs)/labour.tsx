@@ -107,9 +107,9 @@ export default function LabourDashboard() {
     if (!selected) { setError("Select a Labour Activity."); return; }
     const amount = Number(qty), kilograms = Number(kgs), unitCost = Number(rate);
     if (!qty.trim() || !Number.isFinite(amount) || amount <= 0) { setError("Enter Labour Qty greater than zero."); return; }
-    if (selected.labour_measure === "Kgs" && (!kgs.trim() || !Number.isFinite(kilograms) || kilograms <= 0)) { setError("Enter Kgs greater than zero."); return; }
+    if (selected.labour_measure === "Kgs" && kgs.trim() && (!Number.isFinite(kilograms) || kilograms < 0)) { setError("Enter valid Kgs or leave blank, as in Access."); return; }
     if (!rate.trim() || !Number.isFinite(unitCost) || unitCost < 0) { setError("Enter a valid Unit Cost."); return; }
-    setDraft(lines => [...lines, { key: nextKey, tracecode_id: Number(traceId), activity_id: selected.activity_id, labour_qty: amount, kgs: selected.labour_measure === "Kgs" ? kilograms : null, unit_cost: unitCost }]);
+    setDraft(lines => [...lines, { key: nextKey, tracecode_id: Number(traceId), activity_id: selected.activity_id, labour_qty: amount, kgs: selected.labour_measure === "Kgs" && kgs.trim() ? kilograms : null, unit_cost: unitCost }]);
     setNextKey(key => key + 1);
     setError(""); clearEntry();
   }
