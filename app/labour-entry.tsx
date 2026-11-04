@@ -190,7 +190,7 @@ export default function LabourEntry() {
         <Text style={styles.label}>Trace Code</Text>
         <View style={styles.picker}><Picker selectedValue={traceId} onValueChange={value => setTraceId(String(value))}>
           <Picker.Item value="" label="Select Trace Code..." />
-          {traces.map(t => <Picker.Item key={t.tracecode_id} value={String(t.tracecode_id)} label={t.tracecode_name + " (ID " + t.tracecode_id + (t.access_tc_id == null ? "" : " / Access " + t.access_tc_id) + ")" + (t.crop_id == null ? " · No Crop" : "")} />)}
+          {traces.map(t => <Picker.Item key={t.tracecode_id} value={String(t.tracecode_id)} label={t.tracecode_name + (t.crop_id == null ? " · No Crop" : "")} />)}
         </Picker></View>
         <Text style={styles.label}>Find Labour Activity</Text>
         <TextInput value={activitySearch} onChangeText={setActivitySearch} placeholder="Search Access activities" style={styles.input} />
@@ -207,14 +207,33 @@ export default function LabourEntry() {
       </View>}
       {isoDate && checkedDate === isoDate && !locked && <View style={styles.panel}>
         <Text style={styles.heading}>Unsaved Labour — {formatJsplDate(isoDate)}</Text>
-        {draft.length === 0 ? <Text style={styles.helper}>No lines added yet.</Text> : draft.map(line => {
-          const activity = activities.find(a => a.activity_id === line.activity_id);
-          const lineCost = (activity?.labour_measure === "Kgs" ? line.kgs || 0 : line.labour_qty) * line.unit_cost;
-          return <View style={styles.line} key={line.key}>
-            <View style={{ flex: 1 }}><Text style={styles.lineHeading}>{traceLabel(line.tracecode_id)} · {activityLabel(line.activity_id)}</Text><Text style={styles.helper}>Qty {line.labour_qty} · Kgs {line.kgs ?? "—"} · {cost(line.unit_cost)} per unit · {cost(lineCost)}</Text></View>
-            <Pressable style={styles.outline} onPress={() => setDraft(lines => lines.filter(x => x.key !== line.key))}><Text style={styles.outlineText}>Remove</Text></Pressable>
-          </View>;
-        })}
+        <ScrollView horizontal contentContainerStyle={{minWidth:"100%"}}>
+          <View style={styles.gridTable}>
+            <View style={styles.gridHead}>
+              <Text style={[styles.gridCell,{width:160}]}>Trace Code</Text>
+              <Text style={[styles.gridCell,{flex:1}]}>Labour Activity</Text>
+              <Text style={[styles.gridCell,{width:80}]}>Labour Qty</Text>
+              <Text style={[styles.gridCell,{width:80}]}>Kgs</Text>
+              <Text style={[styles.gridCell,{width:100}]}>Unit Cost</Text>
+              <Text style={[styles.gridCell,{width:100}]}>Value</Text>
+              <Text style={[styles.gridCell,{width:80}]}>Action</Text>
+            </View>
+            {draft.map(line => {
+              const activity = activities.find(a => a.activity_id === line.activity_id);
+              const lineCost = (activity?.labour_measure === "Kgs" ? line.kgs || 0 : line.labour_qty) * line.unit_cost;
+              return <View style={styles.gridRow} key={line.key}>
+                <Text style={[styles.gridCell,{width:160}]}>{traceLabel(line.tracecode_id)}</Text>
+                <Text style={[styles.gridCell,{flex:1}]}>{activityLabel(line.activity_id)}</Text>
+                <Text style={[styles.gridCell,{width:80}]}>{line.labour_qty}</Text>
+                <Text style={[styles.gridCell,{width:80}]}>{line.kgs ?? "—"}</Text>
+                <Text style={[styles.gridCell,{width:100}]}>{cost(line.unit_cost)}</Text>
+                <Text style={[styles.gridCell,{width:100}]}>{cost(lineCost)}</Text>
+                <View style={{width:80,padding:3}}><Pressable style={styles.outline} onPress={() => setDraft(lines => lines.filter(x => x.key !== line.key))}><Text style={styles.outlineText}>Delete</Text></Pressable></View>
+              </View>;
+            })}
+            {draft.length===0&&<Text style={styles.helper}>No Labour lines entered yet.</Text>}
+          </View>
+        </ScrollView>
         <Text style={styles.total}>Daily total: {cost(draftCost)} · {draft.length} lines</Text>
         <Text style={styles.helper}>Final Save is permanent for the Labour Inputter. Review all lines before saving.</Text>
         <Pressable disabled={!draft.length || busy} onPress={saveDay} style={[styles.primary, (!draft.length || busy) && { opacity: 0.5 }]}>
@@ -223,11 +242,27 @@ export default function LabourEntry() {
       </View>}
       {isoDate && checkedDate === isoDate && locked && <View style={styles.panel}>
         <Text style={styles.heading}>Saved Labour — {formatJsplDate(isoDate)}</Text>
-        {saved.length === 0 ? <Text style={styles.helper}>Date was submitted. No visible lines; ask Admin to review.</Text> :
-          saved.map(line => <View style={styles.line} key={line.id}>
-            <View style={{ flex: 1 }}><Text style={styles.lineHeading}>{traceLabel(line.tracecode_id)} · {line.activity_name}</Text>
-              <Text style={styles.helper}>Qty {line.labour_qty} · Kgs {line.kgs ?? "—"} · Rate {cost(line.unit_cost)} · {cost(line.total_cost)}{line.cost_per_ha == null ? "" : " · " + cost(line.cost_per_ha) + "/ha"}</Text></View>
-          </View>)}
+        <ScrollView horizontal contentContainerStyle={{minWidth:"100%"}}>
+          <View style={styles.gridTable}>
+            <View style={styles.gridHead}>
+              <Text style={[styles.gridCell,{width:160}]}>Trace Code</Text>
+              <Text style={[styles.gridCell,{flex:1}]}>Labour Activity</Text>
+              <Text style={[styles.gridCell,{width:80}]}>Labour Qty</Text>
+              <Text style={[styles.gridCell,{width:80}]}>Kgs</Text>
+              <Text style={[styles.gridCell,{width:100}]}>Unit Cost</Text>
+              <Text style={[styles.gridCell,{width:100}]}>Value</Text>
+            </View>
+            {saved.map(line=><View style={styles.gridRow} key={line.id}>
+              <Text style={[styles.gridCell,{width:160}]}>{traceLabel(line.tracecode_id)}</Text>
+              <Text style={[styles.gridCell,{flex:1}]}>{line.activity_name}</Text>
+              <Text style={[styles.gridCell,{width:80}]}>{line.labour_qty}</Text>
+              <Text style={[styles.gridCell,{width:80}]}>{line.kgs??"—"}</Text>
+              <Text style={[styles.gridCell,{width:100}]}>{cost(line.unit_cost)}</Text>
+              <Text style={[styles.gridCell,{width:100}]}>{cost(line.total_cost)}</Text>
+            </View>)}
+            {saved.length===0&&<Text style={styles.helper}>No visible lines for this saved date.</Text>}
+          </View>
+        </ScrollView>
         <Text style={styles.helper}>Read only. {LABOUR_DEVELOPMENT_PREVIEW_ONLY ? "Preview lock only — reload to reset. No records saved." : "Admin corrections use the separate audited correction workflow."}</Text>
       </View>}
     </>}
@@ -235,6 +270,10 @@ export default function LabourEntry() {
 }
 
 const styles = StyleSheet.create({
+  gridTable:{minWidth:850,width:"100%",borderWidth:1,borderColor:C.border,borderRadius:7},
+  gridHead:{flexDirection:"row",backgroundColor:"#E2EDE3",paddingVertical:9},
+  gridRow:{flexDirection:"row",borderTopWidth:1,borderColor:C.border,minHeight:42,alignItems:"center"},
+  gridCell:{paddingHorizontal:7,fontSize:12,color:C.text},
   page: { backgroundColor: C.background, padding: S.xl, flexGrow: 1, gap: S.lg },
   header: { backgroundColor: C.primaryDark, borderRadius: R.lg, padding: S.lg, flexDirection: "row", alignItems: "center", gap: S.md },
   headerTitle: { fontSize: 22, fontWeight: "800", color: C.surface },
