@@ -47,7 +47,7 @@ export default function LabourReports(){
    if(isDaily&&!date)throw Error("Choose an existing Labour date.");
    if(!isDaily&&!week)throw Error("Choose an existing Labour week.");
    let request=isDaily?
-    supabase.from("labour_v2_report_rows").select("source_type,source_id,labour_date,report_farm,tracecode_name,crop_name,activity_name,labour_qty,kgs,unit_cost,total_cost").eq("labour_date",date):
+    supabase.from("labour_v2_report_rows").select("source_type,source_id,labour_date,labour_week,report_farm,tracecode_name,crop_name,activity_name,labour_qty,kgs,unit_cost,total_cost").eq("labour_date",date):
     supabase.from(mode==="ao"?"labour_v2_weekly_ao_report":"labour_v2_weekly_report").select("labour_week,report_farm,tracecode_name,crop_name,activity_name,total_labour_qty,total_kgs,unit_cost,avg_kgs_per_person,total_cost").eq("labour_week",week);
    const {data,error:dbError}=await request.order("report_farm").order("tracecode_name").order("activity_name").order("unit_cost").limit(2000);
    if(dbError)throw dbError;
