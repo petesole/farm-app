@@ -33,7 +33,7 @@ Select existing `yy/ww` week; Open Report; **Print and Excel** controls. Group b
 Same as Weekly but include only farm `AgriOrange`. Access AO rule: `FieldQ.AO=1 AND LabourActivityT.NotAO IS NULL`; a nonnull false is not equivalent to null. The other farm categories revert to Florinova / Heyshott.
 
 ## Printing and Excel
-The **Print** and **Excel** buttons belong beside the selected report controls, not buried below data. Current browser Excel export creates an Excel-compatible **CSV**, not a native XLSX; do not claim otherwise. The final print layout still requires visual comparison with an Access report.
+The **Print** and **Excel** buttons belong beside the selected report controls, not buried below data. Current browser Excel export creates a native **.xlsx** file without an external dependency. CI checks file archive/XML integrity; browser download still requires a user walkthrough. The final print layout still requires visual comparison with an Access report.
 
 ## Safety / sign-off
 - Do not edit, merge or publish production.
