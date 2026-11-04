@@ -233,7 +233,7 @@ export default function LabourDashboard() {
             <View style={{ flex: 1 }}><Text style={styles.lineHeading}>{traceLabel(line.tracecode_id)} · {line.activity_name}</Text>
               <Text style={styles.helper}>Qty {line.labour_qty} · Kgs {line.kgs ?? "—"} · Rate {cost(line.unit_cost)} · {cost(line.total_cost)}{line.cost_per_ha == null ? "" : " · " + cost(line.cost_per_ha) + "/ha"}</Text></View>
           </View>)}
-        <Text style={styles.helper}>Read only. ${LABOUR_DEVELOPMENT_PREVIEW_ONLY ? "Preview lock only — reload to reset. No records saved." : "Admin corrections use the separate audited correction workflow."}</Text>
+        <Text style={styles.helper}>Read only. {LABOUR_DEVELOPMENT_PREVIEW_ONLY ? "Preview lock only — reload to reset. No records saved." : "Admin corrections use the separate audited correction workflow."}</Text>
       </View>}
     </>}
   </ScrollView>;
