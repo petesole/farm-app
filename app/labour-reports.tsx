@@ -115,13 +115,13 @@ export default function LabourReports(){
   </View>
   {loaded&&<View style={styles.report}>
    <Text style={styles.reportHead}>{reportTitle}</Text>
-   <View style={styles.tableScroll}><View style={styles.table}>
-    <View style={styles.tableHeader}>{columns.map(c=><Text key={c.field} style={[styles.cell,styles.bold]}>{c.label}</Text>)}</View>
+   <View style={styles.tableScroll}><View style={[styles.table,{minWidth:mode==="daily"?940:1120}]}>
+    <View style={styles.tableHeader}>{columns.map(c=><Text key={c.field} style={[styles.cell,styles.bold,{width:(100/columns.length)+"%"}]}>{c.label}</Text>)}</View>
     {groups.map(f=><View key={f.farm}>
       <View style={styles.farmHeader}><Text style={styles.farmText}>{f.farm}</Text></View>
       {f.traces.map(t=><View key={t.name+":"+t.crop}>
        <View style={styles.traceHeader}><Text style={styles.traceText}>{t.name}  ·  {t.crop}</Text></View>
-       {t.lines.map((line,i)=><View key={String(line.source_id||i)+":"+i} style={styles.tableLine}>{columns.map(c=><Text key={c.field} style={styles.cell}>{value(line,c.field)}</Text>)}</View>)}
+       {t.lines.map((line,i)=><View key={String(line.source_id||i)+":"+i} style={styles.tableLine}>{columns.map(c=><Text key={c.field} style={[styles.cell,{width:(100/columns.length)+"%"}]}>{value(line,c.field)}</Text>)}</View>)}
       </View>)}
       <View style={styles.subtotal}><Text style={styles.subtotalText}>{f.farm} TOTAL  ·  Qty {formatJsplNumber(f.rows.reduce((n,r)=>n+Number(mode==="daily"?r.labour_qty||0:r.total_labour_qty||0),0),0)}  ·  Kgs {formatJsplNumber(f.rows.reduce((n,r)=>n+Number(mode==="daily"?r.kgs||0:r.total_kgs||0),0),0)}  ·  Value {money(f.rows.reduce((n,r)=>n+Number(r.total_cost||0),0))}</Text></View>
     </View>)}
