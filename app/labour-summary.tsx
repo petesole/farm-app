@@ -37,7 +37,7 @@ export default function LabourSummary(){
  }
  return <ScrollView contentContainerStyle={styles.page}>
  <View style={styles.header}><View style={{flex:1}}><Text style={styles.big}>Labour Summaries</Text><Text style={styles.white}>Current and previous week · Access grouping</Text></View><Image source={require("../assets/images/jspl_farm_logo.png")} style={styles.logo}/></View>
- <View style={styles.row}><Pressable style={styles.button} onPress={()=>router.replace("/(tabs)/labour")}><Text style={styles.btn}>← Labour</Text></Pressable><Pressable style={styles.button} onPress={()=>router.replace("/(tabs)/main-dashboard")}><Text style={styles.btn}>Main Dashboard</Text></Pressable><Pressable style={styles.button} onPress={load}><Text style={styles.btn}>Refresh</Text></Pressable></View>
+ <View style={styles.row}><Pressable style={styles.button} onPress={()=>router.replace("/(tabs)/labour")}><Text style={styles.btn}>← Labour</Text></Pressable><Pressable style={styles.button} onPress={load}><Text style={styles.btn}>Refresh</Text></Pressable></View>
  {busy?<ActivityIndicator/>:error?<Text style={{color:C.danger}}>{error}</Text>:<>{renderWeek("Current Week · "+week,currentDaily,currentJobs)}{renderWeek("Previous Week · "+previous,previousDaily,previousJobs)}</>}
  </ScrollView>
 }
