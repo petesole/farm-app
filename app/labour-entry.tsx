@@ -172,12 +172,7 @@ export default function LabourEntry() {
     </View>
     <View style={styles.top}>
       <Text style={styles.heading}>Labour Form</Text>
-      <Pressable onPress={() => router.replace("/(tabs)/main-dashboard")} style={styles.outline}><Text style={styles.outlineText}>← Back to Dashboard</Text></Pressable>
-    </View>
-    <View style={styles.row}>
-      <Pressable style={styles.outline} onPress={() => router.push("/labour-history")}><Text style={styles.outlineText}>Labour Input History</Text></Pressable>
-      <Pressable style={styles.outline} onPress={() => router.push("/labour-reports")}><Text style={styles.outlineText}>Daily / Weekly / AO Reports</Text></Pressable>
-      <Pressable style={styles.outline} onPress={() => router.push("/labour-summary")}><Text style={styles.outlineText}>Current / Last Week Summaries</Text></Pressable>
+      <Pressable onPress={() => router.replace("/(tabs)/labour")} style={styles.outline}><Text style={styles.outlineText}>← Labour</Text></Pressable>
     </View>
     {LABOUR_DEVELOPMENT_PREVIEW_ONLY && <View style={styles.panel}><Text style={styles.locked}>DEVELOPMENT PREVIEW — NO LABOUR DATA WILL BE SAVED</Text><Text style={styles.helper}>Final Save simulates the locked screen locally. Historical data and reports remain read-only. This is NOT an end-to-end database test.</Text></View>}
     {!!error && <View style={styles.error}><Text style={{ color: C.danger }}>{error}</Text></View>}
