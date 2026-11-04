@@ -47,7 +47,7 @@ export default function LabourReports(){
    if(isDaily&&!date)throw Error("Choose an existing Labour date.");
    if(!isDaily&&!week)throw Error("Choose an existing Labour week.");
    let request=isDaily?
-    supabase.from("labour_v2_report_rows").select("source_type,source_id,labour_date,labour_week,report_farm,tracecode_name,crop_name,activity_name,labour_qty,kgs,unit_cost,total_cost").eq("labour_date",date):
+    supabase.from("labour_v2_report_rows").select("source_type,source_id,labour_date,labour_week,report_farm,farm_name,tracecode_name,crop_name,activity_name,labour_qty,kgs,unit_cost,total_cost").eq("labour_date",date):
     supabase.from(mode==="ao"?"labour_v2_weekly_ao_report":"labour_v2_weekly_report").select("labour_week,report_farm,tracecode_name,crop_name,activity_name,total_labour_qty,total_kgs,unit_cost,avg_kgs_per_person,total_cost").eq("labour_week",week);
    const {data,error:dbError}=await request.order("report_farm").order("tracecode_name").order("activity_name").order("unit_cost").limit(2000);
    if(dbError)throw dbError;
@@ -58,14 +58,14 @@ export default function LabourReports(){
  const groups=useMemo(()=>{
   const out:{farm:string;traces:{name:string;crop:string;lines:ReportRow[]}[];rows:ReportRow[]}[]=[];
   for(const row of rows){
-   const farm=row.report_farm||row.farm_name||"Unassigned";
+   const farm=mode==="daily"?(row.farm_name==="Florinova"?"Florinova":"Heyshott"):(row.report_farm||"Heyshott");
    let f=out.find(f=>f.farm===farm);if(!f){f={farm,traces:[],rows:[]};out.push(f);}
    f.rows.push(row);
    let t=f.traces.find(t=>t.name===row.tracecode_name&&t.crop===row.crop_name);
    if(!t){t={name:row.tracecode_name,crop:row.crop_name,lines:[]};f.traces.push(t);}
    t.lines.push(row);
   }return out;
- },[rows]);
+ },[rows,mode]);
  const totalQty=rows.reduce((n,r)=>n+Number(mode==="daily"?r.labour_qty||0:r.total_labour_qty||0),0);
  const totalKgs=rows.reduce((n,r)=>n+Number(mode==="daily"?r.kgs||0:r.total_kgs||0),0);
  const totalValue=rows.reduce((n,r)=>n+Number(r.total_cost||0),0);
