@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { router } from "expo-router";
 import { supabase } from "@/supabase";
-import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 import { formatJsplDate, formatJsplNumber, jsplColors as C, jsplSpacing as S, jsplRadii as R } from "@/constants/jspl-design";
 
 type Activity = { activity_id: number; activity_name: string; labour_measure: "Kgs" | "Unit"; active: boolean };
@@ -89,7 +88,7 @@ export default function LabourDashboard() {
     }catch(e:any){setError(e.message || "Unable to save labour entry");}finally{setBusy(false);}
   }
   return <ScrollView contentContainerStyle={styles.page}>
-    <JsplModuleHeader title="Labour" subtitle="Daily Labour · Access workflow" showMain />
+    <View style={styles.header}><View style={{flex:1}}><Text style={styles.headerTitle}>Labour</Text><Text style={styles.headerSub}>John Sole (Private) Limited · Daily Labour</Text></View><Image source={require("../../assets/images/jspl_farm_logo.png")} resizeMode="contain" style={styles.logo}/></View>
     <View style={styles.top}>
       <Text style={styles.heading}>Daily Labour Entry</Text>
       <Pressable onPress={()=>router.replace("/(tabs)/main-dashboard")} style={styles.outline}><Text style={styles.outlineText}>← Back to Dashboard</Text></Pressable>
@@ -136,6 +135,10 @@ export default function LabourDashboard() {
 }
 const styles=StyleSheet.create({
   page:{backgroundColor:C.background,padding:S.xl,flexGrow:1,gap:S.lg},
+  header:{backgroundColor:C.primaryDark,borderRadius:R.lg,padding:S.lg,flexDirection:"row",alignItems:"center",gap:S.md},
+  headerTitle:{fontSize:22,fontWeight:"800",color:C.surface},
+  headerSub:{color:"#DCE9DC",fontSize:12,marginTop:5},
+  logo:{width:66,height:66,backgroundColor:C.surface,borderRadius:R.sm},
   top:{flexDirection:"row",justifyContent:"space-between",alignItems:"center",gap:S.md,flexWrap:"wrap"},
   heading:{fontSize:19,fontWeight:"800",color:C.primaryDark},
   panel:{backgroundColor:C.surface,padding:S.lg,borderWidth:1,borderColor:C.border,borderRadius:R.lg,gap:S.sm},
