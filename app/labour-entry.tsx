@@ -42,6 +42,7 @@ export default function LabourEntry() {
   const [draft, setDraft] = useState<DraftLine[]>([]);
   const [saved, setSaved] = useState<SavedLine[]>([]);
   const [nextKey, setNextKey] = useState(1);
+  const [editingKey, setEditingKey] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -79,6 +80,7 @@ export default function LabourEntry() {
     setCheckedDate(null);
     setLocked(false);
     setDraft([]);
+    setEditingKey(null);
     setSaved([]);
     if (!isoDate) return;
     (async () => {
@@ -101,7 +103,7 @@ export default function LabourEntry() {
   }, [isoDate]);
 
   function clearEntry() {
-    setTraceId(""); setActivityId(""); setQty(""); setKgs(""); setRate(""); setActivitySearch("");
+    setTraceId(""); setActivityId(""); setQty(""); setKgs(""); setRate(""); setActivitySearch(""); setEditingKey(null);
   }
 
   function addDraft() {
@@ -112,9 +114,16 @@ export default function LabourEntry() {
     if (!qty.trim() || !Number.isFinite(amount) || amount <= 0) { setError("Enter Labour Qty greater than zero."); return; }
     if (selected.labour_measure === "Kgs" && kgs.trim() && (!Number.isFinite(kilograms) || kilograms < 0)) { setError("Enter valid Kgs or leave blank, as in Access."); return; }
     if (!rate.trim() || !Number.isFinite(unitCost) || unitCost < 0) { setError("Enter a valid Unit Cost."); return; }
-    setDraft(lines => [...lines, { key: nextKey, tracecode_id: Number(traceId), activity_id: selected.activity_id, labour_qty: amount, kgs: selected.labour_measure === "Kgs" && kgs.trim() ? kilograms : null, unit_cost: unitCost }]);
-    setNextKey(key => key + 1);
+    const updatedLine = { key: editingKey ?? nextKey, tracecode_id: Number(traceId), activity_id: selected.activity_id, labour_qty: amount, kgs: selected.labour_measure === "Kgs" && kgs.trim() ? kilograms : null, unit_cost: unitCost };
+    if (editingKey != null) setDraft(lines => lines.map(x => x.key === editingKey ? updatedLine : x));
+    else { setDraft(lines => [...lines, updatedLine]); setNextKey(key => key + 1); }
     setError(""); clearEntry();
+  }
+
+  function editDraft(line: DraftLine) {
+    setTraceId(String(line.tracecode_id));setActivityId(String(line.activity_id));
+    setQty(String(line.labour_qty));setKgs(line.kgs == null ? "" : String(line.kgs));
+    setRate(String(line.unit_cost));setEditingKey(line.key);setActivitySearch("");setError("");
   }
 
   async function saveDay() {
@@ -203,7 +212,10 @@ export default function LabourEntry() {
           {selected?.labour_measure === "Kgs" && <View style={styles.field}><Text style={styles.label}>Kgs</Text><TextInput value={kgs} onChangeText={setKgs} keyboardType="decimal-pad" placeholder="0" style={styles.input}/></View>}
           <View style={styles.field}><Text style={styles.label}>Unit Cost ($)</Text><TextInput value={rate} onChangeText={setRate} keyboardType="decimal-pad" placeholder="0.00" style={styles.input}/></View>
         </View>
-        <Pressable onPress={addDraft} style={styles.outline}><Text style={styles.outlineText}>+ Add Line to Date</Text></Pressable>
+        <View style={styles.row}>
+          <Pressable onPress={addDraft} style={styles.outline}><Text style={styles.outlineText}>{editingKey == null ? "+ Add Line" : "Update Line"}</Text></Pressable>
+          {editingKey != null && <Pressable onPress={clearEntry} style={styles.outline}><Text style={styles.outlineText}>Cancel Edit</Text></Pressable>}
+        </View>
       </View>}
       {isoDate && checkedDate === isoDate && !locked && <View style={styles.panel}>
         <Text style={styles.heading}>Unsaved Labour — {formatJsplDate(isoDate)}</Text>
@@ -216,7 +228,7 @@ export default function LabourEntry() {
               <Text style={[styles.gridCell,{width:80}]}>Kgs</Text>
               <Text style={[styles.gridCell,{width:100}]}>Unit Cost</Text>
               <Text style={[styles.gridCell,{width:100}]}>Value</Text>
-              <Text style={[styles.gridCell,{width:80}]}>Action</Text>
+              <Text style={[styles.gridCell,{width:100}]}>Action</Text>
             </View>
             {draft.map(line => {
               const activity = activities.find(a => a.activity_id === line.activity_id);
@@ -228,7 +240,10 @@ export default function LabourEntry() {
                 <Text style={[styles.gridCell,{width:80}]}>{line.kgs ?? "—"}</Text>
                 <Text style={[styles.gridCell,{width:100}]}>{cost(line.unit_cost)}</Text>
                 <Text style={[styles.gridCell,{width:100}]}>{cost(lineCost)}</Text>
-                <View style={{width:80,padding:3}}><Pressable style={styles.outline} onPress={() => setDraft(lines => lines.filter(x => x.key !== line.key))}><Text style={styles.outlineText}>Delete</Text></Pressable></View>
+                <View style={{width:100,padding:3,flexDirection:"row",gap:4}}>
+                  <Pressable onPress={() => editDraft(line)}><Text style={styles.outlineText}>Edit</Text></Pressable>
+                  <Pressable onPress={() => setDraft(lines => lines.filter(x => x.key !== line.key))}><Text style={styles.outlineText}>Delete</Text></Pressable>
+                </View>
               </View>;
             })}
             {draft.length===0&&<Text style={styles.helper}>No Labour lines entered yet.</Text>}
