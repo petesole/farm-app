@@ -23,6 +23,9 @@ function parseDate(value: string): string | null {
   return match[3] + "-" + match[2] + "-" + match[1];
 }
 function cost(value: number): string { return "$" + formatJsplNumber(value); }
+/** Development-only preview: protects the shared FarmingMain database from test submissions.
+ * IMPORTANT: turn this OFF only after a dedicated test environment and end-to-end approval. */
+const LABOUR_DEVELOPMENT_PREVIEW_ONLY = true;
 
 export default function LabourDashboard() {
   const [date, setDate] = useState(today());
@@ -117,6 +120,21 @@ export default function LabourDashboard() {
   async function saveDay() {
     if (!isoDate || checkedDate !== isoDate || locked || busy) { setError("This date is unavailable or already submitted."); return; }
     if (!draft.length) { setError("Add at least one Labour line before final save."); return; }
+    if (LABOUR_DEVELOPMENT_PREVIEW_ONLY) {
+      // Simulate final save entirely in memory. Nothing is written to Supabase.
+      const simulated: SavedLine[] = draft.map((line,index) => {
+        const a = activities.find(a => a.activity_id === line.activity_id);
+        const t = traces.find(t => t.tracecode_id === line.tracecode_id);
+        const lineCost = (a?.labour_measure === "Kgs" ? line.kgs ?? 0 : line.labour_qty) * line.unit_cost;
+        return { id: -(index+1), labour_date: isoDate, tracecode_id: line.tracecode_id, activity_id: line.activity_id,
+          activity_name: a?.activity_name || "Activity "+line.activity_id, labour_measure: a?.labour_measure || "Unit",
+          labour_qty: line.labour_qty, kgs: line.kgs, unit_cost: line.unit_cost,
+          total_cost: lineCost, cost_per_ha: t?.tracecode_size && t.tracecode_size>0 ? lineCost/t.tracecode_size : null };
+      });
+      setSaved(simulated); setDraft([]); setLocked(true);
+      setError("Preview saved in this screen only. NO records have been written to Supabase. Reload to clear this simulation.");
+      return;
+    }
     setBusy(true); setError("");
     try {
       const { error: saveError } = await supabase.rpc("labour_v2_submit_day", {
@@ -161,6 +179,7 @@ export default function LabourDashboard() {
       <Pressable style={styles.outline} onPress={() => router.push("/labour-reports")}><Text style={styles.outlineText}>Daily / Weekly / AO Reports</Text></Pressable>
       <Pressable style={styles.outline} onPress={() => router.push("/labour-summary")}><Text style={styles.outlineText}>Current / Last Week Summaries</Text></Pressable>
     </View>
+    {LABOUR_DEVELOPMENT_PREVIEW_ONLY && <View style={styles.panel}><Text style={styles.locked}>DEVELOPMENT PREVIEW — NO LABOUR DATA WILL BE SAVED</Text><Text style={styles.helper}>Final Save simulates the locked screen locally. Historical data and reports remain read-only. This is NOT an end-to-end database test.</Text></View>}
     {!!error && <View style={styles.error}><Text style={{ color: C.danger }}>{error}</Text></View>}
     {loading ? <ActivityIndicator color={C.primary} /> : <>
       <View style={styles.panel}>
@@ -204,7 +223,7 @@ export default function LabourDashboard() {
         <Text style={styles.total}>Daily total: {cost(draftCost)} · {draft.length} lines</Text>
         <Text style={styles.helper}>Final Save is permanent for the Labour Inputter. Review all lines before saving.</Text>
         <Pressable disabled={!draft.length || busy} onPress={saveDay} style={[styles.primary, (!draft.length || busy) && { opacity: 0.5 }]}>
-          <Text style={styles.primaryText}>{busy ? "Saving…" : "Final Save — Lock Date"}</Text>
+          <Text style={styles.primaryText}>{busy ? "Saving…" : LABOUR_DEVELOPMENT_PREVIEW_ONLY ? "Simulate Final Save (No Database Write)" : "Final Save — Lock Date"}</Text>
         </Pressable>
       </View>}
       {isoDate && checkedDate === isoDate && locked && <View style={styles.panel}>
@@ -214,7 +233,7 @@ export default function LabourDashboard() {
             <View style={{ flex: 1 }}><Text style={styles.lineHeading}>{traceLabel(line.tracecode_id)} · {line.activity_name}</Text>
               <Text style={styles.helper}>Qty {line.labour_qty} · Kgs {line.kgs ?? "—"} · Rate {cost(line.unit_cost)} · {cost(line.total_cost)}{line.cost_per_ha == null ? "" : " · " + cost(line.cost_per_ha) + "/ha"}</Text></View>
           </View>)}
-        <Text style={styles.helper}>Read only. Admin corrections will use the separate audited correction workflow.</Text>
+        <Text style={styles.helper}>Read only. ${LABOUR_DEVELOPMENT_PREVIEW_ONLY ? "Preview lock only — reload to reset. No records saved." : "Admin corrections use the separate audited correction workflow."}</Text>
       </View>}
     </>}
   </ScrollView>;
