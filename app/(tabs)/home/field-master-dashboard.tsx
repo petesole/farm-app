@@ -1,3 +1,4 @@
+import { JsplSearchCombo } from "@/components/jspl/JsplSearchCombo";
 import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -154,37 +155,10 @@ export default function FieldMasterDashboardScreen() {
     });
   }, [rows, q, farmFilterId, statusFilter]);
 
-  function FarmPills() {
-    const pillValues = [{ farm_id: null as any, farm_name: "All" as any }, ...farms];
-
-    return (
-      <View style={{ marginTop: 10 }}>
-        <ThemedText style={{ opacity: 0.7, marginBottom: 6 }}>Farm</ThemedText>
-        <View style={styles.pills}>
-          {pillValues.slice(0, 10).map((f) => {
-            const id = f.farm_id as number | null;
-            const name = f.farm_name as string | null;
-            const active = id === farmFilterId;
-
-            return (
-              <Pressable
-                key={id === null ? "All" : String(id)}
-                onPress={() => setFarmFilterId(id)}
-                style={[styles.pill, active && styles.pillActive]}
-              >
-                <ThemedText style={[styles.pillText, active && styles.pillTextActive]} numberOfLines={1}>
-                  {name ?? (id === null ? "All" : `Farm ${id}`)}
-                </ThemedText>
-              </Pressable>
-            );
-          })}
-        </View>
-        {farms.length + 1 > 10 ? (
-          <ThemedText style={{ opacity: 0.6, marginTop: 6 }}>More farms? Use search.</ThemedText>
-        ) : null}
-      </View>
-    );
-  }
+  const availableFarms = farms.filter(f => rows.some(r =>
+    r.farm_id === f.farm_id &&
+    (statusFilter === "all" || (statusFilter === "active" ? effectiveActive(r) : !effectiveActive(r)))
+  ));
 
   function goEdit(field_id: number) {
     router.push({
@@ -264,20 +238,16 @@ export default function FieldMasterDashboardScreen() {
           autoCorrect={false}
         />
 
-        <FarmPills />
-        <View style={{ marginTop: 12 }}>
-          <ThemedText style={{ opacity: 0.7, marginBottom: 6 }}>Field status</ThemedText>
-          <View style={styles.pills}>
-            {(["active", "all", "inactive"] as const).map(value => (
-              <Pressable key={value} onPress={() => setStatusFilter(value)}
-                style={[styles.pill, statusFilter === value && styles.pillActive]}>
-                <ThemedText style={[styles.pillText, statusFilter === value && styles.pillTextActive]}>
-                  {value === "all" ? "All" : value === "active" ? "Active" : "Inactive"}
-                </ThemedText>
-              </Pressable>
-            ))}
-          </View>
-        </View>
+        <JsplSearchCombo label="Farm" selector="trace"
+          options={[{id:"all",label:"All farms",active:true},...availableFarms.map(f=>({id:f.farm_id,label:f.farm_name || "Farm "+f.farm_id,active:true}))]}
+          value={farmFilterId ?? "all"}
+          onChange={v=>setFarmFilterId(v===null||v==="all"?null:Number(v))}
+          placeholder="Search farms" />
+        <JsplSearchCombo label="Field status" selector="crop"
+          options={[{id:"active",label:"Active",active:true},{id:"all",label:"All",active:true},{id:"inactive",label:"Inactive",active:true}]}
+          value={statusFilter}
+          onChange={v=>{setStatusFilter((v==="inactive"||v==="all")?v:"active");setFarmFilterId(null);}}
+          placeholder="Filter field status" />
 
         <ThemedText style={{ marginTop: 10, opacity: 0.7 }}>
           Showing {filtered.length} of {rows.length}
