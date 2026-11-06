@@ -1,4 +1,5 @@
 import { router } from "expo-router";
+import { parseJsplDateInput, displayJsplDate } from "@/utils/jspl-input";
 import { jsplColors as C } from "@/constants/jspl-design";
 import { supabase } from "../../../supabase";
 import { useEffect, useMemo, useState } from "react";
@@ -11,8 +12,8 @@ type Activity = { labour_activity_id:number; labour_activity:string; labour_meas
 type Trace = { tracecode_id:number; tracecode_name:string; crop_id:number|null };
 type LabourRow = { labour_id:number; labour_date:string; tracecode_id:number|null; labour_activity_id:number; labour_qty:number; kgs:number|null; labour_unit_cost:number };
 function today(){ const d=new Date();return [String(d.getDate()).padStart(2,"0"),String(d.getMonth()+1).padStart(2,"0"),d.getFullYear()].join("/");}
-function isoDate(s:string){const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s.trim());if(!m)return null;const d=new Date(Number(m[3]),Number(m[2])-1,Number(m[1]));if(d.getFullYear()!==Number(m[3])||d.getMonth()!==Number(m[2])-1||d.getDate()!==Number(m[1]))return null;return [m[3],m[2],m[1]].join("-");}
-function displayDate(s:string){return /^\d{4}-\d\d-\d\d$/.test(s)?s.slice(8,10)+"/"+s.slice(5,7)+"/"+s.slice(0,4):s;}
+function isoDate(s:string){return parseJsplDateInput(s);}
+function displayDate(s:string){return displayJsplDate(s);}
 const num=(x:string)=>Number(x.replace(",","."));const money=(x:number)=>x.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
 export default function LabourScreen(){
  const [date,setDate]=useState(today());
@@ -61,10 +62,10 @@ export default function LabourScreen(){
   if(res.error){setError(res.error.message);return;}reset();await loadRows();
  }
  return <ScrollView contentContainerStyle={s.page}>
-  <View style={s.banner}><View style={{flex:1}}><Text style={s.bannerTitle}>Labour</Text><Text style={s.bannerSub}>John Sole (Private) Limited</Text><Pressable onPress={()=>router.replace("/(tabs)/main-dashboard" as any)}><Text style={s.back}>← Back to Dashboard</Text></Pressable></View><Image source={require("../../../assets/images/jspl_farm_logo.png")} resizeMode="contain" style={s.logo}/></View>
+  <View style={s.banner}><Image source={require("../../../assets/images/jspl_farm_logo.png")} resizeMode="contain" style={s.logo}/><View style={{flex:1}}><Text style={s.bannerTitle}>Labour</Text><Text style={s.bannerSub}>John Sole (Private) Limited</Text></View><Pressable onPress={()=>router.replace("/(tabs)/labour" as any)}><Text style={s.back}>Back to Labour</Text></Pressable></View>
   <Text style={s.heading}>Daily Labour Entry</Text>
   <Text style={s.label}>Date (dd/mm/yyyy)</Text>
-  <TextInput style={s.input} value={date} onChangeText={setDate} placeholder="dd/mm/yyyy" keyboardType="numbers-and-punctuation" maxLength={10}/>
+  <TextInput style={s.input} value={date} onChangeText={setDate} onBlur={()=>{const iso=isoDate(date);if(iso)setDate(displayDate(iso));}} placeholder="d/m (year optional)" keyboardType="numbers-and-punctuation" maxLength={10}/>
   {loading?<ActivityIndicator/>:null}
   {error?<Text style={s.error}>{error}</Text>:null}
   <Text style={s.label}>Trace Code</Text>
@@ -83,4 +84,4 @@ export default function LabourScreen(){
   <Text style={s.footer}>Development only. Uses Access quantity/kg calculation. AO allocation and weekly report parity will be verified before release.</Text>
  </ScrollView>;
 }
-const s=StyleSheet.create({banner:{backgroundColor:C.primaryDark,borderRadius:12,padding:14,flexDirection:"row",alignItems:"center"},logo:{width:64,height:64,marginLeft:12,backgroundColor:"#FFFFFF",borderRadius:6},bannerTitle:{color:"#FFFFFF",fontSize:22,fontWeight:"800"},bannerSub:{color:"#E0EDE0",fontSize:12},back:{color:"#FFFFFF",fontWeight:"700",marginTop:10},page:{padding:16,paddingBottom:52,backgroundColor:"#F5F8F5",gap:9},heading:{fontSize:20,fontWeight:"800",color:C.primaryDark,marginTop:10},label:{fontWeight:"700",color:"#264631",marginTop:5},input:{backgroundColor:"#FFFFFF",borderColor:"#B9CBBB",borderWidth:1,borderRadius:9,minHeight:44,padding:11,justifyContent:"center"},row:{flexDirection:"row",gap:10},half:{flex:1},picker:{backgroundColor:"#FFFFFF",maxHeight:185,overflow:"scroll",borderWidth:1,borderColor:"#BCD0BE",borderRadius:8},option:{padding:11,borderBottomWidth:1,borderBottomColor:"#E4EBE5"},total:{backgroundColor:"#DDEBDF",padding:15,borderRadius:10},totalLabel:{color:"#245331",fontWeight:"700"},totalText:{color:C.primaryDark,fontSize:24,fontWeight:"800"},button:{backgroundColor:C.primaryDark,borderRadius:10,padding:15,alignItems:"center"},buttonText:{color:"#FFFFFF",fontWeight:"800"},cancel:{color:C.primaryDark,textAlign:"center",textDecorationLine:"underline"},error:{color:"#AC2020",padding:8},record:{backgroundColor:"#FFFFFF",borderRadius:9,borderWidth:1,borderColor:"#D5E0D5",padding:12},recordMain:{fontWeight:"700",color:"#23412B"},recordSub:{marginTop:4,color:"#57705B"},empty:{color:"#66766A"},footer:{marginTop:20,fontSize:12,color:"#66766A"}});
+const s=StyleSheet.create({banner:{backgroundColor:C.primaryDark,borderRadius:12,padding:14,flexDirection:"row",alignItems:"center"},logo:{width:64,height:64,marginRight:12,backgroundColor:"#FFFFFF",borderRadius:6},bannerTitle:{color:"#FFFFFF",fontSize:22,fontWeight:"800"},bannerSub:{color:"#E0EDE0",fontSize:12},back:{color:"#FFFFFF",fontWeight:"700",marginTop:10},page:{padding:16,paddingBottom:52,backgroundColor:"#F5F8F5",gap:9},heading:{fontSize:20,fontWeight:"800",color:C.primaryDark,marginTop:10},label:{fontWeight:"700",color:"#264631",marginTop:5},input:{backgroundColor:"#FFFFFF",borderColor:"#B9CBBB",borderWidth:1,borderRadius:9,minHeight:44,padding:11,justifyContent:"center"},row:{flexDirection:"row",gap:10},half:{flex:1},picker:{backgroundColor:"#FFFFFF",maxHeight:185,overflow:"scroll",borderWidth:1,borderColor:"#BCD0BE",borderRadius:8},option:{padding:11,borderBottomWidth:1,borderBottomColor:"#E4EBE5"},total:{backgroundColor:"#DDEBDF",padding:15,borderRadius:10},totalLabel:{color:"#245331",fontWeight:"700"},totalText:{color:C.primaryDark,fontSize:24,fontWeight:"800"},button:{backgroundColor:C.primaryDark,borderRadius:10,padding:15,alignItems:"center"},buttonText:{color:"#FFFFFF",fontWeight:"800"},cancel:{color:C.primaryDark,textAlign:"center",textDecorationLine:"underline"},error:{color:"#AC2020",padding:8},record:{backgroundColor:"#FFFFFF",borderRadius:9,borderWidth:1,borderColor:"#D5E0D5",padding:12},recordMain:{fontWeight:"700",color:"#23412B"},recordSub:{marginTop:4,color:"#57705B"},empty:{color:"#66766A"},footer:{marginTop:20,fontSize:12,color:"#66766A"}});
