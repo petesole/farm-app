@@ -1,3 +1,4 @@
+import {JsplSearchCombo} from "@/components/jspl/JsplSearchCombo";
 import {StockV2Header} from "@/components/jspl/StockV2Header";
 import {useCallback,useEffect,useMemo,useState} from "react";
 import {useRouter} from "expo-router";
@@ -57,8 +58,9 @@ export default function WeeklySprayPlanning(){
   }).sort((a,b)=>String(a.week??"").localeCompare(String(b.week??""))||String(a.crop??"").localeCompare(String(b.crop??""))||String(a.trace??"").localeCompare(String(b.trace??""))||a.id-b.id);
  },[sprays,traces,crops]);
  const due=jobs.filter(j=>j.status==="planned"&&j.remainingArea>0.0001);
- const dueCrops=[...new Set(due.map(j=>j.crop))].sort();
- const dueTraces=[...new Map(due.filter(j=>cropFilter==="all"||j.crop===cropFilter).map(j=>[j.traceId,{id:j.traceId,name:j.trace}])).values()].sort((a,b)=>String(a.name??"").localeCompare(String(b.name??"")));
+ const filterJobs=jobs.filter(j=>showCompleted?j.status==="completed":(j.status==="planned"&&j.remainingArea>0.0001));
+ const filterCrops=[...new Set(filterJobs.map(j=>j.crop))].sort();
+ const filterTraces=[...new Map(filterJobs.filter(j=>cropFilter==="all"||j.crop===cropFilter).map(j=>[j.traceId,{id:j.traceId,name:j.trace}])).values()].sort((a,b)=>String(a.name??"").localeCompare(String(b.name??"")));
  const visible=jobs.filter(j=>(showCompleted?j.status==="completed":(j.status==="planned"&&j.remainingArea>0.0001))&&(cropFilter==="all"||j.crop===cropFilter)&&(traceFilter==="all"||String(j.traceId)===traceFilter));
  const groups=useMemo(()=>{const m=new Map<string,Job[]>();for(const j of visible){const k=j.week+"|"+j.crop+"|"+j.trace;if(!m.has(k))m.set(k,[]);m.get(k)!.push(j)}return [...m.entries()].map(([key,rows])=>({key,rows,week:rows[0].week,crop:rows[0].crop,trace:rows[0].trace}))},[visible]);
  const deleteSpray=async(job:Job)=>{if(!isAdmin||job.status!=="planned"||job.lines.some(l=>l.issued_quantity>0)){setError("Only an admin can delete a spray without stock issues.");return}
@@ -103,8 +105,14 @@ export default function WeeklySprayPlanning(){
   <Pressable style={styles.secondary} onPress={()=>setShowCompleted(v=>!v)}><ThemedText>{showCompleted?"Show outstanding":"Show completed only"}</ThemedText></Pressable>
  </View>
  {latestSlip?<Pressable style={styles.primary} onPress={()=>router.push({pathname:"/stock-v2-issue-slip",params:{documentId:String(latestSlip)}})}><ThemedText style={styles.white}>Print Issue Slip #{latestSlip}</ThemedText></Pressable>:null}
- <View style={{flexDirection:"row",flexWrap:"wrap",gap:8,alignItems:"center"}}><ThemedText style={styles.bold}>Due sprays:</ThemedText><ScrollView horizontal style={{flexGrow:0,maxWidth:"100%"}}>{[["all","All crops"],...dueCrops.map(c=>[c,c])].map(([id,label])=><Pressable key={id} onPress={()=>{setCropFilter(id);setTraceFilter("all")}} style={[styles.secondary,{marginRight:6,backgroundColor:cropFilter===id?"#c9ead5":"#fff"}]}><ThemedText>{label}</ThemedText></Pressable>)}</ScrollView></View>
- <View style={{flexDirection:"row",flexWrap:"wrap",gap:6}}><Pressable style={[styles.secondary,{backgroundColor:traceFilter==="all"?"#c9ead5":"#fff"}]} onPress={()=>setTraceFilter("all")}><ThemedText>All due traces</ThemedText></Pressable>{dueTraces.map(t=><Pressable key={t.id} style={[styles.secondary,{backgroundColor:traceFilter===String(t.id)?"#c9ead5":"#fff"}]} onPress={()=>setTraceFilter(String(t.id))}><ThemedText>{t.name}</ThemedText></Pressable>)}</View>
+ <View style={{flexDirection:"row",flexWrap:"wrap",gap:12,alignItems:"flex-start"}}>
+  <View style={{minWidth:220,flex:1}}>
+   <JsplSearchCombo label="Crop" selector="crop" options={[{id:"all",label:"All crops",active:true},...filterCrops.map(name=>({id:name,label:name,active:true}))]} value={cropFilter} onChange={value=>{setCropFilter(String(value??"all"));setTraceFilter("all");}} placeholder="Filter crop"/>
+  </View>
+  <View style={{minWidth:220,flex:1}}>
+   <JsplSearchCombo label="Trace Code" selector="trace" options={[{id:"all",label:"All relevant traces",active:true},...filterTraces.map(t=>({id:String(t.id),label:t.name,active:true}))]} value={traceFilter} onChange={value=>setTraceFilter(String(value??"all"))} placeholder="Filter trace"/>
+  </View>
+ </View>
  {error?<ThemedText style={styles.error}>{error}</ThemedText>:null}
  {loading?<ActivityIndicator/>:<View style={styles.panel}>
  <View style={styles.tableHeader}><ThemedText style={[styles.bold,{flex:1}]}>Week</ThemedText><ThemedText style={[styles.bold,{flex:1}]}>Crop</ThemedText><ThemedText style={[styles.bold,{flex:2}]}>Trace Code</ThemedText><ThemedText style={[styles.bold,{width:65,textAlign:"right"}]}>Spray #</ThemedText><View style={{width:75}}/></View>
