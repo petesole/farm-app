@@ -2,6 +2,7 @@ import {useEffect,useMemo,useState} from "react";
 import {ActivityIndicator,Image,Pressable,ScrollView,StyleSheet,Text,View} from "react-native";
 import {Picker} from "@react-native-picker/picker";
 import {router,useLocalSearchParams} from "expo-router";
+import {JsplModuleHeader} from "@/components/jspl/JsplModuleHeader";
 import {supabase} from "@/supabase";
 import {jsplColors as C,formatJsplDate,formatJsplNumber} from "@/constants/jspl-design";
 import {labourPrintReport} from "@/lib/labour-report-export";
@@ -96,7 +97,7 @@ export default function LabourReports(){
   try{labourExportXLSX(reportTitle,columns,printable,totalValue)}catch(e:any){setError(e.message||"Unable to export")}
  }
  return <ScrollView contentContainerStyle={styles.page}>
-  <View style={styles.header}><Image style={styles.logo} source={require("../assets/images/jspl_farm_logo.png")}/><View style={{flex:1,marginLeft:12}}><Text style={styles.head}>{mode==="daily"?"Daily Labour Report":mode==="ao"?"AO Weekly Labour Report":"Weekly Labour Report"}</Text><Text style={styles.headSub}>John Sole (Private) Limited</Text></View><Pressable onPress={()=>router.replace("/(tabs)/labour")} style={styles.back}><Text style={styles.backText}>Back to Labour</Text></Pressable></View>
+  <JsplModuleHeader title={mode==="daily"?"Daily Labour Report":mode==="ao"?"AO Weekly Labour Report":"Weekly Labour Report"} backLabel="Back to Labour" backHref="/(tabs)/labour" />
   <View style={styles.selector}>
    <Text style={styles.label}>{mode==="daily"?"Select Daily Labour Date":"Select Weekly Labour Week"}</Text>
    <View style={styles.pick}><Picker selectedValue={mode==="daily"?date:week} onValueChange={x=>{mode==="daily"?setDate(String(x)):setWeek(String(x));setLoaded(false);setRows([])}}>

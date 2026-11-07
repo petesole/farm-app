@@ -1,0 +1,24 @@
+name: JSPL development checks
+
+on:
+  push:
+    branches: [development]
+  pull_request:
+    branches: [development, main]
+
+jobs:
+  labour-ui-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Labour navigation and UI contract
+        run: node scripts/check-labour-ui.mjs
+      - name: Dependencies
+        run: npm ci
+      - name: TypeScript
+        run: npx tsc --noEmit
+      - name: Web export
+        run: npm run build:web
