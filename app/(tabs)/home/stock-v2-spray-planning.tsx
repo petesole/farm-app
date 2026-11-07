@@ -1,7 +1,7 @@
 import {JsplSearchCombo} from "@/components/jspl/JsplSearchCombo";
 import {StockV2Header} from "@/components/jspl/StockV2Header";
 import {useCallback,useEffect,useMemo,useState} from "react";
-import {useRouter} from "expo-router";
+import {useRouter,useLocalSearchParams} from "expo-router";
 import {ActivityIndicator,Pressable,ScrollView,StyleSheet,TextInput,View} from "react-native";
 import {ThemedText} from "@/components/themed-text";
 import {ThemedView} from "@/components/themed-view";
@@ -20,20 +20,17 @@ const weekLabel=(v:string)=>dateLabel(v);
 const uuid=()=>"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const r=Math.floor(Math.random()*16);return(c==="x"?r:(r&3)|8).toString(16)});
 export default function WeeklySprayPlanning(){
  const router=useRouter();
+ const {postedDocument}=useLocalSearchParams<{postedDocument?:string}>();
  const [sprays,setSprays]=useState<Spray[]>([]),[products,setProducts]=useState<Product[]>([]),[traces,setTraces]=useState<Trace[]>([]),[crops,setCrops]=useState<Crop[]>([]);
  const [loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState("");
- const [expanded,setExpanded]=useState(""),[issueId,setIssueId]=useState<number|null>(null),[issueHa,setIssueHa]=useState(""),[confirm,setConfirm]=useState(false);
+ const [expanded,setExpanded]=useState("");
  const [showCompleted,setShowCompleted]=useState(false);
  const [isAdmin,setIsAdmin]=useState(false);
  const [cropFilter,setCropFilter]=useState("all"),[traceFilter,setTraceFilter]=useState("all");
  const [issueHistory,setIssueHistory]=useState<{document_id:number;document_number:string;document_type:string}[]>([]);
  const [latestSlip,setLatestSlip]=useState<number|null>(null);
- const [returnJob,setReturnJob]=useState<number|null>(null);
- const [returnIssues,setReturnIssues]=useState<{document_id:number;document_number:string;source_line_id:number;item_name:string;base_unit:string;available_to_return:number}[]>([]);
- const [returnDoc,setReturnDoc]=useState<number|null>(null);
- const [returnAmounts,setReturnAmounts]=useState<Record<number,string>>({});
- const [returnComplete,setReturnComplete]=useState(false);
- const [returnConfirm,setReturnConfirm]=useState(false);
+ useEffect(()=>{const n=Number(postedDocument);if(Number.isSafeInteger(n)&&n>0)setLatestSlip(n)},[postedDocument]);
+
  const load=useCallback(async()=>{setLoading(true);setError("");try{
   const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Supabase sign-in required");
   const [res,tc,cr]=await Promise.all([
@@ -66,38 +63,7 @@ export default function WeeklySprayPlanning(){
  const deleteSpray=async(job:Job)=>{if(!isAdmin||job.status!=="planned"||job.lines.some(l=>l.issued_quantity>0)){setError("Only an admin can delete a spray without stock issues.");return}
   setSaving(true);setError("");
   try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");const res=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.access_token},body:JSON.stringify({action:"delete_unissued_spray",job_id:job.id})});const data=await res.json();if(!res.ok)throw Error(data.error||"Delete failed");await load()}catch(e){setError("NOT DELETED: "+(e instanceof Error?e.message:String(e)))}finally{setSaving(false)}};
- const openReturn=async(job:Job)=>{setError("");setReturnJob(job.id);setReturnDoc(null);setReturnIssues([]);setReturnAmounts({});setReturnComplete(false);setReturnConfirm(false);try{
-  const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");
-  const res=await fetch(endpoint+"?spray_return_issues=1&job_id="+job.id,{headers:{authorization:"Bearer "+session.access_token}});
-  const data=await res.json();if(!res.ok)throw Error(data.error||"Cannot load issue lines");
-  setReturnIssues(data.rows??[]);
- }catch(e){setError(e instanceof Error?e.message:String(e))}};
- const postReturn=async(job:Job)=>{const selected=returnIssues.filter(x=>x.document_id===returnDoc);
- const lines=selected.map(x=>({source_line_id:x.source_line_id,quantity:Number(returnAmounts[x.source_line_id]||0)})).filter(x=>x.quantity>0);
- if(!returnDoc||!lines.length){setError("Choose an issue and enter at least one return quantity.");return}
- for(const l of lines){const source=selected.find(x=>x.source_line_id===l.source_line_id)!;if(!Number.isFinite(l.quantity)||l.quantity>source.available_to_return+0.00001){setError("Return quantity exceeds the issued balance for "+source.item_name);return}}
- if(!returnConfirm){setError("Confirm the return before posting.");return}
- setSaving(true);setError("");
- try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");
- const res=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.access_token},body:JSON.stringify({action:"spray_return",payload:{job_id:job.id,issue_document_id:returnDoc,spray_complete:returnComplete,lines}})});
- const data=await res.json();if(!res.ok)throw Error(data.error||"Return failed");
- if(!data.result?.document_id)throw Error("Return not confirmed");
- setReturnJob(null);setReturnDoc(null);setReturnConfirm(false);await load();
- }catch(e){setError("RETURN NOT POSTED: "+(e instanceof Error?e.message:String(e)))}finally{setSaving(false)}};
- const transfer=async(job:Job)=>{const ha=Number(issueHa);setError("");
-  if(!Number.isFinite(ha)||ha<=0||ha>job.remainingArea+0.00001){setError("Enter hectares greater than zero and no more than the outstanding spray area.");return}
-  const lines=job.lines.map(l=>({item_code:l.item_code,quantity:Number((ha*l.rate_per_ha).toFixed(4))}));
-  const shortage=lines.find(l=>l.quantity>(products.find(p=>p.item_code===l.item_code)?.quantity??0)+0.00001);
-  if(shortage){setError("Insufficient test warehouse stock for "+(products.find(p=>p.item_code===shortage.item_code)?.item_name??shortage.item_code));return}
-  if(!confirm){setError("Confirm the transfer before issuing stock.");return}
-  setSaving(true);
-  try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Supabase sign-in required");
-   const res=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.access_token},body:JSON.stringify({action:"planned_issue",request_id:uuid(),payload:{job_id:job.id,tracecode_id:job.lines[0].external_tracecode_id,lines}})});
-   const data=await res.json();if(!res.ok)throw Error(data.error||"Transfer failed");
-   if(!data.result?.document_id)throw Error("Transfer was not confirmed by the server");
-   setLatestSlip(Number(data.result.document_id));setIssueId(null);setConfirm(false);await load();
-  }catch(e){setError("NOT TRANSFERRED: "+(e instanceof Error?e.message:String(e)))}finally{setSaving(false)}
- };
+
  return <ThemedView style={styles.root}><ScrollView contentContainerStyle={styles.page}>
  <StockV2Header title="Weekly Spray Planning" onRefresh={()=>void load()}/>
  <View style={styles.actions}>
@@ -117,7 +83,7 @@ export default function WeeklySprayPlanning(){
  {loading?<ActivityIndicator/>:<View style={styles.panel}>
  <View style={styles.tableHeader}><ThemedText style={[styles.bold,{flex:1}]}>Week</ThemedText><ThemedText style={[styles.bold,{flex:1}]}>Crop</ThemedText><ThemedText style={[styles.bold,{flex:2}]}>Trace Code</ThemedText><ThemedText style={[styles.bold,{width:65,textAlign:"right"}]}>Spray #</ThemedText><View style={{width:75}}/></View>
  {groups.length===0?<ThemedText style={styles.note}>No outstanding spray jobs. Use New Spray to create one.</ThemedText>:groups.map(g=><View key={g.key}>
- <View style={styles.groupRow}><ThemedText style={{flex:1}}>{weekLabel(g.week)}</ThemedText><ThemedText style={{flex:1}}>{g.crop}</ThemedText><ThemedText style={{flex:2}}>{g.trace}</ThemedText><ThemedText style={{width:65,textAlign:"right",fontWeight:"700"}}>{g.rows.map(j=>"#"+j.id).join(", ")}</ThemedText><Pressable style={styles.secondary} onPress={()=>{setExpanded(v=>v===g.key?"":g.key);setIssueId(null)}}><ThemedText>{expanded===g.key?"Close":"Open"}</ThemedText></Pressable></View>
+ <View style={styles.groupRow}><ThemedText style={{flex:1}}>{weekLabel(g.week)}</ThemedText><ThemedText style={{flex:1}}>{g.crop}</ThemedText><ThemedText style={{flex:2}}>{g.trace}</ThemedText><ThemedText style={{width:65,textAlign:"right",fontWeight:"700"}}>{g.rows.map(j=>"#"+j.id).join(", ")}</ThemedText><Pressable style={styles.secondary} onPress={()=>{setExpanded(v=>v===g.key?"":g.key)}}><ThemedText>{expanded===g.key?"Close":"Open"}</ThemedText></Pressable></View>
  {expanded===g.key?g.rows.map(job=><View style={styles.mix} key={job.id}>
  <View style={styles.mixHeader}><ThemedText style={styles.bold}>Spray #{job.id} · {job.sprayType}</ThemedText><ThemedText>{job.status==="planned"?"Outstanding "+fmt(job.remainingArea)+" / "+fmt(job.area)+" ha":"Completed · "+dateLabel(job.completedDate)}</ThemedText></View>
  <ThemedText style={styles.note}>Sprayer: {job.sprayer||"Not specified"} · Water: {fmt(job.water)} L/ha · {job.part}</ThemedText>
@@ -127,34 +93,10 @@ export default function WeeklySprayPlanning(){
   <Pressable style={styles.secondary} onPress={()=>router.push({pathname:"/stock-v2-application",params:{jobId:String(job.id)}})}><ThemedText>Application / Print Tank Mix</ThemedText></Pressable>
   {job.status==="planned"&&job.lines.every(l=>l.issued_quantity===0)?<Pressable style={styles.secondary} onPress={()=>router.push({pathname:"/stock-v2-spray-entry",params:{editJobId:String(job.id)}})}><ThemedText>Edit Mix</ThemedText></Pressable>:null}
   {isAdmin&&job.status==="planned"&&job.lines.every(l=>l.issued_quantity===0)?<Pressable disabled={saving} style={styles.secondary} onPress={()=>{if(typeof window!=="undefined"&&window.confirm("Delete unissued spray #"+job.id+"? This cannot be undone."))void deleteSpray(job)}}><ThemedText style={styles.error}>Delete Spray (Admin)</ThemedText></Pressable>:null}
-  {job.status==="completed"?<Pressable style={styles.secondary} onPress={()=>void openReturn(job)}><ThemedText>Stock Return</ThemedText></Pressable>:null}
-  {job.status==="planned"&&job.remainingArea>0?<Pressable style={styles.primary} onPress={()=>{setIssueId(job.id);setIssueHa(String(Number(job.remainingArea.toFixed(3))));setConfirm(false)}}><ThemedText style={styles.white}>Transfer / Issue</ThemedText></Pressable>:null}
+  {job.status==="completed"?<Pressable style={styles.secondary} onPress={()=>router.push({pathname:"/stock-v2-spray-transaction",params:{jobId:String(job.id),mode:"return"}})}><ThemedText>Stock Return</ThemedText></Pressable>:null}
+  {job.status==="planned"&&job.remainingArea>0?<Pressable style={styles.primary} onPress={()=>router.push({pathname:"/stock-v2-spray-transaction",params:{jobId:String(job.id),mode:"issue"}})}><ThemedText style={styles.white}>Transfer / Issue</ThemedText></Pressable>:null}
  </View>
- {returnJob===job.id?<View style={styles.issue}>
-  <ThemedText style={styles.bold}>Return unused stock · Spray #{job.id}</ThemedText>
-  <ThemedText>Select original issue</ThemedText>
-  {[...new Map(returnIssues.map(x=>[x.document_id,x.document_number])).entries()].map(([id,num])=><Pressable key={id} style={[styles.secondary,returnDoc===id&&{backgroundColor:"#dcefe1"}]} onPress={()=>{setReturnDoc(id);setReturnAmounts({});setReturnConfirm(false)}}><ThemedText>{num}</ThemedText></Pressable>)}
-  {!returnIssues.length?<ThemedText>No returnable stock issued for this spray.</ThemedText>:null}
-  {returnIssues.filter(x=>x.document_id===returnDoc).map(x=><View key={x.source_line_id} style={{flexDirection:"row",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-  <ThemedText style={{flex:1,minWidth:140}}>{x.item_name} · max {fmt(x.available_to_return)} {x.base_unit}</ThemedText>
-  <TextInput style={[styles.input,{width:110}]} keyboardType="decimal-pad" placeholder="Return qty" value={returnAmounts[x.source_line_id]??""} onChangeText={v=>{setReturnAmounts(old=>({...old,[x.source_line_id]:v}));setReturnConfirm(false)}}/>
-  </View>)}
-  <ThemedText style={styles.bold}>Spray status after return</ThemedText>
-  <Pressable onPress={()=>{setReturnComplete(false);setReturnConfirm(false)}}><ThemedText>{returnComplete?"◯":"◉"} Spray Incomplete — keep outstanding for reissue</ThemedText></Pressable>
-  <Pressable onPress={()=>{setReturnComplete(true);setReturnConfirm(false)}}><ThemedText>{returnComplete?"◉":"◯"} Spray Complete — close spray</ThemedText></Pressable>
-  <Pressable onPress={()=>setReturnConfirm(v=>!v)}><ThemedText>{returnConfirm?"☑":"☐"} Confirm stock return</ThemedText></Pressable>
-  <Pressable disabled={saving||!returnConfirm} style={[styles.primary,(saving||!returnConfirm)&&{opacity:.5}]} onPress={()=>void postReturn(job)}><ThemedText style={styles.white}>{saving?"Posting…":"Post Stock Return"}</ThemedText></Pressable>
- </View>:null}
- {issueId===job.id?<View style={styles.issue}>
-  <ThemedText style={styles.bold}>Transfer / Issue</ThemedText>
-  <ThemedText>Planned area: {fmt(job.area)} ha · Remaining: {fmt(job.remainingArea)} ha</ThemedText>
-  <ThemedText>Transfer hectares (defaults to all remaining)</ThemedText>
-  <TextInput style={styles.input} keyboardType="decimal-pad" value={issueHa} onChangeText={v=>{setIssueHa(v);setConfirm(false)}}/>
-  <ThemedText style={styles.bold}>Transfer requirements</ThemedText>
-  {job.lines.map(l=><ThemedText key={l.item_code} style={(products.find(p=>p.item_code===l.item_code)?.quantity??0)<Number(issueHa)*l.rate_per_ha?styles.stockShort:undefined}>{l.item_name}: {fmt(Number(issueHa)*l.rate_per_ha)} {l.base_unit} · in stock {fmt(products.find(p=>p.item_code===l.item_code)?.quantity??0)}</ThemedText>)}
-  <Pressable onPress={()=>setConfirm(v=>!v)}><ThemedText>{confirm?"☑":"☐"} Confirm stock transfer for all products above</ThemedText></Pressable>
-  <Pressable disabled={saving||!confirm} style={[styles.primary,(!confirm||saving)&&{opacity:.5}]} onPress={()=>void transfer(job)}><ThemedText style={styles.white}>{saving?"Posting…":"Post Transfer"}</ThemedText></Pressable>
- </View>:null}
+
  </View>) :null}
  </View>)}
  </View>}
