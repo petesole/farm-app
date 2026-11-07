@@ -52,11 +52,12 @@ export default function LabourMain(){
  ];
  return <ScrollView contentContainerStyle={styles.page}>
   <View style={styles.header}>
-   <View style={{flex:1}}><Text style={styles.heading}>Labour Main</Text><Text style={styles.sub}>John Sole (Private) Limited</Text></View>
    <Image source={require("../../assets/images/jspl_farm_logo.png")} resizeMode="contain" style={styles.logo}/>
+   <View style={{flex:1}}><Text style={styles.heading}>Labour Main</Text><Text style={styles.sub}>John Sole (Private) Limited</Text></View>
+   <Pressable style={styles.back} onPress={()=>router.replace("/(tabs)/main-dashboard")}><Text style={styles.backText}>Back to Main</Text></Pressable>
   </View>
   <View style={styles.top}><Text style={styles.title}>Labour</Text>
-   <Pressable style={styles.back} onPress={()=>router.replace("/(tabs)/main-dashboard")}><Text style={styles.backText}>← Main Dashboard</Text></Pressable>
+   
   </View>
   <View style={styles.grid}>{tiles.map(tile=><Pressable key={tile.title} style={styles.tile} onPress={()=>router.push(tile.path as any)}>
    <Text style={styles.tileName}>{tile.title}</Text><Text style={styles.muted}>{tile.description}</Text>

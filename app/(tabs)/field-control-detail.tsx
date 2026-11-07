@@ -45,7 +45,7 @@ export default function FieldControlDetail(){
  return <ScrollView contentContainerStyle={s.page}>
   <JsplModuleHeader title={(recordId?"Edit ":"Add ")+def.title} showMain/>
   <Pressable onPress={()=>router.replace({pathname:"/(tabs)/field-control-list",params:{kind:def.table}})} style={s.back}><Text style={s.link}>← {def.title} List</Text></Pressable>
-  {def.fields.map(f=><View key={f.key} style={s.group}><Text style={s.label}>{f.label}{f.required?" *":""}</Text><TextInput style={s.input} keyboardType={f.type==="number"?"numeric":"default"} placeholder={f.type==="date"?"dd/mm/yyyy":f.label} value={values[f.key]??""} onChangeText={v=>setValues(prev=>({...prev,[f.key]:v}))}/></View>)}
+  {def.fields.map(f=><View key={f.key} style={s.group}><Text style={s.label}>{f.label}{f.required?" *":""}</Text><TextInput style={s.input} keyboardType={f.type==="number"?"numeric":"default"} placeholder={f.type==="date"?"d/m (year optional)":f.label} value={values[f.key]??""} onChangeText={v=>setValues(prev=>({...prev,[f.key]:v}))} onBlur={f.type==="date"?()=>{const parsed=dateInput(values[f.key]??"");if(parsed)setValues(prev=>({...prev,[f.key]:dateDisplay(parsed)}))}:undefined}/></View>)}
   <View style={s.row}><Text style={s.label}>Active</Text><Switch value={active} onValueChange={setActive}/></View>
   {!!error&&<Text style={s.error}>{error}</Text>}
   <Pressable disabled={busy} style={s.save} onPress={save}><Text style={s.saveText}>{busy?"Saving...":"Save"}</Text></Pressable>

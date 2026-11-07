@@ -12,7 +12,7 @@ export function JsplModuleHeader({ title, subtitle, showMain = false, backLabel,
         <Text style={styles.subtitle}>{subtitle || "John Sole (Private) Limited"}</Text>
       </View>
       {backLabel && (backHref || onBack) && <Pressable accessibilityRole="button" onPress={() => onBack ? onBack() : router.replace(backHref as any)} style={styles.mainButton}><Text style={styles.mainText}>{backLabel}</Text></Pressable>}
-      {showMain && <Pressable accessibilityRole="button" onPress={() => router.replace("/(tabs)/main-dashboard")} style={styles.mainButton}><Text style={styles.mainText}>Main</Text></Pressable>}
+      {showMain && !(backLabel && (backHref || onBack)) && <Pressable accessibilityRole="button" onPress={() => router.replace("/(tabs)/main-dashboard")} style={styles.mainButton}><Text style={styles.mainText}>Main</Text></Pressable>}
     </View>
   );
 }

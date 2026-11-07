@@ -8,12 +8,14 @@ export function JsplReturnNavigation(){
   const params=useLocalSearchParams<{kind?:string}>();
   const path=pathname.toLowerCase();
   if(!path || path==="/" || path.startsWith("/login") || path.startsWith("/pending-access") || path.startsWith("/modal"))return null;
+  // Labour screens provide exactly one local top-right return button.
+  if(path==="/labour" || path.startsWith("/labour-"))return null;
   // Stock screens provide their own navigation: Main on Stock Dashboard, Stock on subpages.
-  if(path.includes("stock-v2-") || path.endsWith("/stock-test"))return null;
+  if(path.includes("stock-v2-") || path.endsWith("/stock-test") || /^\/(labour-entry|labour-history|labour-correction)$/.test(path) || path.includes("/home/labour_v2") || path.endsWith("/labour") || path.includes("/home/field-master-dashboard") || path.includes("/home/tracecode-edit") || path.includes("/home/field-edit"))return null;
   const isMain=path.endsWith("/main-dashboard") || path.endsWith("/field-dashboard") || path==="/fuel" || path.endsWith("/fuel") || path==="/weighbridge" || path.endsWith("/wb-admin");
   if(isMain)return null;
-  let label="Main";
-  let target="/(tabs)/main-dashboard";
+  let label="";
+  let target="";
   if(path.startsWith("/weighbridge-")||path.includes("/wheat-storage-classification")){
     label="Weighbridge";target="/weighbridge";
   }else if(path.includes("vehicle-detail")){
@@ -34,12 +36,11 @@ export function JsplReturnNavigation(){
     label="Fuel";target="/(tabs)/fuel";
   }else if(path.includes("irrigation")||path.includes("rainfall")){
     label="Irrigation";target="/(tabs)/irrigation_main_dashboard";
-  }else if(path.includes("scouting")){
-    label="Main";target="/(tabs)/main-dashboard";
   }else if(path.includes("control-panel")){
     label="Main";target="/(tabs)/main-dashboard";
   }
-  return <View style={{backgroundColor:"#103D2B",paddingHorizontal:18,paddingVertical:9,flexDirection:"row",alignItems:"center",justifyContent:"flex-start"}}>
+  if(!target)return null;
+  return <View pointerEvents="box-none" style={{position:"absolute",top:12,right:16,zIndex:1000,elevation:12,alignItems:"flex-end"}}>
     <Pressable accessibilityRole="button" onPress={()=>router.replace(target as any)} style={{borderWidth:1,borderColor:"#95BEA0",borderRadius:7,paddingHorizontal:16,paddingVertical:7}}>
       <Text style={{color:"#FFFFFF",fontSize:15,fontWeight:"700"}}>{"← "+label}</Text>
     </Pressable>

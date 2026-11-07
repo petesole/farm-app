@@ -1,3 +1,4 @@
+import {displayJsplDate} from "@/utils/jspl-input";
 import { zimTodayISO } from "@/lib/zimDate";
 import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 // app/(tabs)/home/fuel_weekly_plan.tsx
@@ -233,7 +234,7 @@ export default function FuelWeeklyPlanScreen() {
       <ThemedText type="subtitle">Planning week</ThemedText>
       <View style={s.nav}>
         <Pressable style={s.button} onPress={()=>setWeek(v=>shift(v,-7))}><ThemedText>← Previous</ThemedText></Pressable>
-        <View style={s.dates}><ThemedText style={s.bold}>{week} to {weekEnd}</ThemedText><Pressable onPress={()=>setWeek(monday(iso(new Date())))}><ThemedText style={s.small}>Current week</ThemedText></Pressable></View>
+        <View style={s.dates}><ThemedText style={s.bold}>{displayJsplDate(week)} to {displayJsplDate(weekEnd)}</ThemedText><Pressable onPress={()=>setWeek(monday(iso(new Date())))}><ThemedText style={s.small}>Current week</ThemedText></Pressable></View>
         <Pressable style={s.button} onPress={()=>setWeek(v=>shift(v,7))}><ThemedText>Next →</ThemedText></Pressable>
       </View>
       <ThemedText style={s.small}>All unfinished budget jobs are available regardless of their DAP due date. Pick the jobs you intend to do in the displayed week. A job cannot be assigned to two weeks.</ThemedText>
@@ -315,7 +316,7 @@ export default function FuelWeeklyPlanScreen() {
         {hoursByClass.map(([name,v])=><View key={name} style={s.summary}><ThemedText>{name} · {v.jobs} jobs</ThemedText><ThemedText style={s.bold}>{fmt(v.hours,1)} hours{v.unknown?" + "+v.unknown+" unset":""} · {fmt(v.litres)} L</ThemedText></View>)}
       </ThemedView>
       <ThemedView style={s.card}>
-        <ThemedText type="subtitle">Selected jobs for {week} ({chosenRows.length})</ThemedText>
+        <ThemedText type="subtitle">Selected jobs for {displayJsplDate(week)} ({chosenRows.length})</ThemedText>
         {chosenRows.length===0?<ThemedText>No jobs selected for this week with the current filters.</ThemedText>:chosenRows.map(r=><View key={r.key}><JobLine r={r} estimate={litresRemaining(r)} chosen selectedDisabled={!planReady||!!planSaving} onSelect={()=>toggleChosen(r)}/><PlanningEditor r={r} week={week} approval={approvalByKey.get(clearedKey({...r,target_dap:r.target_dap!}))} editable={canClear} refresh={refresh}/></View>)}
       </ThemedView></>:<>
       <ThemedView style={s.card}>

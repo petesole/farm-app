@@ -1,3 +1,4 @@
+import {parseJsplDateInput,displayJsplDate} from "@/utils/jspl-input";
 import {useEffect,useState} from "react";
 import {useRouter} from "expo-router";
 import {ActivityIndicator,Modal,Pressable,ScrollView,StyleSheet,TextInput,View} from "react-native";
@@ -7,7 +8,7 @@ import {ThemedView} from "@/components/themed-view";
 import {supabase} from "../../../supabase";
 const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
 const today=()=>{const d=new Date();return String(d.getDate()).padStart(2,"0")+"/"+String(d.getMonth()+1).padStart(2,"0")+"/"+d.getFullYear()};
-const parseDate=(s:string)=>{const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s.trim());if(!m)return "";const x=m[3]+"-"+m[2]+"-"+m[1];const d=new Date(x+"T12:00:00Z");return !Number.isNaN(d.getTime())&&d.toISOString().slice(0,10)===x?x:""};
+const parseDate=(value:string)=>parseJsplDateInput(value) ?? "";
 const dateLabel=(s:string)=>/^\d{4}-\d{2}-\d{2}/.test(s)?s.slice(8,10)+"/"+s.slice(5,7)+"/"+s.slice(0,4):s;
 type Take={take_id:number;take_number:string;status:string;owner_code:string;location_code:string;take_date:string;printed_at?:string;counted_at?:string;adjustment_number?:string;lines:number};
 type Count={item_code:string;item_name:string;category?:string;base_unit:string;system_quantity:number;counted_quantity:number|null};
@@ -42,7 +43,7 @@ export default function StocktakeAdjustments(){
  {takes.map(t=><Pressable key={t.take_id} style={st.line} onPress={()=>void openTake(t)}><ThemedText>{t.take_number} · {t.owner_code.replace("TEST_","")} · {dateLabel(t.take_date)} · {t.lines} items · {t.status}{t.adjustment_number?" · "+t.adjustment_number:""}</ThemedText></Pressable>)}</></>:<>
  <ThemedText style={st.heading}>Direct Stock Adjustment</ThemedText>
  <View style={st.row}>{["JS","AO"].map(o=><Pressable key={o} style={st.choice} onPress={()=>{setOwner(o);setSelectedProduct("");setProductSearch("");setProductOpen(false)}}><ThemedText>{owner===o?"☑ ":""}{o}</ThemedText></Pressable>)}</View>
- <ThemedText>Adjustment Date (dd/mm/yyyy)</ThemedText><TextInput style={st.input} value={adjustDate} onChangeText={setAdjustDate} placeholder="dd/mm/yyyy"/>
+ <ThemedText>Adjustment Date (dd/mm/yyyy)</ThemedText><TextInput style={st.input} value={adjustDate} onChangeText={setAdjustDate} onBlur={()=>{const parsed=parseJsplDateInput(adjustDate);if(parsed)setAdjustDate(displayJsplDate(parsed));}} placeholder="d/m (year optional)"/>
  <ThemedText>Reason for Adjustment</ThemedText><TextInput style={st.input} value={reason} onChangeText={setReason} placeholder="Reason required"/>
  <ThemedText>Product</ThemedText><TextInput style={st.input} placeholder="Type to search products" value={productSearch} onFocus={()=>setProductOpen(true)} onChangeText={v=>{setProductSearch(v);setProductOpen(true);setSelectedProduct("")}}/>
  {productOpen?<ScrollView nestedScrollEnabled style={{maxHeight:220,backgroundColor:"#fff"}}>{stock.filter(x=>x.owner_code==="TEST_"+owner&&(x.item_name+" "+x.item_code).toLowerCase().includes(productSearch.toLowerCase())).slice(0,50).map(x=><Pressable key={x.item_code} style={st.line} onPress={()=>{setSelectedProduct(x.item_code);setProductSearch(x.item_name);setProductOpen(false)}}><ThemedText>{x.item_name} · {x.item_code} · Balance {x.quantity}</ThemedText></Pressable>)}</ScrollView>:null}

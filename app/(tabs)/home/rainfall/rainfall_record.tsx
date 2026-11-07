@@ -228,6 +228,7 @@ export default function RainfallRecordScreen() {
         <TextInput
           value={dateDisplay}
           onChangeText={setDateDisplay}
+          onBlur={()=>{const d=displayToIso(dateDisplay);if(d)setDateDisplay(isoToDisplay(d));}}
           editable={isAdmin}
           style={[styles.input, !isAdmin && { backgroundColor: "#f1f3f2" }]}
           keyboardType="numbers-and-punctuation"

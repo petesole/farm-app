@@ -1,14 +1,14 @@
+import {parseJsplDateInput,displayJsplDate} from "@/utils/jspl-input";
 import {StockV2Header} from "@/components/jspl/StockV2Header";
 import {useEffect,useMemo,useState} from "react";
 import {ActivityIndicator,Pressable,ScrollView,StyleSheet,TextInput,View} from "react-native";
 import {ThemedText} from "@/components/themed-text";
 import {ThemedView} from "@/components/themed-view";
 import {supabase} from "../../../supabase";
-import {displayJsplDate} from "@/utils/jspl-input";
 import {jsplColors,jsplSpacing,jsplRadii} from "@/constants/jspl-design";
 const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
 type Line={document_id:number;document_date:string;delivery_note:string;delivery_note_date:string|null;supplier_name:string;owner_code:string;item_code:string;item_name:string;base_unit:string;line_id:number;quantity:number;original_price:number|null;po_price?:number|null;original_price_source?:string|null};
-const dateISO=(v:string)=>{const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(v.trim());if(!m)return null;const iso=m[3]+"-"+m[2]+"-"+m[1];const d=new Date(iso+"T12:00:00Z");return !Number.isNaN(d.getTime())&&d.toISOString().slice(0,10)===iso?iso:null;};
+const dateISO=(value:string)=>parseJsplDateInput(value) ?? null;
 const formatDate=(v:string|null|undefined)=>{if(!v)return "—";const s=String(v);if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(8,10)+"/"+s.slice(5,7)+"/"+s.slice(0,4);return /^\d{2}\/\d{2}\/\d{4}$/.test(s)?s:"—";};
 const shortDNote=(x:Line)=>/^(?:DEMO-)?DN-[a-f0-9]{8}-[a-f0-9-]{27,}$/i.test(x.delivery_note)?String(x.document_id):x.delivery_note;
 export default function GRVOutstanding(){
@@ -43,7 +43,7 @@ export default function GRVOutstanding(){
   {busy?<ActivityIndicator/>:null}{error?<ThemedText style={s.warning}>{error}</ThemedText>:null}{success?<ThemedText>{success}</ThemedText>:null}
   <View style={s.panel}><ThemedText style={s.label}>Stock Owner</ThemedText><View style={s.wrap}>{owners.map(x=>choice(x,owner===x,()=>{setOwner(x);setSupplier("");setPrices({});setChecked([]);setDate("");setInvoice("");},x+" ("+ownerCount(x)+")"))}</View></View>
   {!!owner?<View style={s.panel}><ThemedText style={s.label}>Supplier — Outstanding D Notes Only</ThemedText><View style={s.wrap}>{suppliers.map(x=>choice(x,supplier===x,()=>{setSupplier(x);setPrices({});setInvoice("");},x))}</View>{!suppliers.length?<ThemedText>No outstanding D Notes for this owner.</ThemedText>:null}</View>:null}
-  {!!supplier?<><View style={s.panel}><View style={s.wrap}><View style={s.field}><ThemedText style={s.label}>Date</ThemedText><TextInput style={[s.input,s.required]} value={date} onChangeText={setDate} placeholder="DD/MM/YYYY"/></View><View style={s.field}><ThemedText style={s.label}>Invoice / GRV Number</ThemedText><TextInput style={[s.input,s.required]} value={invoice} onChangeText={setInvoice} placeholder="Invoice number"/></View></View></View>
+  {!!supplier?<><View style={s.panel}><View style={s.wrap}><View style={s.field}><ThemedText style={s.label}>Date</ThemedText><TextInput style={[s.input,s.required]} value={date} onChangeText={setDate} onBlur={()=>{const parsed=parseJsplDateInput(date);if(parsed)setDate(displayJsplDate(parsed));}} placeholder="d/m (year optional)"/></View><View style={s.field}><ThemedText style={s.label}>Invoice / GRV Number</ThemedText><TextInput style={[s.input,s.required]} value={invoice} onChangeText={setInvoice} placeholder="Invoice number"/></View></View></View>
   {documentReady?<View style={s.panel}><ThemedText style={s.label}>Outstanding D Notes — tick the lines included on this invoice</ThemedText>
    <ScrollView horizontal><View>
     <View style={s.trow}>{["Select","D Note #","Date (dd/mm/yyyy)","Product","Quantity Received","PO Price","Actual Price"].map((h,i)=><ThemedText key={h} style={[s.tcell,i===2&&s.wide,s.bold]}>{h}</ThemedText>)}</View>

@@ -1,3 +1,4 @@
+import {parseJsplDateInput,displayJsplDate} from "@/utils/jspl-input";
 import React,{useCallback,useEffect,useMemo,useState} from "react";
 import {useRouter} from "expo-router";
 import {ActivityIndicator,Modal,Pressable,ScrollView,StyleSheet,Text,TextInput,View} from "react-native";
@@ -13,7 +14,7 @@ type Allocation={return_line_id:number;quantity:number;unit_credit_price:number}
 type Credit={credit_id:number;credit_note_number:string;credit_note_date:string;supplier_name:string;owner_code:string;total_amount:number;credit_kind:string;notes:string;allocations:any[];price_adjustment?:{receipt_number:string;item_name:string;amount:number;reason:string}|null};
 type Receipt={document_id:number;document_number:string;display_no:number;document_date:string;supplier_name:string;owner_code:string;item_id:number;item_code:string;item_name:string;receipt_line_id:number};
 const display=(s:string|null|undefined)=>s&&/^\d{4}-\d{2}-\d{2}/.test(s)?s.substring(8,10)+"/"+s.substring(5,7)+"/"+s.substring(0,4):s||"";
-const toISO=(s:string)=>{const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s.trim());if(!m)return "";const iso=m[3]+"-"+m[2]+"-"+m[1];const d=new Date(iso+"T12:00:00Z");return !Number.isNaN(d.valueOf())&&d.toISOString().substring(0,10)===iso?iso:""};
+const toISO=(value:string)=>parseJsplDateInput(value) ?? "";
 const value=(v:unknown)=>Number(v||0);
 export default function SupplierCredits(){
  const router=useRouter();
@@ -84,7 +85,7 @@ export default function SupplierCredits(){
    {window==="return"||window==="price"?<>
     <Text style={styles.label}>Supplier: {supplier} · Owner: {owner}</Text>
     <Text style={styles.label}>Credit Note Number</Text><TextInput style={styles.input} value={creditNo} onChangeText={setCreditNo} placeholder="Supplier CN reference"/>
-    <Text style={styles.label}>Credit Note Date (dd/mm/yyyy)</Text><TextInput style={styles.input} value={date} onChangeText={setDate} placeholder="dd/mm/yyyy"/>
+    <Text style={styles.label}>Credit Note Date (dd/mm/yyyy)</Text><TextInput style={styles.input} value={date} onChangeText={setDate} onBlur={()=>{const parsed=parseJsplDateInput(date);if(parsed)setDate(displayJsplDate(parsed));}} placeholder="d/m (year optional)"/>
     {window==="return"?<>
      <Text style={styles.heading}>Select items credited on this note</Text>
      {available.map(l=>{const left=value(l.quantity)-value(l.credited_quantity);const edit=edits[l.line_id];return <View key={l.line_id} style={styles.panel}>

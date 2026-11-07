@@ -4,7 +4,7 @@ import { JsplTable } from "@/components/jspl/JsplTable";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { jsplColors, jsplDashboardTheme, jsplRadii, jsplSpacing, jsplSizes } from "@/constants/jspl-design";
-import { parseJsplDateInput } from "@/utils/jspl-input";
+import { parseJsplDateInput, displayJsplDate } from "@/utils/jspl-input";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from "react-native";
@@ -26,8 +26,8 @@ const currency=(n:number)=>Number.isFinite(n)?n.toFixed(2):"—";
 const tabs=["Purchase Orders","POs Outstanding","GRV","Stock Balances","Spray Planning","Stock Transfer","Direct Issue","Corrections","Supplier Returns","Stocktake & Adjustments","PO Corrections"] as const;
 // Screen states also include the retained Planned Issue flow, beyond the dashboard buttons.
 type Tab=typeof tabs[number]|"Planned Issue";
-function Field({label,value,onChange,numeric=false}:{label:string;value:string;onChange:(v:string)=>void;numeric?:boolean}){
- return <View style={styles.field}><ThemedText style={styles.label}>{label}</ThemedText><TextInput style={styles.input} value={value} onChangeText={onChange} keyboardType={numeric?"decimal-pad":"default"}/></View>;
+function Field({label,value,onChange,numeric=false,date=false}:{label:string;value:string;onChange:(v:string)=>void;numeric?:boolean;date?:boolean}){
+ return <View style={styles.field}><ThemedText style={styles.label}>{label}</ThemedText><TextInput style={styles.input} value={value} onChangeText={onChange} onBlur={date?()=>{const iso=parseJsplDateInput(value);if(iso)onChange(displayJsplDate(iso));}:undefined} placeholder={date?"d/m (year optional)":undefined} keyboardType={date?"numbers-and-punctuation":numeric?"decimal-pad":"default"}/></View>;
 }
 export default function StockV2Workflow(){
  const router=useRouter();
@@ -226,14 +226,14 @@ export default function StockV2Workflow(){
       <ThemedText style={styles.label}>3. Supplier</ThemedText>
       {menu("supplier",supplier||"Choose Supplier",suppliers.filter(x=>x.active).map(x=>({label:x.supplier_name,value:String(x.supplier_id),onSelect:()=>{setSupplier(x.supplier_name);resetEdit()}})),true)}
      </View>
-     <View style={styles.poDate}><Field label="Purchase Order Date (DD/MM/YYYY)" value={orderDate} onChange={v=>{setOrderDate(v);resetEdit()}}/>
+     <View style={styles.poDate}><Field label="Purchase Order Date (dd/mm/yyyy)" date value={orderDate} onChange={v=>{setOrderDate(v);resetEdit()}}/>
        {!parseJsplDateInput(orderDate)?<ThemedText style={styles.alert}>Enter a valid date, e.g. 19/10/2026</ThemedText>:null}
      </View>
    </View>:null}
    {tab==="POs Outstanding"&&ownerReady&& (directGrv?contractReady:true)?<>
      <View style={styles.filters}><Pressable style={[styles.refresh,receiptMode==="dnote"&&styles.navActive]} onPress={()=>{setReceiptMode("dnote");resetEdit()}}><ThemedText style={receiptMode==="dnote"?styles.navActiveText:undefined}>DNote</ThemedText></Pressable><Pressable style={[styles.refresh,receiptMode==="invoice"&&styles.navActive]} onPress={()=>{setReceiptMode("invoice");resetEdit()}}><ThemedText style={receiptMode==="invoice"?styles.navActiveText:undefined}>Invoice GRV</ThemedText></Pressable></View>
      <View style={styles.grvDocumentFields}>
-      <View style={styles.grvDocumentField}><Field label={receiptMode==="dnote"?"Delivery Note Date (DD/MM/YYYY)":"Invoice Date (DD/MM/YYYY)"} value={receiptDate} onChange={v=>{setReceiptDate(v);resetEdit()}}/></View>
+      <View style={styles.grvDocumentField}><Field label={receiptMode==="dnote"?"Delivery Note Date (dd/mm/yyyy)":"Invoice Date (dd/mm/yyyy)"} date value={receiptDate} onChange={v=>{setReceiptDate(v);resetEdit()}}/></View>
       <View style={styles.grvDocumentField}>
        {receiptMode==="invoice"?<Field label="Supplier Invoice Number" value={invoiceNumber} onChange={v=>{setInvoiceNumber(v);resetEdit()}}/>:<Field label="Delivery Note Number" value={deliveryNote} onChange={v=>{setDeliveryNote(v);resetEdit()}}/>}
       </View>
