@@ -60,7 +60,7 @@ export default function FuelDipEdit(){
   <View style={styles.card}>
    <ThemedText type="subtitle">Select date</ThemedText>
    <View style={styles.row}>
-    <TextInput style={[styles.input,{flex:1}]} value={dateInput} onChangeText={setDateInput} placeholder="dd/mm/yyyy or 5/12"/>
+    <TextInput style={[styles.input,{flex:1}]} value={dateInput} onChangeText={setDateInput} onBlur={()=>{const d=fuelDateISO(dateInput);if(d)setDateInput(fuelDateDisplay(d));}} placeholder="dd/mm/yyyy or 5/12"/>
     <Pressable style={styles.btn} onPress={findDate}><ThemedText>Find</ThemedText></Pressable>
    </View>
   </View>
