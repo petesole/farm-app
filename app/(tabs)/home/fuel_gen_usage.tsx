@@ -256,7 +256,8 @@ export default function FuelGenUsageScreen() {
           style={styles.input}
           value={generatorDateDMY}
           onChangeText={setGeneratorDateDMY}
-          placeholder="DD/MM/YYYY"
+          onBlur={()=>{const d=dmyToISO(generatorDateDMY);if(d)setGeneratorDateDMY(isoToDMY(d));}}
+          placeholder="d/m (year optional)"
         />
         <ThemedText style={styles.small}>Format: DD/MM/YYYY (e.g. 09/02/2026)</ThemedText>
         {minISO ? (
