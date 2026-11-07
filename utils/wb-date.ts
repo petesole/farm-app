@@ -2,7 +2,7 @@
 export function wbCurrentYear():number{return Number(new Intl.DateTimeFormat("en-GB",{timeZone:"Africa/Harare",year:"numeric"}).format(new Date()));}
 export function wbParseDate(value:string):string|null{
  const v=value.trim();if(!v)return null;
- const m=v.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?$/);
+ const m=v.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?$/);
  if(!m)return null;
  const day=+m[1],month=+m[2],year=m[3]?(m[3].length===2?2000+Number(m[3]):Number(m[3])):wbCurrentYear();
  const d=new Date(Date.UTC(year,month-1,day));
