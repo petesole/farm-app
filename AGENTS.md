@@ -13,6 +13,7 @@
 
 - Use the established JSPL dark-green theme, white working surfaces and shared design tokens/components. Do not create independent colour schemes or layouts.
 - Place the **JSPL logo at the top-left**. Use **one navigation control at the top-right**; do not duplicate Back/Main controls at the top, bottom, or in a global bar. Main dashboard contains module/project launch buttons.
+- **No bottom tab bar or bottom navigation buttons anywhere in the app.** Keep module access on the main dashboard; preserve routes for programmatic navigation, but hide the bottom tab navigator on web and mobile.
 - Main dashboard → module dashboard → individual screen. Module dashboard has **Back to Main**; a working screen has **Back to its module dashboard** (or parent list where that is the agreed workflow). Use exactly one visible return/navigation control, with the correct destination. Avoid legacy/duplicate routes.
 - **All filters use searchable combo boxes/dropdown selectors**, never a screenful of filter buttons, unless the user explicitly requests an exception. This includes filters for crop, trace, date, product, supplier, status, and other dimensions.
 - **Dependent filters must reflect actual matching records under every other active selection.** Example: selecting a trace narrows dates to dates with records for that trace; selecting a date likewise narrows trace/product choices. No irrelevant or empty choices. Recompute and clear/repair invalid selections when upstream filters change.
