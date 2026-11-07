@@ -47,14 +47,23 @@
 - Use development/test paths and reversible migrations where possible. Protect current production behaviour. Do not deploy or publish without instruction.
 - Fix root causes rather than repeated patches. Use available existing tools, libraries and proven workflows where they shorten delivery and improve reliability.
 
-## 6. Verification is mandatory
+## 6. Development-only role preview and multi-responsibility users
+
+- Model individuals as **one user account with multiple assignable operational responsibilities and explicit action-level permissions**. Do not force one job title per person; for example, one user may operate both Weighbridge and Fuel. Dashboards show the workflows relevant to their actual assignments.
+- For development testing, provide a **Test User Role** searchable dropdown on each module/project dashboard with only the roles relevant to that module. The dropdown is visible and usable **only by a server-verified Admin** and **only in a separately verified development/test environment**; do not rely solely on hiding a control or on a client-side flag. Never expose it in production builds.
+- Default to the signed-in Admin's actual role. Changing the preview should immediately update the module's visible actions, fields and workflow presentation without signing out, and remain selected when navigating within that module. Show a clear **Development Test Mode / Previewing: [role]** indicator and provide a reset to the real role.
+- **The preview is UI simulation only, never impersonation or authorization.** It must not change JWT claims, Supabase/RLS policies, stored user roles, record ownership, audit identities or backend privileges. Previewed functions must not cause unauthorized or misleading writes.
+- Validate real data access and write restrictions separately with authenticated test accounts holding the actual role assignments. Do not claim role/permission testing passed based solely on the dropdown.
+- Any modules that span multiple jobs must respect multi-role combinations rather than assuming one mutually exclusive role per user.
+
+## 7. Verification is mandatory
 
 - Test complete transactions end-to-end with realistic data and the actual intended role: create; save; return; list visibility; edit; refresh; filtering; sorting; partial processing; exceptions; cancellation; corrections; reporting and exports.
 - Check balances, totals, dates, ownership, audit records, related modules and regressions against other working screens.
 - Test navigation on both web and intended mobile/offline contexts where applicable; check sync and conflict behaviour for offline workflows.
 - Never describe a screen, workflow or module as **complete**, **working** or **tested** without the relevant test evidence. State precisely what was changed, tested, passed, failed, and remains unverified. Database table existence or code inspection alone is not a functional test.
 
-## 7. Communication and acceptance criteria
+## 8. Communication and acceptance criteria
 
 - Keep responses direct, short and operational. Present the whole solution and important consequences rather than a stream of unplanned fixes.
 - Do not repeatedly ask for information already provided or override agreed decisions.
