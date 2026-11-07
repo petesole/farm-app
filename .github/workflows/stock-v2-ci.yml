@@ -16,6 +16,8 @@ jobs:
           node-version: '20'
           cache: npm
       - run: npm ci
+      - name: JSPL ERP screen and date regression tests
+        run: node scripts/test-erp-ui-rules.cjs
       - name: Full ERP TypeScript check (all modules)
         run: npx tsc --noEmit
       - name: Expo Web Export
