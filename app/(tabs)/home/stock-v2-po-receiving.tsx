@@ -1,3 +1,4 @@
+import {parseJsplDateInput,displayJsplDate} from "@/utils/jspl-input";
 import {StockV2Header} from "@/components/jspl/StockV2Header";
 import {useEffect,useMemo,useState} from "react";
 import {ActivityIndicator,Pressable,ScrollView,StyleSheet,TextInput,View} from "react-native";
@@ -11,7 +12,7 @@ type DLine={document_id:number;document_date:string;delivery_note:string;deliver
 type POLine={order_date:string;owner_code:string;order_id:number;order_number:string;supplier_name:string;item_code:string;item_name:string;base_unit:string;ordered_quantity:number;received_quantity:number;ordered_unit_price:number|null;status:string;order_line_id:number};
 type Product={item_code:string;item_name:string;base_unit:string};
 type Chosen={kind:"DN"|"PO"|"DIRECT";key:string;item_code:string;quantity:string;price:string;source:number;max:number;orderLineId?:number};
-const dateISO=(v:string)=>{const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(v.trim());if(!m)return null;const iso=m[3]+"-"+m[2]+"-"+m[1];const d=new Date(iso+"T12:00:00Z");return !Number.isNaN(d.getTime())&&d.toISOString().slice(0,10)===iso?iso:null;};
+const dateISO=(value:string)=>parseJsplDateInput(value) ?? null;
 const money=(n:number)=>Number.isFinite(n)?n.toFixed(2):"0.00";
 const shortPO=(id:number)=>"PO-"+id;
 const shortDNote=(value:string,id:number)=>{const v=String(value??"").trim();return "D-"+(/^(?:DEMO-)?DN-[a-f0-9]{8}-[a-f0-9-]{27,}$/i.test(v)||!v?id:v.replace(/^D(?:N(?:OTE)?)?[-\s#:]*/i,""));};
@@ -88,7 +89,7 @@ export default function GRVOutstanding(){
   <View style={s.panel}><ThemedText style={s.label}>Stock Owner</ThemedText><View style={s.wrap}>{owners.map(x=>selection(x,x+" ("+ownerCount(x)+")",x===owner,()=>{setOwner(x);setSupplier("");setType("");setChosen({});setNoPO(false)}))}</View></View>
   {!!owner?<View style={s.panel}><ThemedText style={s.label}>Supplier</ThemedText><View style={s.wrap}>{suppliers.map(x=>selection(x,x,x===supplier,()=>{setSupplier(x);setType("");setChosen({})}))}</View></View>:null}
   {!!supplier?<View style={s.panel}><ThemedText style={s.label}>Document Type</ThemedText><View style={s.wrap}>{selection("dnote","Delivery Note",type==="dnote",()=>{setType("dnote");setChosen({});setNoPO(false)})}{selection("grv","Invoice GRV",type==="grv",()=>{setType("grv");setChosen({});setNoPO(false)})}</View></View>:null}
-  {!!type?<View style={s.panel}><ThemedText style={s.label}>Date</ThemedText><TextInput style={[s.input,s.required]} value={date} onChangeText={setDate} placeholder="DD/MM/YYYY"/></View>:null}
+  {!!type?<View style={s.panel}><ThemedText style={s.label}>Date</ThemedText><TextInput style={[s.input,s.required]} value={date} onChangeText={setDate} onBlur={()=>{const parsed=parseJsplDateInput(date);if(parsed)setDate(displayJsplDate(parsed));}} placeholder="d/m (year optional)"/></View>:null}
   {!!type?<View style={s.panel}><ThemedText style={s.label}>{type==="grv"?"Invoice GRV Number":"Delivery Note Number"}</ThemedText><TextInput style={[s.input,s.required]} value={number} onChangeText={setNumber} placeholder="Enter document number"/></View>:null}
   {!!type&&documentReady?<View style={s.panel}>
   <ThemedText style={s.label}>Outstanding documents — tick the lines included in this {type==="grv"?"invoice":"delivery note"}</ThemedText>
