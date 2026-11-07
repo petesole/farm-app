@@ -8,6 +8,8 @@ export function JsplReturnNavigation(){
   const params=useLocalSearchParams<{kind?:string}>();
   const path=pathname.toLowerCase();
   if(!path || path==="/" || path.startsWith("/login") || path.startsWith("/pending-access") || path.startsWith("/modal"))return null;
+  // Labour screens provide exactly one local top-right return button.
+  if(path==="/labour" || path.startsWith("/labour-"))return null;
   // Stock screens provide their own navigation: Main on Stock Dashboard, Stock on subpages.
   if(path.includes("stock-v2-") || path.endsWith("/stock-test") || /^\/(labour-entry|labour-history|labour-correction)$/.test(path) || path.includes("/home/labour_v2") || path.endsWith("/labour") || path.includes("/home/field-master-dashboard") || path.includes("/home/tracecode-edit") || path.includes("/home/field-edit"))return null;
   const isMain=path.endsWith("/main-dashboard") || path.endsWith("/field-dashboard") || path==="/fuel" || path.endsWith("/fuel") || path==="/weighbridge" || path.endsWith("/wb-admin");
