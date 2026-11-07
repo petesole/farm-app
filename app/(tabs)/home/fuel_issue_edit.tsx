@@ -73,7 +73,7 @@ export default function FuelIssueEdit(){
   <ThemedText type="title">Fuel Issue Edit / Add</ThemedText>
   <Pressable style={s.btn} onPress={()=>router.back()}><ThemedText>← Fuel Admin</ThemedText></Pressable>
   <View style={s.card}><ThemedText type="subtitle">Select date</ThemedText><View style={s.row}>
-   <TextInput style={[s.input,{flex:1}]} value={dateInput} onChangeText={setDateInput} placeholder="dd/mm/yyyy or 5/12"/>
+   <TextInput style={[s.input,{flex:1}]} value={dateInput} onChangeText={setDateInput} onBlur={()=>{const d=fuelDateISO(dateInput);if(d)setDateInput(fuelDateDisplay(d));}} placeholder="dd/mm/yyyy or 5/12"/>
    <Pressable style={s.btn} onPress={findDate}><ThemedText>Find</ThemedText></Pressable>
   </View></View>
   {!!error&&<ThemedText style={{color:"red"}}>{error}</ThemedText>}
