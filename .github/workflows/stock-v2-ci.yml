@@ -16,13 +16,7 @@ jobs:
           node-version: '20'
           cache: npm
       - run: npm ci
-      - name: TypeScript Stock V2 gate (unrelated legacy errors reported)
-        run: |
-          npx tsc --noEmit 2>&1 | tee /tmp/jspl-typescript.log || true
-          if grep -E '^(app/\\(tabs\\)/home/stock-v2-|components/jspl/|utils/jspl-input)' /tmp/jspl-typescript.log; then
-            echo 'Stock V2 or shared UI has TypeScript errors'
-            exit 1
-          fi
-          echo 'No Stock V2 or shared UI TypeScript errors'
+      - name: Full ERP TypeScript check (all modules)
+        run: npx tsc --noEmit
       - name: Expo Web Export
         run: npm run build:web
