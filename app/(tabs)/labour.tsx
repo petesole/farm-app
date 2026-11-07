@@ -1,6 +1,7 @@
 import {useEffect,useState} from "react";
 import {ActivityIndicator,Image,Pressable,ScrollView,StyleSheet,Text,View} from "react-native";
 import {router} from "expo-router";
+import {JsplModuleHeader} from "@/components/jspl/JsplModuleHeader";
 import {supabase} from "@/supabase";
 import {formatJsplDate,formatJsplNumber,jsplColors as C} from "@/constants/jspl-design";
 
@@ -51,11 +52,7 @@ export default function LabourMain(){
  {title:"AO Weekly",description:"Agri Orange weekly Labour report",path:"/labour-reports?mode=ao"},
  ];
  return <ScrollView contentContainerStyle={styles.page}>
-  <View style={styles.header}>
-   <Image source={require("../../assets/images/jspl_farm_logo.png")} resizeMode="contain" style={styles.logo}/>
-   <View style={{flex:1}}><Text style={styles.heading}>Labour Main</Text><Text style={styles.sub}>John Sole (Private) Limited</Text></View>
-   <Pressable style={styles.back} onPress={()=>router.replace("/(tabs)/main-dashboard")}><Text style={styles.backText}>Back to Main</Text></Pressable>
-  </View>
+  <JsplModuleHeader title="Labour" backLabel="Back to Main" backHref="/(tabs)/main-dashboard" />
   <View style={styles.top}><Text style={styles.title}>Labour</Text>
    
   </View>
