@@ -1,3 +1,4 @@
+import {parseJsplDateInput,displayJsplDate} from "@/utils/jspl-input";
 import React,{useEffect,useState} from "react";
 import {useRouter} from "expo-router";
 import {ActivityIndicator,Modal,Pressable,ScrollView,StyleSheet,TextInput,View} from "react-native";
@@ -10,7 +11,7 @@ const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-d
 type Doc={display_no:number;document_id:number;document_date:string;delivery_note:string;delivery_note_date:string|null;supplier_name:string;invoice_number:string|null;line_count:number;locked:boolean};
 type Line={line_id:number;item_code:string;item_name:string;base_unit:string;received_quantity:number;invoiced_quantity:number;reduced_quantity:number};
 const dateLabel=(s:string|null)=>s&&/^\d{4}-\d{2}-\d{2}/.test(s)?s.slice(8,10)+"/"+s.slice(5,7)+"/"+s.slice(0,4):"";
-const iso=(s:string)=>{const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s.trim());if(!m)return "";const x=m[3]+"-"+m[2]+"-"+m[1];const d=new Date(x+"T12:00:00Z");return !Number.isNaN(d.getTime())&&d.toISOString().slice(0,10)===x?x:""};
+const iso=(value:string)=>parseJsplDateInput(value) ?? "";
 export default function DNoteCorrections(){
  const router=useRouter();const [docs,setDocs]=useState<Doc[]>([]),[selected,setSelected]=useState<Doc|null>(null),[search,setSearch]=useState("");
  const [number,setNumber]=useState(""),[date,setDate]=useState(""),[reason,setReason]=useState(""),[lines,setLines]=useState<Line[]>([]),[quantities,setQuantities]=useState<Record<number,string>>({});
@@ -41,7 +42,7 @@ export default function DNoteCorrections(){
    <ThemedText>Original date {dateLabel(selected?.delivery_note_date||selected?.document_date||null)} · {selected?.line_count} lines</ThemedText>
    {selected?.locked?<View style={styles.panel}><ThemedText style={styles.error}>Locked — GRV/invoice already linked</ThemedText><ThemedText>The original D-Note cannot be changed. Resolve subsequent quantity or price differences with a linked supplier return, credit or adjustment, preserving the original record.</ThemedText><Pressable onPress={()=>{close();router.push("/(tabs)/home/stock-v2-supplier-returns")}} style={styles.button}><ThemedText style={styles.white}>Open Supplier Returns</ThemedText></Pressable></View>:<>
     <ThemedText style={styles.bold}>D-Note Number</ThemedText><TextInput style={styles.input} value={number} onChangeText={setNumber}/>
-    <ThemedText style={styles.bold}>D-Note Date (dd/mm/yyyy)</ThemedText><TextInput style={styles.input} value={date} onChangeText={setDate}/>
+    <ThemedText style={styles.bold}>D-Note Date (dd/mm/yyyy)</ThemedText><TextInput style={styles.input} value={date} onChangeText={setDate} onBlur={()=>{const parsed=parseJsplDateInput(date);if(parsed)setDate(displayJsplDate(parsed));}}/>
     <ThemedText style={styles.bold}>Reason for correction</ThemedText><TextInput multiline style={styles.input} value={reason} onChangeText={setReason}/>
     <Pressable disabled={saving} style={styles.button} onPress={()=>void save()}><ThemedText style={styles.white}>{saving?"Saving…":"Save D-Note Details"}</ThemedText></Pressable>
     <ThemedText style={styles.heading}>Uninvoiced Stock Corrections</ThemedText>
