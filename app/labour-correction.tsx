@@ -32,6 +32,9 @@ export default function LabourCorrection(){
  }catch(e){if(alive)setError(e instanceof Error?e.message:String(e))}finally{if(alive)setLoading(false)}})();return()=>{alive=false}},[id]);
  const post=async()=>{
   if(!row||saving)return;setError("");
+  // Shared FarmingMain database: never execute a development correction against historical/live records.
+  setError("Development review only. Corrections are disabled until an isolated test database is configured.");
+  return;
   if(reason.trim().length<(action==="DELETE"?15:8)){setError("Enter a detailed audit reason");return}
   if(action!=="DELETE"&&(!Number.isFinite(Number(qty))||Number(qty)<=0||!Number.isFinite(Number(rate))||Number(rate)<0)){setError("Enter valid quantity and unit cost");return}
   setSaving(true);
