@@ -1,3 +1,4 @@
+import { parseJsplDateInput, displayJsplDate } from "@/utils/jspl-input";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Picker } from "@react-native-picker/picker";
@@ -14,14 +15,7 @@ function today(): string {
   const d = new Date();
   return [String(d.getDate()).padStart(2, "0"), String(d.getMonth() + 1).padStart(2, "0"), d.getFullYear()].join("/");
 }
-function parseDate(value: string): string | null {
-  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value.trim());
-  if (!match) return null;
-  const day = Number(match[1]), month = Number(match[2]), year = Number(match[3]);
-  const d = new Date(Date.UTC(year, month - 1, day));
-  if (d.getUTCFullYear() !== year || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) return null;
-  return match[3] + "-" + match[2] + "-" + match[1];
-}
+function parseDate(value: string): string | null { return parseJsplDateInput(value); }
 function cost(value: number): string { return "$" + formatJsplNumber(value); }
 /** Development-only preview: protects the shared FarmingMain database from test submissions.
  * IMPORTANT: turn this OFF only after a dedicated test environment and end-to-end approval. */
@@ -174,21 +168,47 @@ export default function LabourEntry() {
   }
   function activityLabel(id: number) { return activities.find(a => a.activity_id === id)?.activity_name || "Activity " + id; }
 
+  // Isolate the selected draft record; do not edit underneath the full register.
+  if (editingKey !== null) return <ScrollView contentContainerStyle={styles.page}>
+    <View style={styles.header}>
+      <Image source={require("../assets/images/jspl_farm_logo.png")} resizeMode="contain" style={styles.logo}/>
+      <View style={{flex:1}}><Text style={styles.headerTitle}>Edit Labour Line</Text><Text style={styles.headerSub}>Unsaved date: {formatJsplDate(isoDate)}</Text></View>
+      <Pressable style={styles.outline} onPress={clearEntry}><Text style={styles.outlineText}>Back to Labour Form</Text></Pressable>
+    </View>
+    {!!error&&<Text style={{color:C.danger}}>{error}</Text>}
+    <View style={styles.panel}>
+      <Text style={styles.label}>Trace Code</Text>
+      <View style={styles.picker}><Picker selectedValue={traceId} onValueChange={v=>setTraceId(String(v))}>{traces.map(t=><Picker.Item key={t.tracecode_id} value={String(t.tracecode_id)} label={t.tracecode_name}/>)}</Picker></View>
+      <Text style={styles.label}>Labour Activity</Text>
+      <View style={styles.picker}><Picker selectedValue={activityId} onValueChange={v=>setActivityId(String(v))}>{activities.map(a=><Picker.Item key={a.activity_id} value={String(a.activity_id)} label={a.activity_name}/>)}</Picker></View>
+      <View style={styles.row}>
+        <View style={styles.field}><Text style={styles.label}>Labour Qty</Text><TextInput style={styles.input} keyboardType="decimal-pad" value={qty} onChangeText={setQty}/></View>
+        {selected?.labour_measure==="Kgs"&&<View style={styles.field}><Text style={styles.label}>Kgs</Text><TextInput style={styles.input} keyboardType="decimal-pad" value={kgs} onChangeText={setKgs}/></View>}
+        <View style={styles.field}><Text style={styles.label}>Unit Cost</Text><TextInput style={styles.input} keyboardType="decimal-pad" value={rate} onChangeText={setRate}/></View>
+      </View>
+      <View style={styles.row}>
+        <Pressable style={styles.outline} onPress={clearEntry}><Text style={styles.outlineText}>Cancel</Text></Pressable>
+        <Pressable style={styles.outline} onPress={addDraft}><Text style={styles.outlineText}>Save Draft Changes</Text></Pressable>
+      </View>
+    </View>
+  </ScrollView>;
+
   return <ScrollView contentContainerStyle={styles.page}>
     <View style={styles.header}>
-      <View style={{ flex: 1 }}><Text style={styles.headerTitle}>Labour</Text><Text style={styles.headerSub}>John Sole (Private) Limited · Daily Labour</Text></View>
       <Image source={require("../assets/images/jspl_farm_logo.png")} resizeMode="contain" style={styles.logo} />
+      <View style={{ flex: 1 }}><Text style={styles.headerTitle}>Labour</Text><Text style={styles.headerSub}>John Sole (Private) Limited · Daily Labour</Text></View>
+      <Pressable onPress={() => router.replace("/(tabs)/labour")} style={styles.outline}><Text style={styles.outlineText}>Back to Labour</Text></Pressable>
     </View>
     <View style={styles.top}>
       <Text style={styles.heading}>Labour Form</Text>
-      <Pressable onPress={() => router.replace("/(tabs)/labour")} style={styles.outline}><Text style={styles.outlineText}>← Labour</Text></Pressable>
+      
     </View>
     {LABOUR_DEVELOPMENT_PREVIEW_ONLY && <View style={styles.panel}><Text style={styles.locked}>DEVELOPMENT PREVIEW — NO LABOUR DATA WILL BE SAVED</Text><Text style={styles.helper}>Final Save simulates the locked screen locally. Historical data and reports remain read-only. This is NOT an end-to-end database test.</Text></View>}
     {!!error && <View style={styles.error}><Text style={{ color: C.danger }}>{error}</Text></View>}
     {loading ? <ActivityIndicator color={C.primary} /> : <>
       <View style={styles.panel}>
         <Text style={styles.label}>Labour Date (dd/mm/yyyy)</Text>
-        <TextInput value={date} onChangeText={setDate} placeholder="dd/mm/yyyy" keyboardType="numbers-and-punctuation" style={styles.input} />
+        <TextInput value={date} onChangeText={setDate} onBlur={()=>{const iso=parseDate(date);if(iso)setDate(displayJsplDate(iso));}} placeholder="d/m (year optional)" keyboardType="numbers-and-punctuation" style={styles.input} />
         {!isoDate ? <Text style={styles.helper}>Enter a valid date in dd/mm/yyyy format.</Text> :
           checkedDate !== isoDate ? <ActivityIndicator color={C.primary} /> :
           locked ? <Text style={styles.locked}>SAVED — This date is locked. Labour Inputters cannot add, edit or delete entries for it.</Text> :

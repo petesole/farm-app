@@ -290,6 +290,7 @@ const s=StyleSheet.create({
  editGrid:{flexDirection:"row",flexWrap:"wrap",gap:9,marginTop:10,marginBottom:8,alignItems:"flex-end"},
  editField:{minWidth:115,flexGrow:1,maxWidth:165},editFieldWide:{minWidth:180,flexGrow:2,maxWidth:285},
  compactPicker:{minWidth:145,flexGrow:1,maxWidth:215,borderWidth:1,borderColor:"#D1D5DB",borderRadius:6},
+ jobSeq:{minWidth:34,fontSize:13},
  jobRow:{borderBottomWidth:1,borderBottomColor:"#D1D5DB",paddingVertical:5},
  jobSummary:{flexDirection:"row",alignItems:"center",gap:9,flexWrap:"wrap"},
  jobName:{minWidth:130,flex:1},jobData:{minWidth:72,fontSize:13},jobDescription:{flex:1,minWidth:110,fontSize:12},
