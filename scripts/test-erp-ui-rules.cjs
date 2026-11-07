@@ -10,6 +10,8 @@ function loadTs(path){
 const {parseJsplDateInput,displayJsplDate,filterJsplOptions}=loadTs("utils/jspl-input.ts");
 assert.equal(parseJsplDateInput("2/2",2026),"2026-02-02");
 assert.equal(parseJsplDateInput("2/2/2025",2026),"2025-02-02");
+assert.equal(parseJsplDateInput("2/2/25",2026),"2025-02-02");
+assert.equal(parseJsplDateInput("2/2/26",2026),"2026-02-02");
 assert.equal(parseJsplDateInput("29/2/2024",2026),"2024-02-29");
 assert.equal(parseJsplDateInput("29/2",2026),null);
 assert.equal(parseJsplDateInput("31/4",2026),null);
@@ -30,4 +32,27 @@ const labour=read("app/labour-entry.tsx");
 assert.ok(labour.includes("if (editingKey !== null) return"),"Draft edits must isolate the selected record");
 const field=read("app/(tabs)/home/field-master-dashboard.tsx");
 assert.ok(field.includes('<JsplSearchCombo label="Farm"')&&field.includes('<JsplSearchCombo label="Field status"'),"Field filters use combo boxes");
+
+// Every important editable date screen must use the canonical flexible date parser.
+const requiredDateScreens=[
+ "app/(tabs)/home/stock-v2-workflow.tsx",
+ "app/(tabs)/home/stock-v2-po-receiving.tsx",
+ "app/(tabs)/home/stock-v2-grv-outstanding.tsx",
+ "app/(tabs)/home/stock-v2-credits.tsx",
+ "app/(tabs)/home/stock-v2-corrections.tsx",
+ "app/(tabs)/home/stock-v2-stocktake.tsx",
+ "app/(tabs)/home/stock-v2-supplier-returns.tsx",
+ "app/wheat-storage-classification.tsx",
+ "lib/fieldControls.ts",
+ "app/(tabs)/home/fuel_admin_dates.ts",
+];
+for(const file of requiredDateScreens){
+ const source=read(file);
+ assert.ok(source.includes("parseJsplDateInput"),file+" must use the canonical ERP date parser");
+ assert.ok(!/\\d\{2\}.*\\d\{2\}.*\\d\{4\}/.test(source.split("\\n").find(x=>/^const (dateISO|toISO|parseDate|iso)=/.test(x))||""),file+" must not introduce a strict DD/MM/YYYY parser");
+}
+const {wbParseDate}=loadTs("utils/wb-date.ts");
+assert.equal(wbParseDate("2/2/25"),"2025-02-02");
+assert.equal(wbParseDate("31/4/2025"),null);
+
 console.log("PASS: ERP date parsing, filtering, header, and isolated workflow regression checks");

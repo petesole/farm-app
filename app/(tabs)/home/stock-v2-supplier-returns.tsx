@@ -1,3 +1,4 @@
+import {parseJsplDateInput,displayJsplDate} from "@/utils/jspl-input";
 import {useEffect,useRef,useState} from "react";
 import {useRouter} from "expo-router";
 import {ActivityIndicator,Pressable,ScrollView,StyleSheet,TextInput,View} from "react-native";
@@ -11,7 +12,7 @@ type Product={item_code:string;item_name:string;quantity:number;base_unit:string
 type Receipt={display_no:number;document_id:number;receipt_line_id:number;document_number:string;document_date:string;item_code:string;item_name:string;received_quantity:number;previously_returned:number;original_unit_price:number|null};
 type Return={document_id:number;document_number:string;supplier_name:string;credit_status:string;return_mode:string;lines:{quantity:number;agreed_price:number;item_name:string;inventory_value:number;valuation_difference:number;original_grv_value:number|null;sources:{grv:string;quantity:number}[]}[]};
 const displayDate=(s:string)=>/^\d{4}-\d{2}-\d{2}/.test(s)?s.slice(8,10)+"/"+s.slice(5,7)+"/"+s.slice(0,4):s;
-const iso=(s:string)=>{const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s);if(!m)return "";const d=new Date(m[3]+"-"+m[2]+"-"+m[1]+"T12:00:00");return d.getDate()===Number(m[1])&&d.getMonth()===Number(m[2])-1?m[3]+"-"+m[2]+"-"+m[1]:""};
+const iso=(value:string)=>parseJsplDateInput(value) ?? "";
 export default function SupplierReturns(){
  const router=useRouter();const pageRef=useRef<ScrollView>(null);const [owner,setOwner]=useState("JS"),[supplier,setSupplier]=useState(""),[reference,setReference]=useState(""),[reason,setReason]=useState("");
  const [mode,setMode]=useState<"specific_grv"|"supplier_stock">("specific_grv"),[suppliers,setSuppliers]=useState<string[]>([]),[supplierOpen,setSupplierOpen]=useState(false);const [products,setProducts]=useState<Product[]>([]),[returns,setReturns]=useState<Return[]>([]),[search,setSearch]=useState("");

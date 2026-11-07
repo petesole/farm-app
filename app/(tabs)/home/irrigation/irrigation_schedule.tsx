@@ -274,6 +274,7 @@ export default function IrrigationSchedule() {
               <TextInput
                 value={newDate}
                 onChangeText={setNewDate}
+                onBlur={()=>{const d=dmyToIso(newDate);if(d)setNewDate(isoToDmy(d));}}
                 placeholder="DD/MM/YYYY"
                 placeholderTextColor="#888"
                 editable={canEdit && !saving}
@@ -334,6 +335,7 @@ export default function IrrigationSchedule() {
                   <TextInput
                     value={editDate}
                     onChangeText={setEditDate}
+                    onBlur={()=>{const d=dmyToIso(editDate);if(d)setEditDate(isoToDmy(d));}}
                     placeholder="DD/MM/YYYY"
                     placeholderTextColor="#888"
                     editable={!saving}

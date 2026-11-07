@@ -45,7 +45,7 @@ function formatNum(v: number | null | undefined, decimals = 0) {
 function formatDateShort(iso: string) {
   // iso: YYYY-MM-DD
   const [y, m, d] = iso.split("-");
-  return `${d}/${m}`; // DD/MM
+  return `${d}/${m}/${y}`; // dd/mm/yyyy
 }
 
 type FuelDailyRow = {
