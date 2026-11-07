@@ -1,4 +1,5 @@
 import { parseJsplDateInput, displayJsplDate } from "@/utils/jspl-input";
+import {JsplModuleHeader} from "@/components/jspl/JsplModuleHeader";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Picker } from "@react-native-picker/picker";
@@ -170,11 +171,7 @@ export default function LabourEntry() {
 
   // Isolate the selected draft record; do not edit underneath the full register.
   if (editingKey !== null) return <ScrollView contentContainerStyle={styles.page}>
-    <View style={styles.header}>
-      <Image source={require("../assets/images/jspl_farm_logo.png")} resizeMode="contain" style={styles.logo}/>
-      <View style={{flex:1}}><Text style={styles.headerTitle}>Edit Labour Line</Text><Text style={styles.headerSub}>Unsaved date: {formatJsplDate(isoDate)}</Text></View>
-      <Pressable style={styles.outline} onPress={clearEntry}><Text style={styles.outlineText}>Back to Labour Form</Text></Pressable>
-    </View>
+    <JsplModuleHeader title="Edit Labour Line" subtitle={"Unsaved date: "+formatJsplDate(isoDate)} backLabel="Back to Labour Form" onBack={clearEntry} />
     {!!error&&<Text style={{color:C.danger}}>{error}</Text>}
     <View style={styles.panel}>
       <Text style={styles.label}>Trace Code</Text>
@@ -194,11 +191,7 @@ export default function LabourEntry() {
   </ScrollView>;
 
   return <ScrollView contentContainerStyle={styles.page}>
-    <View style={styles.header}>
-      <Image source={require("../assets/images/jspl_farm_logo.png")} resizeMode="contain" style={styles.logo} />
-      <View style={{ flex: 1 }}><Text style={styles.headerTitle}>Labour</Text><Text style={styles.headerSub}>John Sole (Private) Limited · Daily Labour</Text></View>
-      <Pressable onPress={() => router.replace("/(tabs)/labour")} style={styles.outline}><Text style={styles.outlineText}>Back to Labour</Text></Pressable>
-    </View>
+    <JsplModuleHeader title="Labour Form" subtitle="Daily Labour Entry" backLabel="Back to Labour" backHref="/(tabs)/labour" />
     <View style={styles.top}>
       <Text style={styles.heading}>Labour Form</Text>
       
