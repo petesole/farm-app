@@ -57,7 +57,7 @@ export default function TabsLayout() {
   }
 
   return (
-    <Tabs initialRouteName={isAdmin ? "main-dashboard" : "fuel"} screenOptions={{ headerShown: false }}>
+    <Tabs initialRouteName={isAdmin ? "main-dashboard" : "fuel"} screenOptions={{ headerShown: false, tabBarStyle: { display: "none" } }}>
       <Tabs.Screen name="home" options={{ href: null }} />
       <Tabs.Screen name="control-panel" options={{ href: null }} />
       <Tabs.Screen name="vehicle-management" options={{ href: null }} />
