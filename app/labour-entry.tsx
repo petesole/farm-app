@@ -208,11 +208,11 @@ export default function LabourEntry() {
     {loading ? <ActivityIndicator color={C.primary} /> : <>
       <View style={styles.panel}>
         <Text style={styles.label}>Labour Date (dd/mm/yyyy)</Text>
-        <TextInput value={date} onChangeText={setDate} onBlur={()=>{const iso=parseDate(date);if(iso)setDate(displayJsplDate(iso));}} placeholder="d/m (year optional)" keyboardType="numbers-and-punctuation" style={styles.input} />
+        <TextInput value={date} editable={!draft.length && !busy && !locked} onChangeText={setDate} onBlur={()=>{const iso=parseDate(date);if(iso)setDate(displayJsplDate(iso));}} placeholder="d/m (year optional)" keyboardType="numbers-and-punctuation" style={styles.input} />
         {!isoDate ? <Text style={styles.helper}>Enter a valid date in dd/mm/yyyy format.</Text> :
           checkedDate !== isoDate ? <ActivityIndicator color={C.primary} /> :
           locked ? <Text style={styles.locked}>SAVED — This date is locked. Labour Inputters cannot add, edit or delete entries for it.</Text> :
-          <Text style={styles.helper}>Not yet saved. Add all Labour lines below, review, then save the whole day once.</Text>}
+          <Text style={styles.helper}>Not yet saved. Add all Labour lines below, review, then save the whole day once. Once lines are added, the date is held to prevent accidental loss of work.</Text>}
       </View>
       {isoDate && checkedDate === isoDate && !locked && <View style={styles.panel}>
         <Text style={styles.heading}>Add Labour Line</Text>
