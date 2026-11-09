@@ -28,7 +28,7 @@ export function labourPrintReport(title:string,columns:Column[],rows:Row[],total
  'body{font:12px Arial,sans-serif;color:#183526;margin:25px}h1{font-size:20px;color:#103d2b;margin-bottom:5px}.muted{color:#666;font-size:11px;margin-bottom:12px}',
  'table{width:100%;border-collapse:collapse;margin-top:12px}th,td{border:1px solid #bbb;padding:5px 7px;text-align:left}th{background:#e8f0e8}tr{break-inside:avoid}',
  '.sum{font-size:14px;font-weight:700;margin-top:15px}button{background:#25633a;color:white;border:0;padding:9px 14px;margin:10px 0;cursor:pointer}',
- '@media print{button{display:none}body{margin:8mm}@page{size:A4 landscape;margin:8mm}}',
+ '@media print{button{display:none}body{margin:8mm}@page{size:A4 '+(weeklyTotals?'portrait':'landscape')+';margin:8mm}}',
  weeklyTotals ? 'table{margin-top:4px;font-size:11px;line-height:1.15}th,td{padding:2px 4px}thead{display:table-header-group}.sum{margin:4px 0 6px}@media print{body{margin:0}h1{margin:0 0 3px}.muted{margin-bottom:4px}}' : '',
  '</style></head><body><h1>John Sole (Private) Limited</h1><div class="muted">',safe(title),'</div>',
  weeklyTotals ? summary : '',
