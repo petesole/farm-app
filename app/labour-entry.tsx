@@ -180,11 +180,11 @@ export default function LabourEntry() {
       </View>
       <View style={[styles.field, styles.selectorField]}>
         <Text style={styles.label}>Labour Activity</Text>
-        <TextInput value={activitySearch} onChangeText={setActivitySearch} placeholder="Search Access activities" style={styles.input} />
         <View style={styles.picker}><Picker selectedValue={activityId} onValueChange={value => setActivityId(String(value))}>
           <Picker.Item value="" label="Select Activity..." />
           {filtered.map(a => <Picker.Item key={a.activity_id} value={String(a.activity_id)} label={a.activity_name} />)}
         </Picker></View>
+        <TextInput value={activitySearch} onChangeText={setActivitySearch} placeholder="Search Access activities" style={styles.input} />
       </View>
       <View style={styles.lineNumberField}><Text style={styles.label}>Labour Qty</Text><TextInput accessibilityLabel="Labour Qty" value={qty} onChangeText={setQty} keyboardType="decimal-pad" placeholder="0" style={styles.input}/></View>
       <View style={styles.lineNumberField}><Text style={styles.label}>Kgs</Text><TextInput accessibilityLabel="Kgs" editable={selected?.labour_measure === "Kgs"} value={selected?.labour_measure === "Kgs" ? kgs : ""} onChangeText={setKgs} keyboardType="decimal-pad" placeholder={selected?.labour_measure === "Kgs" ? "0" : "—"} style={[styles.input, selected?.labour_measure !== "Kgs" && styles.inactiveInput]}/></View>
