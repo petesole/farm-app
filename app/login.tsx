@@ -22,6 +22,7 @@ function landingForRole(roleName: string) {
 
   if (r === "admin") return "/(tabs)/main-dashboard";
   if (r === "manager") return "/(tabs)/fuel";
+  if (r === "rainfall") return "/rainfall-entry";
   if (r === "labour") return "/(tabs)/labour";
   if (r === "fuel" || r === "viewer") return "/(tabs)/fuel";
   if (r === "irrigation") return "/(tabs)/irrigation_main_dashboard";
@@ -67,13 +68,13 @@ export default function LoginScreen() {
         return;
       }
       const roles = (access || []).map((r: string) => norm(r));
-      if (!roles.some((r: string) => ["admin", "manager", "fuel", "labour", "viewer", "irrigation", "scouting", "scout", "scouter"].includes(r))) {
+      if (!roles.some((r: string) => ["admin", "manager", "fuel", "labour", "rainfall", "viewer", "irrigation", "scouting", "scout", "scouter"].includes(r))) {
         await supabase.auth.signOut();
         setStatus("Your account has no assigned Farm Management role.");
         return;
       }
       const role =
-        ["admin", "manager", "fuel", "labour", "irrigation", "scouting", "scout", "scouter", "viewer"]
+        ["admin", "manager", "fuel", "labour", "rainfall", "irrigation", "scouting", "scout", "scouter", "viewer"]
           .find((r) => roles.includes(r)) || roles[0];
       await AsyncStorage.setItem(
         "app_user",
