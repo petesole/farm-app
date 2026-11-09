@@ -1,432 +1,66 @@
 import { supabase } from "@/supabase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Picker } from "@react-native-picker/picker";
 import { useFocusEffect } from "@react-navigation/native";
 import { router } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  useWindowDimensions,
-  View,
-} from "react-native";
+import { useCallback, useMemo, useState } from "react";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
-type DashRow = {
-  tracecode_id: number;
-  crop: string | null;
-  trace: string | null;
-  in_cycle: boolean | null;
-  cycle_stamp: string | null;
-  ["DSL_Irr/Rain"]?: number | null;
-  daily_req: number | null;
-  acc_req: number | null;
-  next_app: string | null;
-  next_app_mm: number | null;
-  next_schedule_id: number | null;
-  seasonal_depletion_mm?: number | null;
-};
-
-type RoleName = "admin" | "irrigation" | "manager" | "viewer" | "unknown" | string;
-
-function normRole(x: any) {
-  return String(x ?? "").trim().toLowerCase();
+type Field = { tracecode_id:number; tracecode_name:string; crop_id:number|null; irrigation_type_id:number|null; end_date:string|null; crop?:{crop_name:string}|null };
+type Applied = { tracecode_id:number; applied_date:string; mm_applied:number; irrigation_applied_id:number };
+const green="#135c38";
+const dateText=(v?:string|null)=>v? v.slice(8,10)+"/"+v.slice(5,7)+"/"+v.slice(0,4):"Not recorded";
+export default function IrrigationMainDashboard(){
+ const [fields,setFields]=useState<Field[]>([]),[latest,setLatest]=useState<Record<number,Applied>>({});
+ const [crop,setCrop]=useState(""),[trace,setTrace]=useState("");
+ const [loading,setLoading]=useState(true),[error,setError]=useState(""),[role,setRole]=useState("");
+ const load=useCallback(async()=>{
+  setLoading(true);setError("");
+  try{
+   const [fr,ar,r]=await Promise.all([
+    supabase.from("tracecode").select("tracecode_id,tracecode_name,crop_id,irrigation_type_id,end_date,crop:crop_id(crop_name)").is("end_date",null).not("irrigation_type_id","is",null).neq("irrigation_type_id",4).order("tracecode_name"),
+    supabase.from("irrigation_applied").select("irrigation_applied_id,tracecode_id,applied_date,mm_applied").order("applied_date",{ascending:false}).order("irrigation_applied_id",{ascending:false}).limit(5000),
+    AsyncStorage.getItem("role")
+   ]);
+   if(fr.error)throw fr.error;if(ar.error)throw ar.error;
+   setRole(String(r||"").toLowerCase());
+   setFields((fr.data||[]) as unknown as Field[]);
+   const last:Record<number,Applied>={};
+   for(const row of (ar.data||[]) as Applied[])if(!last[row.tracecode_id])last[row.tracecode_id]=row;
+   setLatest(last);
+  }catch(e:any){setError(e?.message||String(e));}finally{setLoading(false);}
+ },[]);
+ useFocusEffect(useCallback(()=>{load();},[load]));
+ const crops=useMemo(()=>Array.from(new Set(fields.map(f=>f.crop?.crop_name||"Unknown"))).sort(),[fields]);
+ const available=useMemo(()=>fields.filter(f=>!crop||(f.crop?.crop_name||"Unknown")===crop),[fields,crop]);
+ const shown=available.filter(f=>!trace||String(f.tracecode_id)===trace);
+ const open=(id:number)=>router.push({pathname:"/(tabs)/home/irrigation/irrigation_actual",params:{tracecode_id:String(id)}});
+ return <ScrollView style={s.screen} contentContainerStyle={s.container}>
+  <View style={s.heading}><View><Text style={s.company}>JOHN SOLE (PVT) LTD</Text><Text style={s.title}>Irrigation Dashboard</Text></View>
+   {["admin","manager"].includes(role)?<Pressable style={s.back} onPress={()=>router.replace("/(tabs)/main-dashboard")}><Text style={s.backText}>Back to Main</Text></Pressable>:null}</View>
+  <View style={s.actions}><Pressable style={s.action} onPress={()=>router.push("/(tabs)/home/irrigation/irrigation-entry")}><Text style={s.actionText}>+ Record Irrigation</Text></Pressable>
+   <Pressable style={s.action} onPress={()=>router.push("/(tabs)/home/irrigation/pan-entry")}><Text style={s.actionText}>+ Pan Reading</Text></Pressable></View>
+  <Text style={s.section}>Active Irrigated Fields — Last Irrigation</Text>
+  <Text style={s.label}>Crop</Text><View style={s.picker}><Picker selectedValue={crop} onValueChange={v=>{setCrop(String(v));setTrace("");}}><Picker.Item label="All crops" value=""/>{crops.map(c=><Picker.Item key={c} label={c} value={c}/>)}</Picker></View>
+  <Text style={s.label}>Trace Code</Text><View style={s.picker}><Picker selectedValue={trace} onValueChange={v=>setTrace(String(v))}><Picker.Item label="All traces" value=""/>{available.map(f=><Picker.Item key={f.tracecode_id} label={f.tracecode_name} value={String(f.tracecode_id)}/>)}</Picker></View>
+  {loading?<ActivityIndicator color={green} size="large"/>:error?<View><Text style={s.error}>{error}</Text><Pressable onPress={load}><Text>Retry</Text></Pressable></View>:shown.length===0?<Text>No active irrigated fields match.</Text>:shown.map(f=>{
+   const a=latest[f.tracecode_id];return <View key={f.tracecode_id} style={s.card}>
+    <View style={{flex:1}}><Text style={s.trace}>{f.tracecode_name}</Text><Text style={s.crop}>{f.crop?.crop_name||"Crop not assigned"}</Text><Text style={s.detail}>Last: {dateText(a?.applied_date)}   •   {a?Number(a.mm_applied).toLocaleString()+" mm":"—"}</Text></View>
+    <Pressable style={s.open} onPress={()=>open(f.tracecode_id)}><Text style={s.openText}>Open</Text></Pressable>
+   </View>})}
+  <Pressable onPress={load} style={s.refresh}><Text style={s.refreshText}>Refresh</Text></Pressable>
+ </ScrollView>;
 }
-
-function toNum(v: any): number | null {
-  if (v === null || v === undefined) return null;
-  const n = typeof v === "string" ? Number(v) : v;
-  return Number.isFinite(n) ? n : null;
-}
-
-function fmt0(v: any) {
-  const n = toNum(v);
-  return n === null ? "-" : String(Math.round(n));
-}
-
-function fmt1(v: any) {
-  const n = toNum(v);
-  return n === null ? "-" : (Math.round(n * 10) / 10).toFixed(1);
-}
-
-function fmtDate(v: any) {
-  if (!v) return "-";
-  return String(v);
-}
-
-const COLS = [
-  { key: "crop", label: "Crop", width: 150 },
-  { key: "trace", label: "Trace", width: 160 },
-  { key: "cycle_stamp", label: "Cycle", width: 150 },
-  { key: "DSL_Irr/Rain", label: "DSL", width: 70 },
-  { key: "daily_req", label: "Daily", width: 90 },
-  { key: "acc_req", label: "Acc", width: 90 },
-  { key: "seasonal_depletion_mm", label: "Season", width: 90 },
-  { key: "next_app", label: "Next d", width: 110 },
-  { key: "next_app_mm", label: "Next mm", width: 90 },
-  { key: "actions", label: "Actions", width: 260 },
-] as const;
-
-export default function IrrigationMainDashboard() {
-  const { width } = useWindowDimensions();
-  const isPhone = width < 700;
-
-  const [rows, setRows] = useState<DashRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [errorText, setErrorText] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-
-  const [roles, setRoles] = useState<RoleName[]>([]);
-  const isAdmin = useMemo(() => roles.map(normRole).includes("admin"), [roles]);
-
-  const tableWidth = useMemo(
-    () => COLS.reduce((sum, c) => sum + c.width, 0),
-    []
-  );
-
-  const loadRoles = useCallback(async () => {
-    try {
-      const storedRole = await AsyncStorage.getItem("role");
-      const r = normRole(storedRole);
-
-      if (!r) {
-        setRoles(["unknown"]);
-        return;
-      }
-
-      setRoles([r]);
-    } catch (e: any) {
-      console.log("Role load error:", e?.message ?? e);
-      setRoles(["unknown"]);
-    }
-  }, []);
-
-  const fetchData = useCallback(async () => {
-    setErrorText(null);
-    setLoading(true);
-
-    try {
-      const queryPromise = supabase
-        .from("irrigation_dashboard_cache")
-        .select(
-          'tracecode_id,crop,trace,in_cycle,cycle_stamp,daily_req,acc_req,next_app,next_app_mm,next_schedule_id,"DSL_Irr/Rain",seasonal_depletion_mm'
-        )
-        .order("in_cycle", { ascending: false })
-        .order("acc_req", { ascending: false })
-        .order("trace", { ascending: true });
-
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Dashboard query timed out")), 20000)
-      );
-
-      const result: any = await Promise.race([queryPromise, timeoutPromise]);
-      const { data, error } = result;
-
-      if (error) throw error;
-
-      setRows((data ?? []) as DashRow[]);
-    } catch (e: any) {
-      setRows([]);
-      setErrorText(e?.message ?? String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadRoles();
-  }, [loadRoles]);
-
-  useFocusEffect(
-    useCallback(() => {
-      fetchData();
-    }, [fetchData])
-  );
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await fetchData();
-    setRefreshing(false);
-  }, [fetchData]);
-
-  const filteredRows = useMemo(() => {
-    const s = search.trim().toLowerCase();
-    if (!s) return rows;
-
-    return rows.filter((r) => {
-      const crop = (r.crop ?? "").toLowerCase();
-      const trace = (r.trace ?? "").toLowerCase();
-      return crop.includes(s) || trace.includes(s);
-    });
-  }, [rows, search]);
-
-  const goSchedule = (tracecode_id: number) => {
-    router.push({
-      pathname: "/(tabs)/home/irrigation/irrigation_schedule",
-      params: { tracecode_id: String(tracecode_id) },
-    });
-  };
-
-  const goActual = (tracecode_id: number) => {
-    router.push({
-      pathname: "/(tabs)/home/irrigation/irrigation_actual",
-      params: { tracecode_id: String(tracecode_id) },
-    });
-  };
-
-  const showApplied = (r: DashRow) => r.next_schedule_id != null || !!r.in_cycle;
-
-  const renderActions = (r: DashRow) => {
-    const appliedVisible = showApplied(r);
-
-    return (
-      <View style={{ flexDirection: "row", alignItems: "center" }}>
-        {isAdmin ? (
-          <Pressable
-            onPress={() => goSchedule(r.tracecode_id)}
-            style={[styles.actionBtn, styles.actionBtnDark, { marginRight: 8 }]}
-          >
-            <Text style={styles.actionBtnTextDark}>Schedule</Text>
-          </Pressable>
-        ) : (
-          <View style={{ width: 86, marginRight: 8, alignItems: "center" }}>
-            <Text style={{ color: "#999", fontWeight: "800", fontSize: 12 }}>—</Text>
-          </View>
-        )}
-
-        {appliedVisible ? (
-          <Pressable
-            onPress={() => goActual(r.tracecode_id)}
-            style={[styles.actionBtn, styles.actionBtnLight]}
-          >
-            <Text style={styles.actionBtnTextLight}>
-              {r.in_cycle ? "Finish" : "Applied"}
-            </Text>
-          </Pressable>
-        ) : (
-          <View style={{ width: 86, alignItems: "center" }}>
-            <Text style={{ color: "#999", fontWeight: "800", fontSize: 12 }}>—</Text>
-          </View>
-        )}
-      </View>
-    );
-  };
-
-  const renderCard = ({ item }: { item: DashRow }) => {
-    const inCycle = !!item.in_cycle;
-    const cycle = item.cycle_stamp ?? "-";
-
-    return (
-      <View style={[styles.cardPhone, inCycle && styles.cardGreen]}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10 }}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.cardTrace}>{item.trace ?? "-"}</Text>
-            <Text style={styles.cardCrop}>{item.crop ?? "-"}</Text>
-          </View>
-          <Text style={styles.cardCycle}>{cycle}</Text>
-        </View>
-
-        <View style={styles.metricGrid}>
-          <Metric label="DSL" value={fmt0(item["DSL_Irr/Rain"])} />
-          <Metric label="Daily" value={fmt1(item.daily_req)} />
-          <Metric label="Acc" value={fmt1(item.acc_req)} />
-          <Metric label="Season" value={fmt0(item.seasonal_depletion_mm)} />
-          <Metric label="Next d" value={fmtDate(item.next_app)} />
-          <Metric label="Next mm" value={fmt0(item.next_app_mm)} />
-        </View>
-
-        <View style={{ marginTop: 10 }}>{renderActions(item)}</View>
-      </View>
-    );
-  };
-
-  const renderHeader = () => (
-    <View style={[styles.tr, styles.headerRow]}>
-      {COLS.map((c) => (
-        <View key={c.key} style={[styles.td, { width: c.width }]}>
-          <Text style={styles.headerText}>{c.label}</Text>
-        </View>
-      ))}
-    </View>
-  );
-
-  const renderCell = (row: DashRow, colKey: (typeof COLS)[number]["key"]) => {
-    if (colKey === "crop") return <Text style={styles.cellText}>{row.crop ?? "-"}</Text>;
-    if (colKey === "trace")
-      return <Text style={[styles.cellText, { fontWeight: "900" }]}>{row.trace ?? "-"}</Text>;
-    if (colKey === "cycle_stamp") return <Text style={styles.cellText}>{row.cycle_stamp ?? "-"}</Text>;
-    if (colKey === "DSL_Irr/Rain") return <Text style={styles.cellText}>{fmt0(row["DSL_Irr/Rain"])}</Text>;
-    if (colKey === "daily_req") return <Text style={styles.cellText}>{fmt1(row.daily_req)}</Text>;
-    if (colKey === "acc_req") return <Text style={styles.cellText}>{fmt1(row.acc_req)}</Text>;
-    if (colKey === "seasonal_depletion_mm")
-      return <Text style={styles.cellText}>{fmt0(row.seasonal_depletion_mm)}</Text>;
-    if (colKey === "next_app") return <Text style={styles.cellText}>{fmtDate(row.next_app)}</Text>;
-    if (colKey === "next_app_mm") return <Text style={styles.cellText}>{fmt0(row.next_app_mm)}</Text>;
-    if (colKey === "actions") return renderActions(row);
-    return <Text style={styles.cellText}>-</Text>;
-  };
-
-  const renderRow = ({ item }: { item: DashRow }) => {
-    const inCycle = !!item.in_cycle;
-    return (
-      <View style={[styles.tr, inCycle && styles.trGreen]}>
-        {COLS.map((c) => (
-          <View key={c.key} style={[styles.td, { width: c.width }]}>
-            {renderCell(item, c.key)}
-          </View>
-        ))}
-      </View>
-    );
-  };
-
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-        <Text style={{ marginTop: 10 }}>Loading dashboard…</Text>
-      </View>
-    );
-  }
-
-  if (errorText) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.error}>{errorText}</Text>
-      </View>
-    );
-  }
-
-  return (
-    <View style={{ flex: 1 }}>
-      <View style={styles.searchWrap}>
-        <Text style={{ fontWeight: "900", marginBottom: 6 }}>
-          Roles: {roles.length ? roles.map(normRole).join(", ") : "unknown"}
-        </Text>
-        <TextInput
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Search crop or trace…"
-          style={styles.search}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-      </View>
-
-      {isPhone ? (
-        <FlatList
-          data={filteredRows}
-          keyExtractor={(r) => String(r.tracecode_id)}
-          renderItem={renderCard}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          contentContainerStyle={{ padding: 12, paddingBottom: 24 }}
-          ListEmptyComponent={
-            <View style={styles.center}>
-              <Text style={{ fontWeight: "900" }}>No matches</Text>
-            </View>
-          }
-        />
-      ) : (
-        <ScrollView horizontal showsHorizontalScrollIndicator>
-          <View style={{ minWidth: tableWidth }}>
-            {renderHeader()}
-            <FlatList
-              data={filteredRows}
-              keyExtractor={(r) => String(r.tracecode_id)}
-              renderItem={renderRow}
-              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-              contentContainerStyle={filteredRows.length === 0 ? { flexGrow: 1 } : undefined}
-              ListEmptyComponent={
-                <View style={styles.center}>
-                  <Text style={{ fontWeight: "900" }}>No matches</Text>
-                </View>
-              }
-            />
-          </View>
-        </ScrollView>
-      )}
-    </View>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.metric}>
-      <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={styles.metricValue}>{value}</Text>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  center: { flex: 1, justifyContent: "center", alignItems: "center", padding: 16 },
-  error: { color: "crimson", fontWeight: "900" },
-
-  searchWrap: {
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e6e6e6",
-  },
-  search: {
-    borderWidth: 1,
-    borderColor: "#dcdcdc",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    backgroundColor: "#fafafa",
-  },
-
-  tr: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: "#e6e6e6" },
-  headerRow: { backgroundColor: "#f3f3f3" },
-  td: { paddingVertical: 10, paddingHorizontal: 8, justifyContent: "center" },
-  headerText: { fontWeight: "900", fontSize: 12 },
-  cellText: { fontSize: 12 },
-  trGreen: { backgroundColor: "#dff5df" },
-
-  actionBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  actionBtnDark: { backgroundColor: "#111", borderColor: "#111" },
-  actionBtnTextDark: { color: "#fff", fontWeight: "900", fontSize: 12 },
-  actionBtnLight: { backgroundColor: "#fff", borderColor: "#111" },
-  actionBtnTextLight: { color: "#111", fontWeight: "900", fontSize: 12 },
-
-  cardPhone: {
-    borderWidth: 1,
-    borderColor: "#e6e6e6",
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 12,
-    backgroundColor: "#fff",
-  },
-  cardGreen: { backgroundColor: "#dff5df" },
-  cardTrace: { fontSize: 18, fontWeight: "900" },
-  cardCrop: { marginTop: 2, color: "#666", fontWeight: "800" },
-  cardCycle: { fontWeight: "900", color: "#111" },
-
-  metricGrid: {
-    marginTop: 10,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-  },
-  metric: {
-    width: "31%",
-    borderWidth: 1,
-    borderColor: "#efefef",
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    backgroundColor: "#fafafa",
-  },
-  metricLabel: { fontSize: 11, fontWeight: "900", color: "#666" },
-  metricValue: { marginTop: 2, fontSize: 16, fontWeight: "900" },
+const s=StyleSheet.create({
+ screen:{flex:1,backgroundColor:"#f4f7f5"},container:{padding:16,paddingBottom:60},
+ heading:{backgroundColor:green,padding:16,borderRadius:10,flexDirection:"row",justifyContent:"space-between",alignItems:"center",gap:8},
+ company:{color:"#dcece3",fontSize:11,fontWeight:"700"},title:{color:"#fff",fontSize:22,fontWeight:"800"},
+ back:{backgroundColor:"#fff",borderRadius:8,padding:9},backText:{color:green,fontWeight:"700"},
+ actions:{flexDirection:"row",flexWrap:"wrap",gap:8,marginVertical:16},action:{backgroundColor:green,padding:13,borderRadius:8},actionText:{color:"#fff",fontWeight:"800"},
+ section:{fontWeight:"800",fontSize:17,color:green,marginVertical:10},label:{fontWeight:"700",marginBottom:4,color:"#263d31"},
+ picker:{borderWidth:1,borderColor:"#bdcdc1",borderRadius:8,backgroundColor:"#fff",marginBottom:10,overflow:"hidden"},
+ card:{padding:14,backgroundColor:"#fff",borderWidth:1,borderColor:"#d6e3d8",borderRadius:10,marginTop:8,flexDirection:"row",alignItems:"center",gap:8},
+ trace:{fontSize:17,fontWeight:"800",color:green},crop:{fontSize:12,color:"#50655a",marginTop:3},detail:{fontSize:13,color:"#1f3329",marginTop:7},
+ open:{backgroundColor:green,borderRadius:7,paddingHorizontal:16,paddingVertical:11},openText:{color:"#fff",fontWeight:"800"},
+ error:{color:"#a21a1a",padding:12},refresh:{alignSelf:"center",padding:12,marginTop:12},refreshText:{color:green,fontWeight:"700"}
 });
