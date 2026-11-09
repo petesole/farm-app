@@ -15,7 +15,7 @@ import {
   View,
 } from "react-native";
 
-type Gauge = { rain_gauge_id: number; rain_gauge: string | null };
+type Gauge = { rain_gauge_id: number; rain_gauge: string | null; active: boolean | null; active_from: string | null; active_to: string | null };
 type RainRow = { rain_gauge_id: number; rainfall_received: number };
 
 function isoToDisplay(iso: string) {
@@ -51,6 +51,11 @@ export default function RainfallRecordScreen() {
 
   const loadedRef = useRef(false);
   const isoDate = useMemo(() => displayToIso(dateDisplay), [dateDisplay]);
+  const requiredGauges = gauges.filter(gauge =>
+    !!isoDate &&
+    (!gauge.active_from || gauge.active_from <= isoDate) &&
+    (gauge.active_to ? isoDate <= gauge.active_to : gauge.active !== false)
+  );
 
   const goBack = () => {
     setStatus("↩️ Returning to index…");
@@ -87,7 +92,7 @@ export default function RainfallRecordScreen() {
       setStatus("⏳ Loading rain gauges…");
       const { data, error } = await supabase
         .from("rain_gauge")
-        .select("rain_gauge_id, rain_gauge")
+        .select("rain_gauge_id, rain_gauge, active, active_from, active_to")
         .order("rain_gauge");
 
       if (error) {
@@ -152,7 +157,7 @@ export default function RainfallRecordScreen() {
       return;
     }
 
-    const payload = gauges
+    const payload = requiredGauges
       .map((g) => {
         const txt = (mmByGauge[g.rain_gauge_id] ?? "").trim();
         if (!txt) return null;
@@ -245,7 +250,8 @@ export default function RainfallRecordScreen() {
         </View>
 
         <FlatList
-          data={gauges}
+          data={requiredGauges}
+          ListEmptyComponent={isoDate ? <Text>No gauges required for this date.</Text> : null}
           keyExtractor={(g) => String(g.rain_gauge_id)}
           contentContainerStyle={{ paddingBottom: 190 }} // space for bottom status+buttons
           renderItem={({ item }) => (
