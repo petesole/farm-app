@@ -10,6 +10,8 @@ export function JsplReturnNavigation(){
   if(!path || path==="/" || path.startsWith("/login") || path.startsWith("/pending-access") || path.startsWith("/modal"))return null;
   // Labour screens provide exactly one local top-right return button.
   if(path==="/labour" || path.startsWith("/labour-"))return null;
+  // Rainfall screens supply their own return control.
+  if(path.includes("/rainfall/") || path==="/rainfall-entry")return null;
   // Stock screens provide their own navigation: Main on Stock Dashboard, Stock on subpages.
   if(path.includes("stock-v2-") || path.endsWith("/stock-test") || /^\/(labour-entry|labour-history|labour-correction)$/.test(path) || path.includes("/home/labour_v2") || path.endsWith("/labour") || path.includes("/home/field-master-dashboard") || path.includes("/home/tracecode-edit") || path.includes("/home/field-edit"))return null;
   const isMain=path.endsWith("/main-dashboard") || path.endsWith("/field-dashboard") || path==="/fuel" || path.endsWith("/fuel") || path==="/weighbridge" || path.endsWith("/wb-admin");
@@ -34,7 +36,7 @@ export function JsplReturnNavigation(){
     label="Fields Control";target="/(tabs)/fields-control";
   }else if(path.includes("fuel_")||path.includes("fuel-")||path.includes("/home/fuel")||path.includes("/fuel-planning")){
     label="Fuel";target="/(tabs)/fuel";
-  }else if(path.includes("irrigation")||path.includes("rainfall")){
+  }else if(path.includes("irrigation")){
     label="Irrigation";target="/(tabs)/irrigation_main_dashboard";
   }else if(path.includes("control-panel")){
     label="Main";target="/(tabs)/main-dashboard";

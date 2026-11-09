@@ -1,10 +1,11 @@
 import { useCallback, useMemo, useState } from "react";
 import { router, useFocusEffect } from "expo-router";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 import { JsplSearchCombo } from "@/components/jspl/JsplSearchCombo";
 import { jsplColors as C, jsplSpacing as S, jsplRadii as R } from "@/constants/jspl-design";
 import { labourExportXLSX } from "@/lib/labour-xlsx-export";
+import { displayJsplDate, parseJsplDateInput } from "@/utils/jspl-input";
 import { supabase } from "@/supabase";
 
 type Reading = { rainfall_id: number; rainfall_date: string; rain_gauge_id: number; rainfall_received: number | null };
@@ -17,7 +18,12 @@ const escape = (value: string) => value.replace(/[&<>"']/g, char => ({ "&":"&amp
 export function RainfallReport({ dashboard = false }: { dashboard?: boolean }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [readings, setReadings] = useState<Reading[]>([]);
-  const [gauges, setGauges] = useState<{id: string; label: string}[]>([]);
+  const [gauges, setGauges] = useState<{id:string;label:string;active:boolean|null;from:string|null;to:string|null}[]>([]);
+  const [checkDate, setCheckDate] = useState(() => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate()-1);
+    return [yesterday.getDate(),yesterday.getMonth()+1].map(value => String(value).padStart(2,"0")).join("/")+"/"+yesterday.getFullYear();
+  });
   const [gauge, setGauge] = useState("average");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -34,7 +40,7 @@ export function RainfallReport({ dashboard = false }: { dashboard?: boolean }) {
     setError("");
     void (async () => {
       try {
-        const names = await supabase.from("rain_gauge").select("rain_gauge_id,rain_gauge").order("rain_gauge");
+        const names = await supabase.from("rain_gauge").select("rain_gauge_id,rain_gauge,active,active_from,active_to").order("rain_gauge");
         if (names.error) throw names.error;
         const all: Reading[] = [];
         for (let offset = 0; active; offset += 500) {
@@ -45,7 +51,7 @@ export function RainfallReport({ dashboard = false }: { dashboard?: boolean }) {
           if ((result.data?.length ?? 0) < 500) break;
         }
         if (active) {
-          setGauges((names.data ?? []).map(row => ({ id:String(row.rain_gauge_id), label:row.rain_gauge ?? `Gauge ${row.rain_gauge_id}` })));
+          setGauges((names.data ?? []).map(row => ({ id:String(row.rain_gauge_id), active:row.active,from:row.active_from,to:row.active_to,label:row.rain_gauge ?? `Gauge ${row.rain_gauge_id}` })));
           setReadings(all);
         }
       } catch (e) {
@@ -87,6 +93,14 @@ export function RainfallReport({ dashboard = false }: { dashboard?: boolean }) {
       total:values.reduce<number>((sum,n) => sum + (n ?? 0), 0),
     }));
   }, [dashboard, gauge, readings]);
+
+  const selectedDate = parseJsplDateInput(checkDate);
+  const required = selectedDate ? gauges.filter(item =>
+    (!item.from || item.from <= selectedDate) && (item.to ? selectedDate <= item.to : item.active !== false)
+  ) : [];
+  const dailyReadings = new Map(readings.filter(row => row.rainfall_date === selectedDate && row.rainfall_received != null)
+    .map(row => [String(row.rain_gauge_id), Number(row.rainfall_received)]));
+  const missing = required.filter(item => !dailyReadings.has(item.id));
 
   const gaugeLabel = gauge === "average" ? "Average" : gauges.find(item => item.id === gauge)?.label ?? "Gauge";
   const title = `Monthly Rainfall - ${gaugeLabel}`;
@@ -135,8 +149,22 @@ export function RainfallReport({ dashboard = false }: { dashboard?: boolean }) {
       <Pressable accessibilityRole="button" style={styles.action} onPress={() => router.push({pathname:"/home/rainfall/rainfall_record",params:{mode:"add"}})}><Text style={styles.actionText}>Add New Rainfall</Text></Pressable>
       {isAdmin && <Pressable accessibilityRole="button" style={styles.action} onPress={() => router.push({pathname:"/home/rainfall/rainfall_record",params:{mode:"edit"}})}><Text style={styles.actionText}>Edit Saved Rainfall</Text></Pressable>}
     </View>}
+    {dashboard && <View style={styles.reportCard}>
+      <Text style={styles.heading}>Gauge Status by Date</Text>
+      <Text style={{color:C.textSecondary}}>Reading date (dd/mm/yyyy)</Text>
+      <TextInput accessibilityLabel="Gauge status date" value={checkDate} onChangeText={setCheckDate}
+        onBlur={() => { if (selectedDate) setCheckDate(displayJsplDate(selectedDate)); }}
+        keyboardType="numbers-and-punctuation" style={styles.dateInput}/>
+      {loading ? <Text>Checking readings…</Text> : !selectedDate ? <Text>Enter a valid reading date.</Text> : !required.length ? <Text>No gauges required for this date.</Text> : <>
+        <Text style={{fontWeight:"700",color:C.primaryDark}}>{required.length-missing.length} of {required.length} gauges recorded · {missing.length} missing</Text>
+        {required.map(item => <View key={item.id} style={styles.gaugeStatus}>
+          <Text style={{flex:1}}>{item.label}</Text>
+          <Text style={{fontWeight:"700",color:dailyReadings.has(item.id)?C.primaryDark:C.danger}}>{dailyReadings.has(item.id) ? format(dailyReadings.get(item.id)!)+" mm" : "Not recorded"}</Text>
+        </View>)}
+      </>}
+    </View>}
     {dashboard && <Text style={styles.heading}>Monthly Comparison · Last Season and This Season</Text>}
-    <JsplSearchCombo label="Gauge" selector="product" options={[{id:"average",label:"Average"},...gauges]} value={gauge} onChange={value => setGauge(String(value ?? "average"))}/>
+    <JsplSearchCombo label="Gauge" selector="product" options={[{id:"average",label:"Average"},...gauges.map(({id,label}) => ({id,label}))]} value={gauge} onChange={value => setGauge(String(value ?? "average"))}/>
     <Text style={{color:C.textSecondary}}>Average adds each day’s mean across recorded gauges. A dash means no reading.</Text>
     {loading && <Text>Loading rainfall…</Text>}
     {!!error && <Text accessibilityRole="alert">{error}</Text>}
@@ -184,6 +212,8 @@ export function RainfallReport({ dashboard = false }: { dashboard?: boolean }) {
 export default function RainfallMonthlyReport() { return <RainfallReport />; }
 
 const styles = StyleSheet.create({
+  dateInput: {maxWidth:180,borderWidth:1,borderColor:C.border,borderRadius:R.sm,padding:S.sm,marginVertical:S.sm,color:C.text},
+  gaugeStatus: {flexDirection:"row",gap:S.sm,paddingVertical:S.xs,borderBottomWidth:1,borderColor:C.border},
   heading: {color:C.primaryDark,fontSize:20,fontWeight:"800"},
   page: {padding:S.lg,gap:S.md,backgroundColor:C.background,flexGrow:1},
   totals: {flexDirection:"row",flexWrap:"wrap",gap:S.sm},
