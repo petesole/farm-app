@@ -1,0 +1,160 @@
+import { useCallback, useMemo, useState } from "react";
+import { useFocusEffect } from "expo-router";
+import { Pressable, ScrollView, Text, View } from "react-native";
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
+import { JsplSearchCombo } from "@/components/jspl/JsplSearchCombo";
+import { jsplColors as C } from "@/constants/jspl-design";
+import { labourExportXLSX } from "@/lib/labour-xlsx-export";
+import { supabase } from "@/supabase";
+
+type Reading = { rainfall_id: number; rainfall_date: string; rain_gauge_id: number; rainfall_received: number | null };
+const months = ["Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug"];
+const palette = ["#15694d", "#3166a8", "#a85b16", "#774c97", "#087f88", "#a44465"];
+const format = (n: number | null) => n === null ? "—" : n.toLocaleString("en", { maximumFractionDigits: 1 });
+const seasonName = (year: number) => `${year}/${String(year + 1).slice(-2)}`;
+const escape = (value: string) => value.replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" })[char]!);
+
+export default function RainfallMonthlyReport() {
+  const [readings, setReadings] = useState<Reading[]>([]);
+  const [gauges, setGauges] = useState<{id: string; label: string}[]>([]);
+  const [gauge, setGauge] = useState("average");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    setLoading(true);
+    setError("");
+    void (async () => {
+      try {
+        const names = await supabase.from("rain_gauge").select("rain_gauge_id,rain_gauge").order("rain_gauge");
+        if (names.error) throw names.error;
+        const all: Reading[] = [];
+        for (let offset = 0; active; offset += 500) {
+          const result = await supabase.from("rainfall").select("rainfall_id,rainfall_date,rain_gauge_id,rainfall_received")
+            .order("rainfall_id").range(offset, offset + 499);
+          if (result.error) throw result.error;
+          all.push(...(result.data ?? []));
+          if ((result.data?.length ?? 0) < 500) break;
+        }
+        if (active) {
+          setGauges((names.data ?? []).map(row => ({ id:String(row.rain_gauge_id), label:row.rain_gauge ?? `Gauge ${row.rain_gauge_id}` })));
+          setReadings(all);
+        }
+      } catch (e) {
+        if (active) setError((e as {message?: string})?.message ?? "Unable to load rainfall.");
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []));
+
+  const seasons = useMemo(() => {
+    const byDay = new Map<string, { sum:number; count:number }>();
+    for (const row of readings) {
+      if (row.rainfall_received == null || (gauge !== "average" && gauge !== String(row.rain_gauge_id))) continue;
+      const day = byDay.get(row.rainfall_date) ?? { sum:0, count:0 };
+      day.sum += Number(row.rainfall_received);
+      day.count++;
+      byDay.set(row.rainfall_date, day);
+    }
+    const bySeason = new Map<number, (number | null)[]>();
+    for (const [date, day] of byDay) {
+      const year = Number(date.slice(0,4));
+      const month = Number(date.slice(5,7));
+      const season = month >= 9 ? year : year - 1;
+      const index = (month + 3) % 12;
+      const values = bySeason.get(season) ?? Array<number | null>(12).fill(null);
+      values[index] = (values[index] ?? 0) + day.sum / day.count;
+      bySeason.set(season, values);
+    }
+    return [...bySeason].sort(([a],[b]) => a-b).map(([year, values], index) => ({
+      year, values, color:palette[index % palette.length],
+      total:values.reduce<number>((sum,n) => sum + (n ?? 0), 0),
+    }));
+  }, [gauge, readings]);
+
+  const gaugeLabel = gauge === "average" ? "Average" : gauges.find(item => item.id === gauge)?.label ?? "Gauge";
+  const title = `Monthly Rainfall - ${gaugeLabel}`;
+  const peak = Math.max(0, ...seasons.flatMap(season => season.values.map(n => n ?? 0)));
+  const step = Math.max(25, Math.ceil(peak / 100) * 25);
+  const ceiling = step * 4;
+  const width = Math.max(66, seasons.length * 24 + 12);
+  const columns = [{label:"Month",field:"month"}, ...seasons.map(s => ({label:seasonName(s.year),field:String(s.year)}))];
+  const rows = [
+    {month:"Season total (mm)", ...Object.fromEntries(seasons.map(s => [s.year, s.total]))},
+    ...months.map((month,i) => ({month,...Object.fromEntries(seasons.map(s => [s.year,s.values[i]]))})),
+  ] as Record<string, string | number | null>[];
+
+  function output(kind: "print" | "excel") {
+    setError("");
+    try {
+      if (kind === "excel") {
+        labourExportXLSX(title, columns, rows);
+        return;
+      }
+      if (typeof window === "undefined") throw Error("Print is available in a desktop browser.");
+      const popup = window.open("", "_blank");
+      if (!popup) throw Error("Allow pop-ups to open print preview.");
+      const bars = months.map((month,i) => `<div class="month"><div class="bars">${seasons.map(s => {
+        const n = s.values[i];
+        return `<span title="${seasonName(s.year)}: ${format(n)} mm" style="background:${n == null ? "transparent" : s.color};height:${n == null ? 0 : Math.max(1,n/ceiling*100)}%"></span>`;
+      }).join("")}</div>${month}</div>`).join("");
+      popup.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${escape(title)}</title><style>
+        body{font:13px Arial,sans-serif;color:#163b2c}table{width:100%;border-collapse:collapse}th,td{padding:4px 7px;border:1px solid #cbd9d2;text-align:right}th:first-child,td:first-child{text-align:left}tr:first-child{font-weight:bold}
+        .chart{display:flex;gap:5px;margin:12px 0}.month{flex:1;text-align:center}.bars{height:120px;display:flex;align-items:end;gap:2px;border-bottom:1px solid #888}.bars span{flex:1}
+        @page{size:A4 landscape;margin:10mm}@media print{button{display:none}body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
+        </style></head><body><h1>${escape(title)} (mm)</h1><button onclick="window.print()">Print</button> <button onclick="window.close()">Close</button>
+        <p>${seasons.map(s => `<strong style="color:${s.color}">${seasonName(s.year)}: ${format(s.total)} mm</strong>`).join(" · ")}</p><div class="chart">${bars}</div>
+        <table><thead><tr>${columns.map(col => `<th>${escape(col.label)}</th>`).join("")}</tr></thead><tbody>${rows.map(row => `<tr>${columns.map(col => `<td>${col.field === "month" ? escape(String(row[col.field])) : format(row[col.field] as number | null)}</td>`).join("")}</tr>`).join("")}</tbody></table></body></html>`);
+      popup.document.close();
+      popup.focus();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  return <ScrollView contentContainerStyle={{padding:16,gap:14,backgroundColor:C.background}}>
+    <JsplModuleHeader title="Monthly Rainfall" backLabel="Back to Rainfall" backHref="/home/rainfall/rainfall_index"/>
+    <JsplSearchCombo label="Gauge" selector="product" options={[{id:"average",label:"Average"},...gauges]} value={gauge} onChange={value => setGauge(String(value ?? "average"))}/>
+    <Text style={{color:C.textSecondary}}>Average adds each day’s mean across recorded gauges. A dash means no reading.</Text>
+    {loading && <Text>Loading rainfall…</Text>}
+    {!!error && <Text accessibilityRole="alert">{error}</Text>}
+    {!loading && !seasons.length && <Text>No rainfall readings for this selection.</Text>}
+    {!loading && !!seasons.length && <>
+      <View style={{flexDirection:"row",flexWrap:"wrap",gap:12}}>
+        {seasons.map(s => <Text key={s.year} style={{fontWeight:"700",color:s.color}}>{seasonName(s.year)} total: {format(s.total)} mm</Text>)}
+      </View>
+      <View style={{flexDirection:"row",gap:16}}>
+        <Pressable accessibilityRole="button" onPress={() => output("print")}><Text style={{color:C.primary,fontWeight:"700"}}>Print</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => output("excel")}><Text style={{color:C.primary,fontWeight:"700"}}>Export to Excel</Text></Pressable>
+      </View>
+      <ScrollView horizontal>
+        <View style={{padding:12,backgroundColor:C.surface}}>
+          <Text style={{fontWeight:"700"}}>Rainfall (mm)</Text>
+          <View style={{flexDirection:"row"}}>
+            <View style={{width:46,height:185,justifyContent:"space-between"}}>{[4,3,2,1,0].map(n => <Text key={n}>{n*step}</Text>)}</View>
+            {months.map((month,i) => <View key={month} style={{width,alignItems:"center"}}>
+              <View style={{height:180,flexDirection:"row",alignItems:"flex-end",gap:3,borderBottomWidth:1,borderColor:C.border}}>
+                {seasons.map(s => {
+                  const n=s.values[i];
+                  return <View key={s.year} accessible accessibilityLabel={`${month} ${seasonName(s.year)}: ${n == null ? "no reading" : format(n)+" mm"}`} style={{width:19,height:n == null ? 1 : Math.max(2,n/ceiling*180),backgroundColor:n == null ? "transparent" : s.color}}/>;
+                })}
+              </View>
+              <Text style={{fontWeight:"700",marginTop:5}}>{month}</Text>
+            </View>)}
+          </View>
+          <View style={{marginTop:14}}>
+            {[{month:"Month",...Object.fromEntries(seasons.map(s => [s.year,seasonName(s.year)]))},...rows].map((row,i) => <View key={i} style={{flexDirection:"row",borderBottomWidth:1,borderColor:C.border,paddingVertical:4}}>
+              {columns.map(col => {
+                const cell=(row as Record<string,string|number|null>)[col.field];
+                return <Text key={col.field} style={{width:col.field==="month"?130:90,fontWeight:i<2?"700":"400"}}>{typeof cell==="string"?cell:format(cell)}</Text>;
+              })}
+            </View>)}
+          </View>
+        </View>
+      </ScrollView>
+    </>}
+  </ScrollView>;
+}
