@@ -45,7 +45,9 @@ export default function RainfallRecordScreen() {
   const [status, setStatus] = useState<string>("(status will show here)");
 
   const [dateDisplay, setDateDisplay] = useState(isoToDisplay(yesterdayISO()));
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [savedByGauge, setSavedByGauge] = useState<Record<number, string>>({});
+  const [loadedDate, setLoadedDate] = useState("");
+  const [reload, setReload] = useState(0);
   const [gauges, setGauges] = useState<Gauge[]>([]);
   const [mmByGauge, setMmByGauge] = useState<Record<number, string>>({});
 
@@ -64,24 +66,6 @@ export default function RainfallRecordScreen() {
       params: { refresh: String(Date.now()) },
     });
   };
-
-  // Only admins may change the entry date to backfill missing rainfall.
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      const { data: auth } = await supabase.auth.getUser();
-      const uid = auth.user?.id;
-      if (!uid) return;
-      const { data, error } = await supabase
-        .from("app_user_role")
-        .select("role_name")
-        .eq("user_id", uid);
-      if (active && !error) {
-        setIsAdmin((data ?? []).some((r) => r.role_name === "admin"));
-      }
-    })();
-    return () => { active = false; };
-  }, []);
 
   // Load gauges once
   useEffect(() => {
@@ -110,6 +94,8 @@ export default function RainfallRecordScreen() {
   // Load rainfall for date (only when date is valid)
   useEffect(() => {
     // Never carry values from a previous selected day into the new date.
+    setLoadedDate("");
+    setSavedByGauge({});
     setMmByGauge({});
     if (!isoDate) return;
     let active = true;
@@ -121,6 +107,7 @@ export default function RainfallRecordScreen() {
         .select("rain_gauge_id, rainfall_received")
         .eq("rainfall_date", isoDate);
 
+      if (!active) return;
       if (error) {
         setStatus("❌ Failed loading rainfall: " + error.message);
         return;
@@ -129,18 +116,18 @@ export default function RainfallRecordScreen() {
       const rows = (data ?? []) as RainRow[];
       const next: Record<number, string> = {};
       for (const r of rows) {
-        next[r.rain_gauge_id] = String(r.rainfall_received ?? "");
+        if (r.rainfall_received != null) next[r.rain_gauge_id] = String(r.rainfall_received);
       }
 
-      if (active) setMmByGauge(next);
+      setSavedByGauge(next);
+      setLoadedDate(isoDate);
       setStatus(`✅ Loaded ${rows.length} existing values for ${isoDate}.`);
     })();
     return () => { active = false; };
-  }, [isoDate]);
+  }, [isoDate, reload]);
 
   const setMm = (id: number, value: string) => {
-    const cleaned = value.replace(/[^0-9.]/g, "");
-    setMmByGauge((prev) => ({ ...prev, [id]: cleaned }));
+    setMmByGauge((prev) => ({ ...prev, [id]: value }));
   };
 
   const onSave = async () => {
@@ -152,33 +139,22 @@ export default function RainfallRecordScreen() {
       return;
     }
 
-    if (!isAdmin && iso !== yesterdayISO()) {
-      setStatus("❌ Only admins may record or correct dates other than yesterday.");
-      return;
+    if (loadedDate !== iso || saving) return;
+    const payload = [];
+    for (const gauge of requiredGauges) {
+      const id = gauge.rain_gauge_id;
+      if (savedByGauge[id] !== undefined) continue;
+      const input = (mmByGauge[id] ?? "").trim();
+      if (!input) continue;
+      const mm = Number(input.replace(",", "."));
+      if (!/^\d+(?:[.,]\d+)?$/.test(input) || !Number.isFinite(mm)) {
+        setStatus(`Enter valid millimetres for ${gauge.rain_gauge ?? id}.`);
+        return;
+      }
+      payload.push({ rain_gauge_id: id, rainfall_date: iso, rainfall_received: mm });
     }
-
-    const payload = requiredGauges
-      .map((g) => {
-        const txt = (mmByGauge[g.rain_gauge_id] ?? "").trim();
-        if (!txt) return null;
-
-        const mm = Number(txt);
-        if (!Number.isFinite(mm) || mm < 0) return null;
-
-        return {
-          rain_gauge_id: g.rain_gauge_id,
-          rainfall_date: iso,
-          rainfall_received: mm,
-        };
-      })
-      .filter(Boolean) as {
-      rain_gauge_id: number;
-      rainfall_date: string;
-      rainfall_received: number;
-    }[];
-
-    if (payload.length === 0) {
-      setStatus("⚠️ Nothing to save (no mm values entered).");
+    if (!payload.length) {
+      setStatus("Enter a reading for at least one missing gauge.");
       return;
     }
 
@@ -186,31 +162,28 @@ export default function RainfallRecordScreen() {
     setStatus(`⏳ Saving ${payload.length} rows for ${iso}…`);
 
     try {
-      const timeout = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Supabase timeout (12s)")), 12000)
-      );
-
-      const request = supabase
-        .from("rainfall")
-        .upsert(payload, { onConflict: "rain_gauge_id,rainfall_date" })
-        .select("rain_gauge_id, rainfall_date, rainfall_received");
-
-      const result = (await Promise.race([request, timeout])) as any;
-
-      if (result?.error) {
-        setStatus("❌ Save failed: " + result.error.message);
+      const { error } = await supabase.from("rainfall").insert(payload);
+      if (error) {
+        setStatus(error.code === "23505"
+          ? "A gauge was already saved. Reload the readings before trying again."
+          : "Save could not be confirmed. Reload the readings before retrying. " + error.message);
         return;
       }
-
-      const savedCount = result?.data?.length ?? payload.length;
-      setStatus(`✅ Saved ${savedCount} rows. Returning to index…`);
-      goBack();
-    } catch (e: any) {
-      setStatus("❌ Save crashed: " + (e?.message ?? String(e)));
+      setSavedByGauge(previous => ({
+        ...previous,
+        ...Object.fromEntries(payload.map(row => [row.rain_gauge_id, String(row.rainfall_received)])),
+      }));
+      setMmByGauge({});
+      setStatus(`Saved ${payload.length} gauge readings.`);
+    } catch {
+      setStatus("Save could not be confirmed. Reload the readings before retrying.");
     } finally {
       setSaving(false);
     }
   };
+
+  const missing = requiredGauges.filter(gauge => savedByGauge[gauge.rain_gauge_id] === undefined);
+  const savedCount = requiredGauges.length - missing.length;
 
   if (loading) {
     return (
@@ -234,13 +207,15 @@ export default function RainfallRecordScreen() {
           value={dateDisplay}
           onChangeText={setDateDisplay}
           onBlur={()=>{const d=displayToIso(dateDisplay);if(d)setDateDisplay(isoToDisplay(d));}}
-          editable={isAdmin}
-          style={[styles.input, !isAdmin && { backgroundColor: "#f1f3f2" }]}
+          editable={!saving}
+          style={styles.input}
           keyboardType="numbers-and-punctuation"
         />
 
         <Text style={{ marginBottom: 8, opacity: 0.7 }}>
-          {isAdmin ? "Admin: change the date to add missing historical rainfall or correct a day." : "Daily entry is for yesterday. Contact an admin to correct an earlier date."}
+          {loadedDate === isoDate && isoDate && requiredGauges.length > 0
+            ? `${savedCount} of ${requiredGauges.length} gauges saved. ${missing.length ? "Still missing: " + missing.map(gauge => gauge.rain_gauge ?? gauge.rain_gauge_id).join(", ") : "Complete."}`
+            : "Choose the reading date. Enter 0 for a dry gauge and leave readings you are waiting for blank."}
         </Text>
 
         {/* Header row so it’s obvious + aligns widths */}
@@ -261,9 +236,11 @@ export default function RainfallRecordScreen() {
               </Text>
 
               <TextInput
-                value={mmByGauge[item.rain_gauge_id] ?? ""}
+                accessibilityLabel={`${item.rain_gauge ?? "Gauge"} millimetres`}
+                value={savedByGauge[item.rain_gauge_id] ?? mmByGauge[item.rain_gauge_id] ?? ""}
+                editable={!saving && loadedDate === isoDate && savedByGauge[item.rain_gauge_id] === undefined}
                 onChangeText={(v) => setMm(item.rain_gauge_id, v)}
-                placeholder="0"
+                placeholder="—"
                 keyboardType="decimal-pad"
                 style={styles.colMmInput}
               />
@@ -276,19 +253,20 @@ export default function RainfallRecordScreen() {
             {status}
           </Text>
 
+          <Pressable accessibilityRole="button" disabled={saving || !isoDate} onPress={() => setReload(value => value + 1)}><Text>Reload readings</Text></Pressable>
           <View style={{ flexDirection: "row", gap: 10 }}>
             <Pressable
               style={[styles.btn, styles.btnGhost]}
               onPress={goBack}
               disabled={saving}
             >
-              <Text style={styles.btnGhostText}>Cancel</Text>
+              <Text style={styles.btnGhostText}>Back</Text>
             </Pressable>
 
             <Pressable
               style={[styles.btn, styles.btnPrimary, saving && { opacity: 0.6 }]}
               onPress={onSave}
-              disabled={saving}
+              disabled={saving || !isoDate || loadedDate !== isoDate || !missing.length}
             >
               <Text style={styles.btnPrimaryText}>
                 {saving ? "Saving…" : "Save"}
