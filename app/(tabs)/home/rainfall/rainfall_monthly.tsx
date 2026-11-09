@@ -60,6 +60,11 @@ export default function RainfallMonthlyReport() {
       byDay.set(row.rainfall_date, day);
     }
     const bySeason = new Map<number, (number | null)[]>();
+    const now = new Date();
+    const currentSeason = now.getFullYear() - (now.getMonth() < 8 ? 1 : 0);
+    for (const year of [currentSeason - 1, currentSeason]) {
+      bySeason.set(year, Array<number | null>(12).fill(null));
+    }
     for (const [date, day] of byDay) {
       const year = Number(date.slice(0,4));
       const month = Number(date.slice(5,7));
@@ -80,10 +85,11 @@ export default function RainfallMonthlyReport() {
   const peak = Math.max(0, ...seasons.flatMap(season => season.values.map(n => n ?? 0)));
   const step = Math.max(25, Math.ceil(peak / 100) * 25);
   const ceiling = step * 4;
-  const width = Math.max(66, seasons.length * 24 + 12);
+  const width = Math.max(80, seasons.length * 40 + 12);
+  const hasReadings = seasons.some(season => season.values.some(value => value !== null));
   const columns = [{label:"Month",field:"month"}, ...seasons.map(s => ({label:seasonName(s.year),field:String(s.year)}))];
   const rows = [
-    {month:"Season total (mm)", ...Object.fromEntries(seasons.map(s => [s.year, s.total]))},
+    {month:"Season total (mm)", ...Object.fromEntries(seasons.map(s => [s.year, s.values.some(value => value !== null) ? s.total : null]))},
     ...months.map((month,i) => ({month,...Object.fromEntries(seasons.map(s => [s.year,s.values[i]]))})),
   ] as Record<string, string | number | null>[];
 
@@ -100,13 +106,13 @@ export default function RainfallMonthlyReport() {
       const bars = months.map((month,i) => `<div class="month"><div class="bars">${seasons.map(s => {
         const n = s.values[i];
         return `<span title="${seasonName(s.year)}: ${format(n)} mm" style="background:${n == null ? "transparent" : s.color};height:${n == null ? 0 : Math.max(1,n/ceiling*100)}%"></span>`;
-      }).join("")}</div>${month}</div>`).join("");
+      }).join("")}</div><div class="years">${seasons.map(s => `<span style="color:${s.color}">${s.year}</span>`).join("")}</div>${month}</div>`).join("");
       popup.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${escape(title)}</title><style>
         body{font:13px Arial,sans-serif;color:#163b2c}table{width:100%;border-collapse:collapse}th,td{padding:4px 7px;border:1px solid #cbd9d2;text-align:right}th:first-child,td:first-child{text-align:left}tr:first-child{font-weight:bold}
-        .chart{display:flex;gap:5px;margin:12px 0}.month{flex:1;text-align:center}.bars{height:120px;display:flex;align-items:end;gap:2px;border-bottom:1px solid #888}.bars span{flex:1}
+        .chart{display:flex;gap:5px;margin:12px 0}.month{flex:1;text-align:center}.bars{height:120px;display:flex;align-items:end;gap:2px;border-bottom:1px solid #888}.bars span,.years span{flex:1}.years{display:flex;gap:2px;font-size:8px;font-weight:bold}
         @page{size:A4 landscape;margin:10mm}@media print{button{display:none}body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
         </style></head><body><h1>${escape(title)} (mm)</h1><button onclick="window.print()">Print</button> <button onclick="window.close()">Close</button>
-        <p>${seasons.map(s => `<strong style="color:${s.color}">${seasonName(s.year)}: ${format(s.total)} mm</strong>`).join(" · ")}</p><div class="chart">${bars}</div>
+        <p>${seasons.map(s => `<strong style="color:${s.color}">${seasonName(s.year)}: ${s.values.some(value => value !== null) ? format(s.total)+" mm" : "No readings"}</strong>`).join(" · ")}</p><div class="chart">${bars}</div>
         <table><thead><tr>${columns.map(col => `<th>${escape(col.label)}</th>`).join("")}</tr></thead><tbody>${rows.map(row => `<tr>${columns.map(col => `<td>${col.field === "month" ? escape(String(row[col.field])) : format(row[col.field] as number | null)}</td>`).join("")}</tr>`).join("")}</tbody></table></body></html>`);
       popup.document.close();
       popup.focus();
@@ -121,8 +127,8 @@ export default function RainfallMonthlyReport() {
     <Text style={{color:C.textSecondary}}>Average adds each day’s mean across recorded gauges. A dash means no reading.</Text>
     {loading && <Text>Loading rainfall…</Text>}
     {!!error && <Text accessibilityRole="alert">{error}</Text>}
-    {!loading && !seasons.length && <Text>No rainfall readings for this selection.</Text>}
-    {!loading && !!seasons.length && <>
+    {!loading && !hasReadings && <Text>No rainfall readings for this selection.</Text>}
+    {!loading && hasReadings && <>
       <View style={{flexDirection:"row",flexWrap:"wrap",gap:12}}>
         {seasons.map(s => <Text key={s.year} style={{fontWeight:"700",color:s.color}}>{seasonName(s.year)} total: {format(s.total)} mm</Text>)}
       </View>
@@ -139,8 +145,11 @@ export default function RainfallMonthlyReport() {
               <View style={{height:180,flexDirection:"row",alignItems:"flex-end",gap:3,borderBottomWidth:1,borderColor:C.border}}>
                 {seasons.map(s => {
                   const n=s.values[i];
-                  return <View key={s.year} accessible accessibilityLabel={`${month} ${seasonName(s.year)}: ${n == null ? "no reading" : format(n)+" mm"}`} style={{width:19,height:n == null ? 1 : Math.max(2,n/ceiling*180),backgroundColor:n == null ? "transparent" : s.color}}/>;
+                  return <View key={s.year} accessible accessibilityLabel={`${month} ${seasonName(s.year)}: ${n == null ? "no reading" : format(n)+" mm"}`} style={{width:35,height:n == null ? 1 : Math.max(2,n/ceiling*180),backgroundColor:n == null ? "transparent" : s.color}}/>;
                 })}
+              </View>
+              <View style={{flexDirection:"row",gap:3}}>
+                {seasons.map(s => <Text key={s.year} style={{width:35,textAlign:"center",fontSize:11,fontWeight:"700",color:s.color}}>{s.year}</Text>)}
               </View>
               <Text style={{fontWeight:"700",marginTop:5}}>{month}</Text>
             </View>)}
