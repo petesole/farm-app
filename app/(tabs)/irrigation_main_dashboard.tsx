@@ -303,13 +303,6 @@ export default function IrrigationMainDashboard() {
 
   return (
     <View style={{ flex: 1 }}>
-      <Pressable
-        onPress={() => router.push("/(tabs)/home/rainfall/rainfall_index")}
-        style={styles.rainfallFab}
-      >
-        <Text style={styles.rainfallFabText}>Rainfall</Text>
-      </Pressable>
-
       <View style={styles.searchWrap}>
         <Text style={{ fontWeight: "900", marginBottom: 6 }}>
           Roles: {roles.length ? roles.map(normRole).join(", ") : "unknown"}
@@ -373,27 +366,8 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: "center", alignItems: "center", padding: 16 },
   error: { color: "crimson", fontWeight: "900" },
 
-  rainfallFab: {
-    position: "absolute",
-    top: 12,
-    right: 12,
-    zIndex: 20,
-    backgroundColor: "#111",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: "#111",
-  },
-  rainfallFabText: {
-    color: "#fff",
-    fontWeight: "900",
-    fontSize: 12,
-  },
-
   searchWrap: {
     padding: 12,
-    paddingRight: 110,
     borderBottomWidth: 1,
     borderBottomColor: "#e6e6e6",
   },
