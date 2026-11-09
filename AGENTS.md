@@ -21,6 +21,14 @@
 - Show simple sequential business document numbers, not internal UUIDs/database IDs, except in explicitly technical admin diagnostics. Treat D-Note/reference numbers as **text**, never as dates.
 - Keep screens uncluttered: no duplicated headings, duplicate navigation, redundant fields, or giant arrays of action buttons. Choose a clear separate edit window/screen where editing a document inline would confuse the transaction.
 
+### Compulsory report controls
+
+- Every new report must provide both **Print** and **Export to Excel (.xlsx)** beside the report controls.
+- Make report table headers filterable with searchable selectors in the header area. Available choices must reflect matching rows under the other active filters.
+- Display totals for the applicable measures above the table. Recalculate totals and any subtotals from the filtered rows whenever a filter changes. Print and Excel must use the same filtered rows and totals as the screen.
+- Give every print preview a **Close** button that returns to the originating report with its filters preserved. Hide preview controls from the printed output.
+- Verify that changing filters updates the table and totals, that print and Excel match the filtered report, and that closing print preview restores the report selections.
+
 ## 3. Data entry, saves and corrections
 
 - Capture an operational fact once; reuse linked data across modules and future accounting integration. Never require the same information to be entered twice without a documented reason.

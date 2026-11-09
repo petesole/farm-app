@@ -105,11 +105,12 @@ export default function LabourEntry() {
     if (!isoDate || checkedDate !== isoDate || locked) { setError("Choose an unsaved date. Saved dates cannot be changed by a Labour Inputter."); return; }
     if (!traceId) { setError("Select a Trace Code."); return; }
     if (!selected) { setError("Select a Labour Activity."); return; }
-    const amount = Number(qty), kilograms = Number(kgs), unitCost = Number(rate);
-    if (!qty.trim() || !Number.isFinite(amount) || amount <= 0) { setError("Enter Labour Qty greater than zero."); return; }
-    if (selected.labour_measure === "Kgs" && kgs.trim() && (!Number.isFinite(kilograms) || kilograms < 0)) { setError("Enter valid Kgs or leave blank, as in Access."); return; }
+    const measuredInKgs = selected.labour_measure === "Kgs";
+    const amount = measuredInKgs ? 0 : Number(qty), kilograms = Number(kgs), unitCost = Number(rate);
+    if (!measuredInKgs && (!qty.trim() || !Number.isFinite(amount) || amount <= 0)) { setError("Enter Labour Qty greater than zero."); return; }
+    if (measuredInKgs && (!kgs.trim() || !Number.isFinite(kilograms) || kilograms <= 0)) { setError("Enter Kgs greater than zero."); return; }
     if (!rate.trim() || !Number.isFinite(unitCost) || unitCost < 0) { setError("Enter a valid Unit Cost."); return; }
-    const updatedLine = { key: editingKey ?? nextKey, tracecode_id: Number(traceId), activity_id: selected.activity_id, labour_qty: amount, kgs: selected.labour_measure === "Kgs" && kgs.trim() ? kilograms : null, unit_cost: unitCost };
+    const updatedLine = { key: editingKey ?? nextKey, tracecode_id: Number(traceId), activity_id: selected.activity_id, labour_qty: amount, kgs: measuredInKgs ? kilograms : null, unit_cost: unitCost };
     if (editingKey != null) setDraft(lines => lines.map(x => x.key === editingKey ? updatedLine : x));
     else { setDraft(lines => [...lines, updatedLine]); setNextKey(key => key + 1); }
     setError(""); clearEntry();
@@ -169,20 +170,45 @@ export default function LabourEntry() {
   }
   function activityLabel(id: number) { return activities.find(a => a.activity_id === id)?.activity_name || "Activity " + id; }
 
+  const lineFields = <ScrollView horizontal keyboardShouldPersistTaps="handled" contentContainerStyle={styles.lineEditorScroll}>
+    <View style={styles.lineEditor}>
+      <View style={[styles.field, styles.selectorField]}>
+        <Text style={styles.label}>Trace Code</Text>
+        <View style={styles.picker}><Picker selectedValue={traceId} onValueChange={value => setTraceId(String(value))}>
+          <Picker.Item value="" label="Select Trace Code..." />
+          {traces.map(t => <Picker.Item key={t.tracecode_id} value={String(t.tracecode_id)} label={t.tracecode_name + (t.crop_id == null ? " · No Crop" : "")} />)}
+        </Picker></View>
+      </View>
+      <View style={[styles.field, styles.selectorField]}>
+        <Text style={styles.label}>Labour Activity</Text>
+        <View style={styles.picker}><Picker selectedValue={activityId} onValueChange={value => setActivityId(String(value))}>
+          <Picker.Item value="" label="Select Activity..." />
+          {filtered.map(a => <Picker.Item key={a.activity_id} value={String(a.activity_id)} label={a.activity_name} />)}
+        </Picker></View>
+        <TextInput value={activitySearch} onChangeText={setActivitySearch} placeholder="Search Access activities" style={styles.input} />
+      </View>
+      {selected && <View style={styles.lineNumberField}>
+        <Text style={styles.label}>{selected.labour_measure === "Kgs" ? "Kgs" : "Labour Qty"}</Text>
+        <TextInput
+          key={selected.labour_measure}
+          accessibilityLabel={selected.labour_measure === "Kgs" ? "Kgs" : "Labour Qty"}
+          value={selected.labour_measure === "Kgs" ? kgs : qty}
+          onChangeText={selected.labour_measure === "Kgs" ? setKgs : setQty}
+          keyboardType="decimal-pad"
+          placeholder="0"
+          style={styles.input}
+        />
+      </View>}
+      <View style={styles.lineNumberField}><Text style={styles.label}>Unit Cost ($)</Text><TextInput accessibilityLabel="Unit Cost" value={rate} onChangeText={setRate} keyboardType="decimal-pad" placeholder="0.00" style={styles.input}/></View>
+    </View>
+  </ScrollView>;
+
   // Isolate the selected draft record; do not edit underneath the full register.
   if (editingKey !== null) return <ScrollView contentContainerStyle={styles.page}>
     <JsplModuleHeader title="Edit Labour Line" subtitle={"Unsaved date: "+formatJsplDate(isoDate)} backLabel="Back to Labour Form" onBack={clearEntry} />
     {!!error&&<Text style={{color:C.danger}}>{error}</Text>}
     <View style={styles.panel}>
-      <Text style={styles.label}>Trace Code</Text>
-      <View style={styles.picker}><Picker selectedValue={traceId} onValueChange={v=>setTraceId(String(v))}>{traces.map(t=><Picker.Item key={t.tracecode_id} value={String(t.tracecode_id)} label={t.tracecode_name}/>)}</Picker></View>
-      <Text style={styles.label}>Labour Activity</Text>
-      <View style={styles.picker}><Picker selectedValue={activityId} onValueChange={v=>setActivityId(String(v))}>{activities.map(a=><Picker.Item key={a.activity_id} value={String(a.activity_id)} label={a.activity_name}/>)}</Picker></View>
-      <View style={styles.row}>
-        <View style={styles.field}><Text style={styles.label}>Labour Qty</Text><TextInput style={styles.input} keyboardType="decimal-pad" value={qty} onChangeText={setQty}/></View>
-        {selected?.labour_measure==="Kgs"&&<View style={styles.field}><Text style={styles.label}>Kgs</Text><TextInput style={styles.input} keyboardType="decimal-pad" value={kgs} onChangeText={setKgs}/></View>}
-        <View style={styles.field}><Text style={styles.label}>Unit Cost</Text><TextInput style={styles.input} keyboardType="decimal-pad" value={rate} onChangeText={setRate}/></View>
-      </View>
+      {lineFields}
       <View style={styles.row}>
         <Pressable style={styles.outline} onPress={clearEntry}><Text style={styles.outlineText}>Cancel</Text></Pressable>
         <Pressable style={styles.outline} onPress={addDraft}><Text style={styles.outlineText}>Save Draft Changes</Text></Pressable>
@@ -209,22 +235,7 @@ export default function LabourEntry() {
       </View>
       {isoDate && checkedDate === isoDate && !locked && <View style={styles.panel}>
         <Text style={styles.heading}>Add Labour Line</Text>
-        <Text style={styles.label}>Trace Code</Text>
-        <View style={styles.picker}><Picker selectedValue={traceId} onValueChange={value => setTraceId(String(value))}>
-          <Picker.Item value="" label="Select Trace Code..." />
-          {traces.map(t => <Picker.Item key={t.tracecode_id} value={String(t.tracecode_id)} label={t.tracecode_name + (t.crop_id == null ? " · No Crop" : "")} />)}
-        </Picker></View>
-        <Text style={styles.label}>Find Labour Activity</Text>
-        <TextInput value={activitySearch} onChangeText={setActivitySearch} placeholder="Search Access activities" style={styles.input} />
-        <View style={styles.picker}><Picker selectedValue={activityId} onValueChange={value => setActivityId(String(value))}>
-          <Picker.Item value="" label="Select Activity..." />
-          {filtered.map(a => <Picker.Item key={a.activity_id} value={String(a.activity_id)} label={a.activity_name} />)}
-        </Picker></View>
-        <View style={styles.row}>
-          <View style={styles.field}><Text style={styles.label}>Labour Qty</Text><TextInput value={qty} onChangeText={setQty} keyboardType="decimal-pad" placeholder="0" style={styles.input}/></View>
-          {selected?.labour_measure === "Kgs" && <View style={styles.field}><Text style={styles.label}>Kgs</Text><TextInput value={kgs} onChangeText={setKgs} keyboardType="decimal-pad" placeholder="0" style={styles.input}/></View>}
-          <View style={styles.field}><Text style={styles.label}>Unit Cost ($)</Text><TextInput value={rate} onChangeText={setRate} keyboardType="decimal-pad" placeholder="0.00" style={styles.input}/></View>
-        </View>
+        {lineFields}
         <View style={styles.row}>
           <Pressable onPress={addDraft} style={styles.outline}><Text style={styles.outlineText}>{editingKey == null ? "+ Add Line" : "Update Line"}</Text></Pressable>
           {editingKey != null && <Pressable onPress={clearEntry} style={styles.outline}><Text style={styles.outlineText}>Cancel Edit</Text></Pressable>}
@@ -315,6 +326,10 @@ const styles = StyleSheet.create({
   picker: { borderWidth: 1, borderColor: C.border, borderRadius: R.sm, overflow: "hidden" },
   row: { flexDirection: "row", gap: S.md, flexWrap: "wrap", alignItems: "center" },
   field: { minWidth: 140, flex: 1, gap: 5 },
+  lineEditorScroll: { flexGrow: 1 },
+  lineEditor: { flex: 1, flexDirection: "row", alignItems: "flex-start", gap: S.md, minWidth: 720 },
+  selectorField: { minWidth: 180 },
+  lineNumberField: { width: 100, gap: 5 },
   total: { fontSize: 18, color: C.primaryDark, fontWeight: "800", marginTop: S.sm },
   helper: { fontSize: 12, color: C.textSecondary },
   locked: { fontSize: 13, color: C.primaryDark, fontWeight: "700" },
