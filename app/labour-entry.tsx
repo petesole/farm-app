@@ -105,11 +105,12 @@ export default function LabourEntry() {
     if (!isoDate || checkedDate !== isoDate || locked) { setError("Choose an unsaved date. Saved dates cannot be changed by a Labour Inputter."); return; }
     if (!traceId) { setError("Select a Trace Code."); return; }
     if (!selected) { setError("Select a Labour Activity."); return; }
-    const amount = Number(qty), kilograms = Number(kgs), unitCost = Number(rate);
-    if (!qty.trim() || !Number.isFinite(amount) || amount <= 0) { setError("Enter Labour Qty greater than zero."); return; }
-    if (selected.labour_measure === "Kgs" && kgs.trim() && (!Number.isFinite(kilograms) || kilograms < 0)) { setError("Enter valid Kgs or leave blank, as in Access."); return; }
+    const measuredInKgs = selected.labour_measure === "Kgs";
+    const amount = measuredInKgs ? 0 : Number(qty), kilograms = Number(kgs), unitCost = Number(rate);
+    if (!measuredInKgs && (!qty.trim() || !Number.isFinite(amount) || amount <= 0)) { setError("Enter Labour Qty greater than zero."); return; }
+    if (measuredInKgs && (!kgs.trim() || !Number.isFinite(kilograms) || kilograms <= 0)) { setError("Enter Kgs greater than zero."); return; }
     if (!rate.trim() || !Number.isFinite(unitCost) || unitCost < 0) { setError("Enter a valid Unit Cost."); return; }
-    const updatedLine = { key: editingKey ?? nextKey, tracecode_id: Number(traceId), activity_id: selected.activity_id, labour_qty: amount, kgs: selected.labour_measure === "Kgs" && kgs.trim() ? kilograms : null, unit_cost: unitCost };
+    const updatedLine = { key: editingKey ?? nextKey, tracecode_id: Number(traceId), activity_id: selected.activity_id, labour_qty: amount, kgs: measuredInKgs ? kilograms : null, unit_cost: unitCost };
     if (editingKey != null) setDraft(lines => lines.map(x => x.key === editingKey ? updatedLine : x));
     else { setDraft(lines => [...lines, updatedLine]); setNextKey(key => key + 1); }
     setError(""); clearEntry();
@@ -186,8 +187,18 @@ export default function LabourEntry() {
         </Picker></View>
         <TextInput value={activitySearch} onChangeText={setActivitySearch} placeholder="Search Access activities" style={styles.input} />
       </View>
-      <View style={styles.lineNumberField}><Text style={styles.label}>Labour Qty</Text><TextInput accessibilityLabel="Labour Qty" value={qty} onChangeText={setQty} keyboardType="decimal-pad" placeholder="0" style={styles.input}/></View>
-      <View style={styles.lineNumberField}><Text style={styles.label}>Kgs</Text><TextInput accessibilityLabel="Kgs" editable={selected?.labour_measure === "Kgs"} value={selected?.labour_measure === "Kgs" ? kgs : ""} onChangeText={setKgs} keyboardType="decimal-pad" placeholder={selected?.labour_measure === "Kgs" ? "0" : "—"} style={[styles.input, selected?.labour_measure !== "Kgs" && styles.inactiveInput]}/></View>
+      {selected && <View style={styles.lineNumberField}>
+        <Text style={styles.label}>{selected.labour_measure === "Kgs" ? "Kgs" : "Labour Qty"}</Text>
+        <TextInput
+          key={selected.labour_measure}
+          accessibilityLabel={selected.labour_measure === "Kgs" ? "Kgs" : "Labour Qty"}
+          value={selected.labour_measure === "Kgs" ? kgs : qty}
+          onChangeText={selected.labour_measure === "Kgs" ? setKgs : setQty}
+          keyboardType="decimal-pad"
+          placeholder="0"
+          style={styles.input}
+        />
+      </View>}
       <View style={styles.lineNumberField}><Text style={styles.label}>Unit Cost ($)</Text><TextInput accessibilityLabel="Unit Cost" value={rate} onChangeText={setRate} keyboardType="decimal-pad" placeholder="0.00" style={styles.input}/></View>
     </View>
   </ScrollView>;
@@ -319,7 +330,6 @@ const styles = StyleSheet.create({
   lineEditor: { flex: 1, flexDirection: "row", alignItems: "flex-start", gap: S.md, minWidth: 720 },
   selectorField: { minWidth: 180 },
   lineNumberField: { width: 100, gap: 5 },
-  inactiveInput: { opacity: 0.5 },
   total: { fontSize: 18, color: C.primaryDark, fontWeight: "800", marginTop: S.sm },
   helper: { fontSize: 12, color: C.textSecondary },
   locked: { fontSize: 13, color: C.primaryDark, fontWeight: "700" },
