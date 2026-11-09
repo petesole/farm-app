@@ -1,9 +1,9 @@
 import { useCallback, useMemo, useState } from "react";
 import { useFocusEffect } from "expo-router";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 import { JsplSearchCombo } from "@/components/jspl/JsplSearchCombo";
-import { jsplColors as C } from "@/constants/jspl-design";
+import { jsplColors as C, jsplSpacing as S, jsplRadii as R } from "@/constants/jspl-design";
 import { labourExportXLSX } from "@/lib/labour-xlsx-export";
 import { supabase } from "@/supabase";
 
@@ -121,7 +121,7 @@ export default function RainfallMonthlyReport() {
     }
   }
 
-  return <ScrollView contentContainerStyle={{padding:16,gap:14,backgroundColor:C.background}}>
+  return <ScrollView contentContainerStyle={styles.page}>
     <JsplModuleHeader title="Monthly Rainfall" backLabel="Back to Rainfall" backHref="/home/rainfall/rainfall_index"/>
     <JsplSearchCombo label="Gauge" selector="product" options={[{id:"average",label:"Average"},...gauges]} value={gauge} onChange={value => setGauge(String(value ?? "average"))}/>
     <Text style={{color:C.textSecondary}}>Average adds each day’s mean across recorded gauges. A dash means no reading.</Text>
@@ -129,15 +129,15 @@ export default function RainfallMonthlyReport() {
     {!!error && <Text accessibilityRole="alert">{error}</Text>}
     {!loading && !hasReadings && <Text>No rainfall readings for this selection.</Text>}
     {!loading && hasReadings && <>
-      <View style={{flexDirection:"row",flexWrap:"wrap",gap:12}}>
-        {seasons.map(s => <Text key={s.year} style={{fontWeight:"700",color:s.color}}>{seasonName(s.year)} total: {format(s.total)} mm</Text>)}
+      <View style={styles.totals}>
+        {seasons.map(s => <Text key={s.year} style={[styles.total,{borderLeftColor:s.color}]}>{seasonName(s.year)} total: {format(s.total)} mm</Text>)}
       </View>
-      <View style={{flexDirection:"row",gap:16}}>
-        <Pressable accessibilityRole="button" onPress={() => output("print")}><Text style={{color:C.primary,fontWeight:"700"}}>Print</Text></Pressable>
-        <Pressable accessibilityRole="button" onPress={() => output("excel")}><Text style={{color:C.primary,fontWeight:"700"}}>Export to Excel</Text></Pressable>
+      <View style={styles.actions}>
+        <Pressable accessibilityRole="button" style={styles.action} onPress={() => output("print")}><Text style={styles.actionText}>Print</Text></Pressable>
+        <Pressable accessibilityRole="button" style={styles.action} onPress={() => output("excel")}><Text style={styles.actionText}>Export to Excel</Text></Pressable>
       </View>
       <ScrollView horizontal>
-        <View style={{padding:12,backgroundColor:C.surface}}>
+        <View style={styles.reportCard}>
           <Text style={{fontWeight:"700"}}>Rainfall (mm)</Text>
           <View style={{flexDirection:"row"}}>
             <View style={{width:46,height:185,justifyContent:"space-between"}}>{[4,3,2,1,0].map(n => <Text key={n}>{n*step}</Text>)}</View>
@@ -155,7 +155,7 @@ export default function RainfallMonthlyReport() {
             </View>)}
           </View>
           <View style={{marginTop:14}}>
-            {[{month:"Month",...Object.fromEntries(seasons.map(s => [s.year,seasonName(s.year)]))},...rows].map((row,i) => <View key={i} style={{flexDirection:"row",borderBottomWidth:1,borderColor:C.border,paddingVertical:4}}>
+            {[{month:"Month",...Object.fromEntries(seasons.map(s => [s.year,seasonName(s.year)]))},...rows].map((row,i) => <View key={i} style={{flexDirection:"row",borderBottomWidth:1,borderColor:C.border,paddingVertical:6,backgroundColor:i===0?C.successTint:C.surface}}>
               {columns.map(col => {
                 const cell=(row as Record<string,string|number|null>)[col.field];
                 return <Text key={col.field} style={{width:col.field==="month"?130:90,fontWeight:i<2?"700":"400"}}>{typeof cell==="string"?cell:format(cell)}</Text>;
@@ -167,3 +167,13 @@ export default function RainfallMonthlyReport() {
     </>}
   </ScrollView>;
 }
+
+const styles = StyleSheet.create({
+  page: {padding:S.lg,gap:S.md,backgroundColor:C.background,flexGrow:1},
+  totals: {flexDirection:"row",flexWrap:"wrap",gap:S.sm},
+  total: {fontWeight:"800",color:C.primaryDark,backgroundColor:C.surface,borderLeftWidth:4,borderRadius:R.sm,padding:S.md},
+  actions: {flexDirection:"row",flexWrap:"wrap",gap:S.sm},
+  action: {backgroundColor:C.primaryDark,paddingHorizontal:S.md,paddingVertical:S.sm,borderRadius:R.sm},
+  actionText: {color:C.surface,fontWeight:"700"},
+  reportCard: {padding:S.md,backgroundColor:C.surface,borderColor:C.border,borderWidth:1,borderRadius:R.lg},
+});

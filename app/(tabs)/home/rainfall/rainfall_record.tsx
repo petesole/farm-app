@@ -1,6 +1,7 @@
 import {fuelDateISO} from "../fuel_admin_dates";
 // app/home/rainfall/rainfall_record.tsx
 import { supabase } from "@/supabase";
+import { jsplColors as C, jsplSpacing as S, jsplRadii as R } from "@/constants/jspl-design";
 import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 import { router } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -10,6 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -265,6 +267,22 @@ export default function RainfallRecordScreen() {
     );
   }
 
+  if (correction) return (
+    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.editPage}>
+      <JsplModuleHeader title="Correct Rainfall" backLabel="Back to Entry" onBack={() => { if (!saving) setCorrection(null); }} />
+      <View style={styles.editCard}>
+        <Text style={styles.editTitle}>{gauges.find(gauge => gauge.rain_gauge_id === correction.id)?.rain_gauge} · {isoToDisplay(isoDate)}</Text>
+        <Text style={styles.label}>Saved reading: {correction.previous} mm</Text>
+        <Text style={styles.label}>Corrected millimetres</Text>
+        <TextInput accessibilityLabel="Corrected millimetres" style={styles.input} keyboardType="decimal-pad" value={correction.value} editable={!saving} onChangeText={value => setCorrection(current => current && {...current,value})}/>
+        <Text style={styles.label}>Correction reason</Text>
+        <TextInput accessibilityLabel="Correction reason" style={styles.input} value={correction.reason} editable={!saving} onChangeText={reason => setCorrection(current => current && {...current,reason})}/>
+        {!!status && <Text accessibilityRole="alert" style={styles.statusText}>{status}</Text>}
+        <Pressable accessibilityRole="button" disabled={saving} style={[styles.btn,styles.btnPrimary,styles.editSave]} onPress={() => void saveCorrection()}><Text style={styles.btnPrimaryText}>{saving?"Saving…":"Save Correction"}</Text></Pressable>
+      </View>
+    </ScrollView>
+  );
+
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
@@ -308,14 +326,6 @@ export default function RainfallRecordScreen() {
           ListEmptyComponent={isoDate ? <Text>No gauges required for this date.</Text> : null}
           keyExtractor={(g) => String(g.rain_gauge_id)}
           contentContainerStyle={{ paddingBottom: 190 }} // space for bottom status+buttons
-          ListFooterComponent={correction ? <View style={{padding:12,gap:8}}>
-            <Text style={styles.label}>Correct {gauges.find(gauge => gauge.rain_gauge_id === correction.id)?.rain_gauge} · {isoToDisplay(isoDate)}</Text>
-            <Text>Saved reading: {correction.previous} mm</Text>
-            <TextInput accessibilityLabel="Corrected millimetres" style={styles.input} keyboardType="decimal-pad" value={correction.value} editable={!saving} onChangeText={value => setCorrection(current => current && {...current,value})}/>
-            <TextInput accessibilityLabel="Correction reason" style={styles.input} placeholder="Reason for correction" value={correction.reason} editable={!saving} onChangeText={reason => setCorrection(current => current && {...current,reason})}/>
-            <Pressable accessibilityRole="button" disabled={saving} onPress={() => void saveCorrection()}><Text style={styles.label}>Save Correction</Text></Pressable>
-            <Pressable accessibilityRole="button" disabled={saving} onPress={() => setCorrection(null)}><Text>Cancel Correction</Text></Pressable>
-          </View> : null}
           renderItem={({ item }) => (
             <View style={styles.row}>
               <Text style={styles.colGaugeText} numberOfLines={1}>
@@ -331,10 +341,11 @@ export default function RainfallRecordScreen() {
                 keyboardType="decimal-pad"
                 style={styles.colMmInput}
               />
-              {isAdmin && loadedDate === isoDate && savedByGauge[item.rain_gauge_id] !== undefined && <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${item.rain_gauge ?? "gauge"}`} disabled={saving} onPress={() => {
+              {isAdmin && loadedDate === isoDate && savedByGauge[item.rain_gauge_id] !== undefined && <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${item.rain_gauge ?? "gauge"}`} style={styles.editLink} disabled={saving} onPress={() => {
                 const previous = savedByGauge[item.rain_gauge_id];
+                setStatus("");
                 setCorrection({ id: item.rain_gauge_id, previous, value: previous, reason: "" });
-              }}><Text>Edit</Text></Pressable>}
+              }}><Text style={styles.editLinkText}>Edit</Text></Pressable>}
             </View>
           )}
         />
@@ -365,7 +376,13 @@ export default function RainfallRecordScreen() {
 const MM_COL_W = 90; // 👈 change this number to widen/narrow the mm column
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16 },
+  container: { flex: 1, padding: S.lg, backgroundColor: C.background },
+  editPage: { flexGrow: 1, padding: S.lg, backgroundColor: C.background },
+  editCard: { width: "100%", maxWidth: 600, alignSelf: "center", backgroundColor: C.surface, borderColor: C.border, borderWidth: 1, borderRadius: R.lg, padding: S.lg },
+  editTitle: { fontSize: 20, fontWeight: "800", color: C.primaryDark, marginBottom: S.md },
+  editSave: { flex: 0, alignSelf: "flex-start", marginTop: S.md },
+  editLink: { padding: S.sm, borderWidth: 1, borderColor: C.border, borderRadius: R.sm },
+  editLinkText: { color: C.primaryDark, fontWeight: "700" },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
 
   banner: {
@@ -374,15 +391,15 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
 
-  label: { fontWeight: "800", marginBottom: 6 },
+  label: { color: C.primaryDark, fontWeight: "800", marginBottom: 6 },
 
   input: {
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: C.border,
     borderRadius: 8,
     padding: 10,
     marginBottom: 10,
-    backgroundColor: "white",
+    backgroundColor: C.surface,
   },
 
   headerRow: {
@@ -426,11 +443,11 @@ const styles = StyleSheet.create({
   colMmInput: {
     width: MM_COL_W,
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: C.border,
     borderRadius: 8,
     padding: 8,
     textAlign: "right",
-    backgroundColor: "white",
+    backgroundColor: C.surface,
     fontWeight: "800",
   },
 
@@ -440,10 +457,10 @@ const styles = StyleSheet.create({
     right: 16,
     bottom: 16,
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: C.border,
     borderRadius: 12,
     padding: 12,
-    backgroundColor: "white",
+    backgroundColor: C.surface,
     zIndex: 999,
     elevation: 10,
     gap: 10,
@@ -463,11 +480,11 @@ const styles = StyleSheet.create({
   btnGhost: {
     borderWidth: 1,
     borderColor: "#bbb",
-    backgroundColor: "white",
+    backgroundColor: C.surface,
   },
 
   btnPrimary: {
-    backgroundColor: "#111",
+    backgroundColor: C.primaryDark,
   },
 
   btnGhostText: { fontWeight: "700" },

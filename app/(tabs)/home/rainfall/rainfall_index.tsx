@@ -1,3 +1,4 @@
+import { jsplColors as C } from "@/constants/jspl-design";
 import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 import { supabase } from "@/supabase";
 import { useFocusEffect } from "@react-navigation/native";
@@ -93,13 +94,13 @@ export default function RainfallDashboardScreen() {
     <View style={styles.container}>
       <JsplModuleHeader title="Rainfall" backLabel="Back to Main" backHref="/(tabs)/main-dashboard" />
       <Pressable accessibilityRole="button" onPress={() => router.push("/home/rainfall/rainfall_record")} style={{paddingVertical:12}}>
-        <Text style={{fontWeight:"700",color:"#15694d"}}>Enter Rainfall</Text>
+        <Text style={{fontWeight:"700",color:C.primaryDark}}>Enter or Correct Rainfall</Text>
       </Pressable>
       <Pressable accessibilityRole="button" onPress={() => router.push("/home/rainfall/rainfall_monthly")} style={{paddingVertical:12}}>
-        <Text style={{fontWeight:"700",color:"#15694d"}}>Monthly Rainfall Report</Text>
+        <Text style={{fontWeight:"700",color:C.primaryDark}}>Monthly Rainfall Report</Text>
       </Pressable>
       <Text style={{fontWeight:"700",marginTop:8}}>Gauge History</Text>
-      <Text style={{marginBottom:8}}>Open a gauge’s History to view readings. Admin can edit a saved reading there.</Text>
+      <Text style={{marginBottom:8}}>Open a gauge’s History to view readings. Use Enter or Correct Rainfall for audited changes.</Text>
       {loading ? (
         <View style={{ paddingTop: 24 }}>
           <ActivityIndicator />
@@ -264,7 +265,7 @@ const styles = StyleSheet.create({
   },
 
   altRow: {
-    backgroundColor: "#fafafa",
+    backgroundColor: C.background,
   },
 
   histBtn: {
@@ -272,6 +273,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: 10,
     paddingVertical: 6,
-    backgroundColor: "#06c",
+    backgroundColor: C.primaryDark,
   },
 });
