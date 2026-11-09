@@ -105,6 +105,9 @@ export default function RainfallDashboardScreen() {
 
   return (
     <View style={styles.container}>
+      <Pressable accessibilityRole="button" onPress={() => router.push("/home/rainfall/rainfall_monthly")} style={{paddingVertical:12}}>
+        <Text style={{fontWeight:"700",color:"#15694d"}}>Monthly Rainfall Report</Text>
+      </Pressable>
       {loading ? (
         <View style={{ paddingTop: 24 }}>
           <ActivityIndicator />
