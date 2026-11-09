@@ -1,3 +1,7 @@
+import { useLocalSearchParams } from "expo-router";
+import { JsplSearchCombo } from "@/components/jspl/JsplSearchCombo";
+import { useCallback } from "react";
+import { useFocusEffect } from "expo-router";
 import {parseJsplDateInput, displayJsplDate} from "@/utils/jspl-input";
 import {JsplModuleHeader} from "@/components/jspl/JsplModuleHeader";
 import { useEffect, useState } from "react";
@@ -13,15 +17,22 @@ type Trace={tracecode_id:number;tracecode_name:string;access_tc_id:number|null};
 function iso(s:string):string|null{return parseJsplDateInput(s)}
 function amount(n:number|null|undefined){return "$"+formatJsplNumber(Number(n||0))}
 export default function LabourHistory(){
- const [rows,setRows]=useState<HistoryRow[]>([]),[date,setDate]=useState(""),[loading,setLoading]=useState(false),[error,setError]=useState(""),[isAdmin,setIsAdmin]=useState(false);
+ const context=useLocalSearchParams<{date?:string}>();
+ const [dates,setDates]=useState<string[]>([]);
+ useEffect(()=>{let alive=true;void supabase.from("labour_v2_date_options").select("labour_date").order("labour_date",{ascending:false}).limit(2000).then(r=>{if(!alive)return;if(r.error)setError(r.error.message);else setDates((r.data||[]).map(x=>x.labour_date))});return()=>{alive=false}},[]);
+ const [rows,setRows]=useState<HistoryRow[]>([]),[date,setDate]=useState(context.date||""),[loading,setLoading]=useState(false),[error,setError]=useState(""),[isAdmin,setIsAdmin]=useState(false);
  useEffect(()=>{(async()=>{const r=await supabase.rpc("my_farm_app_roles");if(r.error){setError(r.error.message);return;}setIsAdmin((r.data||[]).includes("admin"));})()},[]);
- async function fetchHistory(){setError("");setLoading(true);try{const selected=iso(date.trim());if(date.trim()&&!selected)throw Error("Enter a valid date.");let req=supabase.from("labour_v2_report_rows").select("source_type,source_id,labour_date,tracecode_id,tracecode_name,activity_id,activity_name,labour_qty,kgs,unit_cost,total_cost,crop_name").order("labour_date",{ascending:false}).order("source_id",{ascending:false}).limit(250);if(selected)req=req.eq("labour_date",selected);const {data,error:e}=await req;if(e)throw e;setRows(data||[])}catch(e:any){setError(e.message||"Unable to load history")}finally{setLoading(false)}}
- useEffect(()=>{fetchHistory()},[]);
+ async function fetchHistory(){setError("");setLoading(true);try{const selected=iso(date.trim());if(date.trim()&&!selected)throw Error("Enter a valid date.");let req=supabase.from("labour_v2_report_rows").select("source_type,source_id,labour_date,tracecode_id,tracecode_name,activity_id,activity_name,labour_qty,kgs,unit_cost,total_cost,crop_name").order("source_id",{ascending:false}).limit(250);if(selected)req=req.eq("labour_date",selected);const {data,error:e}=await req;if(e)throw e;setRows(data||[])}catch(e:any){setError(e.message||"Unable to load history")}finally{setLoading(false)}}
+ useFocusEffect(useCallback(()=>{void fetchHistory()},[date]));
+
+ const selectedDate=iso(date);
+ const canAdd=isAdmin && !loading && rows.some(row=>row.source_type==="App" && row.labour_date===selectedDate);
 
  return <ScrollView contentContainerStyle={styles.page}>
  <JsplModuleHeader title="Labour Input History" backLabel="Back to Labour" backHref="/(tabs)/labour" />
  {!!error&&<Text style={styles.error}>{error}</Text>}
- <View style={styles.panel}><Text style={styles.label}>Labour Date (dd/mm/yyyy) — leave blank for latest 250</Text><View style={styles.row}><TextInput style={[styles.input,{minWidth:200}]} value={date} onChangeText={setDate} onBlur={()=>{const parsed=iso(date);if(parsed)setDate(displayJsplDate(parsed));}} placeholder="d/m (year optional)"/><Pressable style={styles.primary} onPress={fetchHistory}><Text style={styles.white}>Search History</Text></Pressable></View>
+ <View style={styles.panel}><Text style={styles.label}>Labour Date (dd/mm/yyyy) — leave blank for latest 250</Text><View style={styles.row}><View style={{flex:1,minWidth:180}}><JsplSearchCombo label="Labour Date" selector="product" options={dates.map(d=>({id:displayJsplDate(d),label:displayJsplDate(d)}))} value={date} onChange={v=>setDate(String(v??""))} placeholder="Search dates or clear for latest" /></View><Pressable style={styles.primary} onPress={fetchHistory}><Text style={styles.white}>Search History</Text></Pressable></View>
+ {canAdd&&<Pressable accessibilityRole="button" style={styles.button} onPress={()=>router.push({pathname:"/labour-correction",params:{workDate:selectedDate!,historyDate:date}})}><Text style={styles.btn}>Add Line to Saved Date</Text></Pressable>}
  {loading?<ActivityIndicator/>:<Text style={styles.hint}>{rows.length} records displayed · historical Access records are read-only</Text>}</View>
 
  <ScrollView horizontal contentContainerStyle={{minWidth:"100%"}}>
@@ -38,7 +49,7 @@ export default function LabourHistory(){
     {isAdmin&&<Text style={[styles.historyCell,{width:85}]}>Action</Text>}
    </View>
    {rows.map(r=><View key={r.source_type+":"+r.source_id} style={styles.historyLine}>
-    <Text style={[styles.historyCell,{width:90}]}>{r.source_id}</Text>
+    <Text style={[styles.historyCell,{width:90}]}>{r.source_type === "Access" ? r.source_id : "App " + r.source_id}</Text>
     <Text style={[styles.historyCell,{width:100}]}>{formatJsplDate(r.labour_date)}</Text>
     <Text style={[styles.historyCell,{width:135}]}>{r.tracecode_name}</Text>
     <Text style={[styles.historyCell,{width:110}]}>{r.crop_name}</Text>
@@ -46,7 +57,7 @@ export default function LabourHistory(){
     <Text style={[styles.historyCell,{width:72}]}>{r.labour_qty}</Text>
     <Text style={[styles.historyCell,{width:75}]}>{r.kgs??"—"}</Text>
     <Text style={[styles.historyCell,{width:90}]}>{amount(r.unit_cost)}</Text>
-    {isAdmin&&<View style={{width:85,padding:4}}>{r.source_type==="App"&&<Pressable style={styles.button} onPress={()=>router.push({pathname:"/labour-correction",params:{recordId:String(r.source_id)}})}><Text style={styles.btn}>Correct</Text></Pressable>}</View>}
+    {isAdmin&&<View style={{width:85,padding:4}}>{r.source_type==="App"&&<Pressable accessibilityRole="button" accessibilityLabel={"Edit Labour Line "+r.source_id} style={styles.button} onPress={()=>router.push({pathname:"/labour-correction",params:{recordId:String(r.source_id),historyDate:date||displayJsplDate(r.labour_date)}})}><Text style={styles.btn}>Edit</Text></Pressable>}</View>}
    </View>)}
   </View>
  </ScrollView>

@@ -1,3 +1,4 @@
+import { JsplSearchCombo } from "@/components/jspl/JsplSearchCombo";
 import { parseJsplDateInput, displayJsplDate } from "@/utils/jspl-input";
 import {JsplModuleHeader} from "@/components/jspl/JsplModuleHeader";
 import { useEffect, useMemo, useState } from "react";
@@ -23,6 +24,7 @@ function cost(value: number): string { return "$" + formatJsplNumber(value); }
 const LABOUR_DEVELOPMENT_PREVIEW_ONLY = true;
 
 export default function LabourEntry() {
+  const [leaveRequested, setLeaveRequested] = useState(false);
   const [date, setDate] = useState(today());
   const [checkedDate, setCheckedDate] = useState<string | null>(null);
   const [locked, setLocked] = useState(false);
@@ -172,34 +174,23 @@ export default function LabourEntry() {
 
   const lineFields = <ScrollView horizontal keyboardShouldPersistTaps="handled" contentContainerStyle={styles.lineEditorScroll}>
     <View style={styles.lineEditor}>
-      <View style={[styles.field, styles.selectorField]}>
-        <Text style={styles.label}>Trace Code</Text>
-        <View style={styles.picker}><Picker selectedValue={traceId} onValueChange={value => setTraceId(String(value))}>
-          <Picker.Item value="" label="Select Trace Code..." />
-          {traces.map(t => <Picker.Item key={t.tracecode_id} value={String(t.tracecode_id)} label={t.tracecode_name + (t.crop_id == null ? " · No Crop" : "")} />)}
-        </Picker></View>
-      </View>
-      <View style={[styles.field, styles.selectorField]}>
-        <Text style={styles.label}>Labour Activity</Text>
-        <View style={styles.picker}><Picker selectedValue={activityId} onValueChange={value => setActivityId(String(value))}>
-          <Picker.Item value="" label="Select Activity..." />
-          {filtered.map(a => <Picker.Item key={a.activity_id} value={String(a.activity_id)} label={a.activity_name} />)}
-        </Picker></View>
-        <TextInput value={activitySearch} onChangeText={setActivitySearch} placeholder="Search Access activities" style={styles.input} />
-      </View>
-      {selected && <View style={styles.lineNumberField}>
+      <View style={styles.lineSelector}><JsplSearchCombo label="Trace Code" selector="trace" options={traces.map(t=>({id:String(t.tracecode_id),label:t.tracecode_name,active:true}))} value={traceId} onChange={v=>setTraceId(String(v??""))} /></View>
+      <View style={styles.lineSelector}><JsplSearchCombo label="Labour Activity" selector="product" options={activities.map(a=>({id:String(a.activity_id),label:a.activity_name}))} value={activityId} onChange={v=>setActivityId(String(v??""))} /></View>
+      {selected && <View style={styles.lineNumber}>
         <Text style={styles.label}>{selected.labour_measure === "Kgs" ? "Kgs" : "Labour Qty"}</Text>
         <TextInput
           key={selected.labour_measure}
           accessibilityLabel={selected.labour_measure === "Kgs" ? "Kgs" : "Labour Qty"}
+          style={styles.input}
+          keyboardType="decimal-pad"
           value={selected.labour_measure === "Kgs" ? kgs : qty}
           onChangeText={selected.labour_measure === "Kgs" ? setKgs : setQty}
-          keyboardType="decimal-pad"
-          placeholder="0"
-          style={styles.input}
         />
       </View>}
-      <View style={styles.lineNumberField}><Text style={styles.label}>Unit Cost ($)</Text><TextInput accessibilityLabel="Unit Cost" value={rate} onChangeText={setRate} keyboardType="decimal-pad" placeholder="0.00" style={styles.input}/></View>
+      <View style={styles.lineNumber}>
+        <Text style={styles.label}>Unit Cost ($)</Text>
+        <TextInput accessibilityLabel="Unit Cost" style={styles.input} keyboardType="decimal-pad" value={rate} onChangeText={setRate}/>
+      </View>
     </View>
   </ScrollView>;
 
@@ -217,11 +208,9 @@ export default function LabourEntry() {
   </ScrollView>;
 
   return <ScrollView contentContainerStyle={styles.page}>
-    <JsplModuleHeader title="Labour Form" subtitle="Daily Labour Entry" backLabel="Back to Labour" backHref="/(tabs)/labour" />
-    <View style={styles.top}>
-      <Text style={styles.heading}>Labour Form</Text>
-      
-    </View>
+    <JsplModuleHeader title="Labour Form" subtitle="Daily Labour Entry" backLabel="Back to Labour" backHref="/(tabs)/labour" onBack={()=>{if(draft.length || qty || kgs || rate || traceId || activityId)setLeaveRequested(true);else router.replace("/(tabs)/labour")}} />
+
+    {leaveRequested && <View style={styles.panel}><Text style={styles.label}>Discard unsaved Labour draft?</Text><Text style={styles.helper}>Leaving will remove the unsaved lines and current input.</Text><View style={styles.row}><Pressable style={styles.outline} onPress={()=>setLeaveRequested(false)}><Text style={styles.outlineText}>Keep editing</Text></Pressable><Pressable style={styles.outline} onPress={()=>router.replace("/(tabs)/labour")}><Text style={styles.outlineText}>Discard and leave</Text></Pressable></View></View>}
     {LABOUR_DEVELOPMENT_PREVIEW_ONLY && <View style={styles.panel}><Text style={styles.locked}>DEVELOPMENT PREVIEW — NO LABOUR DATA WILL BE SAVED</Text><Text style={styles.helper}>Final Save simulates the locked screen locally. Historical data and reports remain read-only. This is NOT an end-to-end database test.</Text></View>}
     {!!error && <View style={styles.error}><Text style={{ color: C.danger }}>{error}</Text></View>}
     {loading ? <ActivityIndicator color={C.primary} /> : <>
@@ -325,11 +314,11 @@ const styles = StyleSheet.create({
   input: { minHeight: 44, borderRadius: R.sm, borderWidth: 1, borderColor: C.border, paddingHorizontal: S.md, color: C.text, backgroundColor: C.surface },
   picker: { borderWidth: 1, borderColor: C.border, borderRadius: R.sm, overflow: "hidden" },
   row: { flexDirection: "row", gap: S.md, flexWrap: "wrap", alignItems: "center" },
-  field: { minWidth: 140, flex: 1, gap: 5 },
   lineEditorScroll: { flexGrow: 1 },
-  lineEditor: { flex: 1, flexDirection: "row", alignItems: "flex-start", gap: S.md, minWidth: 720 },
-  selectorField: { minWidth: 180 },
-  lineNumberField: { width: 100, gap: 5 },
+  lineEditor: { flex: 1, minWidth: 660, flexDirection: "row", alignItems: "flex-start", gap: S.md },
+  lineSelector: { flex: 1, minWidth: 190 },
+  lineNumber: { width: 110, gap: 5 },
+  field: { minWidth: 140, flex: 1, gap: 5 },
   total: { fontSize: 18, color: C.primaryDark, fontWeight: "800", marginTop: S.sm },
   helper: { fontSize: 12, color: C.textSecondary },
   locked: { fontSize: 13, color: C.primaryDark, fontWeight: "700" },

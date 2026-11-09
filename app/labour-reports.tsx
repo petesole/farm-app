@@ -1,3 +1,4 @@
+import { JsplSearchCombo } from "@/components/jspl/JsplSearchCombo";
 import {useEffect,useMemo,useState} from "react";
 import {ActivityIndicator,Image,Pressable,ScrollView,StyleSheet,Text,View} from "react-native";
 import {Picker} from "@react-native-picker/picker";
@@ -99,11 +100,7 @@ export default function LabourReports(){
  return <ScrollView contentContainerStyle={styles.page}>
   <JsplModuleHeader title={mode==="daily"?"Daily Labour Report":mode==="ao"?"AO Weekly Labour Report":"Weekly Labour Report"} backLabel="Back to Labour" backHref="/(tabs)/labour" />
   <View style={styles.selector}>
-   <Text style={styles.label}>{mode==="daily"?"Select Daily Labour Date":"Select Weekly Labour Week"}</Text>
-   <View style={styles.pick}><Picker selectedValue={mode==="daily"?date:week} onValueChange={x=>{mode==="daily"?setDate(String(x)):setWeek(String(x));setLoaded(false);setRows([])}}>
-     <Picker.Item value="" label={mode==="daily"?"Select Date":"Select Week"}/>
-     {mode==="daily"?dates.map(d=><Picker.Item key={d} value={d} label={formatJsplDate(d)}/>):weeks.map(w=><Picker.Item key={w} value={w} label={w}/>)}
-   </Picker></View>
+   <JsplSearchCombo label={mode==="daily"?"Labour Date":"Labour Week"} selector="product" options={mode==="daily"?dates.map(d=>({id:d,label:formatJsplDate(d)})):weeks.map(w=>({id:w,label:w}))} value={mode==="daily"?date:week} onChange={x=>{mode==="daily"?setDate(String(x??"")):setWeek(String(x??""));setLoaded(false);setRows([])}} />
    <View style={styles.actions}>
     <Pressable style={styles.primary} onPress={openReport} disabled={busy}><Text style={styles.white}>{busy?"Opening…":"Open Report"}</Text></Pressable>
     <Pressable style={styles.button} disabled={!loaded||!rows.length} onPress={printReport}><Text style={[styles.dark,(!loaded||!rows.length)&&styles.disabled]}>Print{mode==="daily"?" Preview":""}</Text></Pressable>

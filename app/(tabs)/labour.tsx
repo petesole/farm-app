@@ -61,7 +61,7 @@ export default function LabourMain(){
  ];
  return <ScrollView contentContainerStyle={styles.page}>
   <JsplModuleHeader title="Labour" backLabel={canReturnToMain?"Back to Main":undefined} backHref="/(tabs)/main-dashboard" />
-  <View style={styles.top}><Text style={styles.title}>Labour</Text>
+  <View style={styles.top}>
    
   </View>
   <View style={styles.grid}>{tiles.map(tile=><Pressable key={tile.title} style={styles.tile} onPress={()=>router.push(tile.path as any)}>
@@ -89,7 +89,7 @@ const styles=StyleSheet.create({
  summary:{borderWidth:1,borderColor:C.border,backgroundColor:"#FFF",padding:14,borderRadius:10,gap:10},
  summaryTitle:{fontSize:17,fontWeight:"800",color:C.primaryDark},
  summaryColumns:{flexDirection:"row",flexWrap:"wrap",gap:15},
- summaryHalf:{flex:1,minWidth:250,maxHeight:360,overflow:"hidden",gap:5},
+ summaryHalf:{flex:1,minWidth:0,flexBasis:280,gap:5},
  smallHead:{fontWeight:"800",color:C.primaryDark,fontSize:13,marginBottom:5},
  tinyRow:{flexDirection:"row",justifyContent:"space-between",alignItems:"center",gap:9,borderBottomWidth:1,borderColor:C.border,paddingVertical:3},
  num:{color:C.text,fontSize:12,fontVariant:["tabular-nums"]},
