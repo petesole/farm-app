@@ -21,7 +21,7 @@ function parseDate(value: string): string | null { return parseJsplDateInput(val
 function cost(value: number): string { return "$" + formatJsplNumber(value); }
 /** Development-only preview: protects the shared FarmingMain database from test submissions.
  * IMPORTANT: turn this OFF only after a dedicated test environment and end-to-end approval. */
-const LABOUR_DEVELOPMENT_PREVIEW_ONLY = true;
+const LABOUR_DEVELOPMENT_PREVIEW_ONLY = process.env.EXPO_PUBLIC_LABOUR_LIVE_TEST !== "1";
 
 export default function LabourEntry() {
   const [leaveRequested, setLeaveRequested] = useState(false);
@@ -211,7 +211,7 @@ export default function LabourEntry() {
     <JsplModuleHeader title="Labour Form" subtitle="Daily Labour Entry" backLabel="Back to Labour" backHref="/(tabs)/labour" onBack={()=>{if(draft.length || qty || kgs || rate || traceId || activityId)setLeaveRequested(true);else router.replace("/(tabs)/labour")}} />
 
     {leaveRequested && <View style={styles.panel}><Text style={styles.label}>Discard unsaved Labour draft?</Text><Text style={styles.helper}>Leaving will remove the unsaved lines and current input.</Text><View style={styles.row}><Pressable style={styles.outline} onPress={()=>setLeaveRequested(false)}><Text style={styles.outlineText}>Keep editing</Text></Pressable><Pressable style={styles.outline} onPress={()=>router.replace("/(tabs)/labour")}><Text style={styles.outlineText}>Discard and leave</Text></Pressable></View></View>}
-    {LABOUR_DEVELOPMENT_PREVIEW_ONLY && <View style={styles.panel}><Text style={styles.locked}>DEVELOPMENT PREVIEW — NO LABOUR DATA WILL BE SAVED</Text><Text style={styles.helper}>Final Save simulates the locked screen locally. Historical data and reports remain read-only. This is NOT an end-to-end database test.</Text></View>}
+    {!LABOUR_DEVELOPMENT_PREVIEW_ONLY && <View style={styles.panel}><Text style={styles.locked}>LIVE LABOUR TEST — Final Save writes to FarmingMain.</Text></View>}{LABOUR_DEVELOPMENT_PREVIEW_ONLY && <View style={styles.panel}><Text style={styles.locked}>DEVELOPMENT PREVIEW — NO LABOUR DATA WILL BE SAVED</Text><Text style={styles.helper}>Final Save simulates the locked screen locally. Historical data and reports remain read-only. This is NOT an end-to-end database test.</Text></View>}
     {!!error && <View style={styles.error}><Text style={{ color: C.danger }}>{error}</Text></View>}
     {loading ? <ActivityIndicator color={C.primary} /> : <>
       <View style={styles.panel}>
