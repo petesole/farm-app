@@ -1,6 +1,7 @@
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 import { supabase } from "@/supabase";
 import { useFocusEffect } from "@react-navigation/native";
-import { router, useNavigation } from "expo-router";
+import { router } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -36,7 +37,6 @@ function fmtMm(v: any) {
 }
 
 export default function RainfallDashboardScreen() {
-  const navigation = useNavigation();
   const [rows, setRows] = useState<DashRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -61,22 +61,8 @@ export default function RainfallDashboardScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      navigation.setOptions({
-        title: "Rainfall",
-        headerRight: () => (
-          <Pressable
-            onPress={() => router.push("/home/rainfall/rainfall_record")}
-            style={{ paddingHorizontal: 14 }}
-          >
-            <Text style={{ color: "#0a7", fontWeight: "900" }}>
-              Record Rainfall
-            </Text>
-          </Pressable>
-        ),
-      });
-
       load();
-    }, [load, navigation])
+    }, [load])
   );
 
   const onRefresh = useCallback(async () => {
@@ -105,6 +91,10 @@ export default function RainfallDashboardScreen() {
 
   return (
     <View style={styles.container}>
+      <JsplModuleHeader title="Rainfall" backLabel="Back to Main" backHref="/(tabs)/main-dashboard" />
+      <Pressable accessibilityRole="button" onPress={() => router.push("/home/rainfall/rainfall_record")} style={{paddingVertical:12}}>
+        <Text style={{fontWeight:"700",color:"#15694d"}}>Record Rainfall</Text>
+      </Pressable>
       <Pressable accessibilityRole="button" onPress={() => router.push("/home/rainfall/rainfall_monthly")} style={{paddingVertical:12}}>
         <Text style={{fontWeight:"700",color:"#15694d"}}>Monthly Rainfall Report</Text>
       </Pressable>
