@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { useFocusEffect } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 import { JsplSearchCombo } from "@/components/jspl/JsplSearchCombo";
@@ -14,7 +14,8 @@ const format = (n: number | null) => n === null ? "—" : n.toLocaleString("en",
 const seasonName = (year: number) => `${year}/${String(year + 1).slice(-2)}`;
 const escape = (value: string) => value.replace(/[&<>"']/g, char => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" })[char]!);
 
-export default function RainfallMonthlyReport() {
+export function RainfallReport({ dashboard = false }: { dashboard?: boolean }) {
+  const [isAdmin, setIsAdmin] = useState(false);
   const [readings, setReadings] = useState<Reading[]>([]);
   const [gauges, setGauges] = useState<{id: string; label: string}[]>([]);
   const [gauge, setGauge] = useState("average");
@@ -24,6 +25,12 @@ export default function RainfallMonthlyReport() {
   useFocusEffect(useCallback(() => {
     let active = true;
     setLoading(true);
+    if (dashboard) {
+      setIsAdmin(false);
+      void supabase.rpc("my_farm_app_roles").then(({data,error}) => {
+        if (active && !error) setIsAdmin((data ?? []).includes("admin"));
+      });
+    }
     setError("");
     void (async () => {
       try {
@@ -48,7 +55,7 @@ export default function RainfallMonthlyReport() {
       }
     })();
     return () => { active = false; };
-  }, []));
+  }, [dashboard]));
 
   const seasons = useMemo(() => {
     const byDay = new Map<string, { sum:number; count:number }>();
@@ -69,6 +76,7 @@ export default function RainfallMonthlyReport() {
       const year = Number(date.slice(0,4));
       const month = Number(date.slice(5,7));
       const season = month >= 9 ? year : year - 1;
+      if (dashboard && !bySeason.has(season)) continue;
       const index = (month + 3) % 12;
       const values = bySeason.get(season) ?? Array<number | null>(12).fill(null);
       values[index] = (values[index] ?? 0) + day.sum / day.count;
@@ -78,7 +86,7 @@ export default function RainfallMonthlyReport() {
       year, values, color:palette[index % palette.length],
       total:values.reduce<number>((sum,n) => sum + (n ?? 0), 0),
     }));
-  }, [gauge, readings]);
+  }, [dashboard, gauge, readings]);
 
   const gaugeLabel = gauge === "average" ? "Average" : gauges.find(item => item.id === gauge)?.label ?? "Gauge";
   const title = `Monthly Rainfall - ${gaugeLabel}`;
@@ -122,7 +130,12 @@ export default function RainfallMonthlyReport() {
   }
 
   return <ScrollView contentContainerStyle={styles.page}>
-    <JsplModuleHeader title="Monthly Rainfall" backLabel="Back to Rainfall" backHref="/home/rainfall/rainfall_index"/>
+    <JsplModuleHeader title={dashboard ? "Rainfall" : "Monthly Rainfall"} backLabel={dashboard ? (isAdmin ? "Back to Main" : undefined) : "Back to Rainfall"} backHref={dashboard ? "/(tabs)/main-dashboard" : "/home/rainfall/rainfall_index"}/>
+    {dashboard && <View style={styles.actions}>
+      <Pressable accessibilityRole="button" style={styles.action} onPress={() => router.push({pathname:"/home/rainfall/rainfall_record",params:{mode:"add"}})}><Text style={styles.actionText}>Add New Rainfall</Text></Pressable>
+      {isAdmin && <Pressable accessibilityRole="button" style={styles.action} onPress={() => router.push({pathname:"/home/rainfall/rainfall_record",params:{mode:"edit"}})}><Text style={styles.actionText}>Edit Saved Rainfall</Text></Pressable>}
+    </View>}
+    {dashboard && <Text style={styles.heading}>Monthly Comparison · Last Season and This Season</Text>}
     <JsplSearchCombo label="Gauge" selector="product" options={[{id:"average",label:"Average"},...gauges]} value={gauge} onChange={value => setGauge(String(value ?? "average"))}/>
     <Text style={{color:C.textSecondary}}>Average adds each day’s mean across recorded gauges. A dash means no reading.</Text>
     {loading && <Text>Loading rainfall…</Text>}
@@ -168,7 +181,10 @@ export default function RainfallMonthlyReport() {
   </ScrollView>;
 }
 
+export default function RainfallMonthlyReport() { return <RainfallReport />; }
+
 const styles = StyleSheet.create({
+  heading: {color:C.primaryDark,fontSize:20,fontWeight:"800"},
   page: {padding:S.lg,gap:S.md,backgroundColor:C.background,flexGrow:1},
   totals: {flexDirection:"row",flexWrap:"wrap",gap:S.sm},
   total: {fontWeight:"800",color:C.primaryDark,backgroundColor:C.surface,borderLeftWidth:4,borderRadius:R.sm,padding:S.md},
