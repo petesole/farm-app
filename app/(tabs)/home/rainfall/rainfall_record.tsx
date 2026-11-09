@@ -1,6 +1,7 @@
 import {fuelDateISO} from "../fuel_admin_dates";
 // app/home/rainfall/rainfall_record.tsx
 import { supabase } from "@/supabase";
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 import { router } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -35,9 +36,16 @@ function localDateISO(daysAgo: number) {
   return `${y}-${m}-${d}`;
 }
 
+function requiredOn(gauge: Gauge, date: string) {
+  return !!date && (!gauge.active_from || gauge.active_from <= date)
+    && (gauge.active_to ? date <= gauge.active_to : gauge.active !== false);
+}
+
 export default function RainfallRecordScreen() {
   const INDEX_PATH = "/home/rainfall/rainfall_index";
 
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [incomplete, setIncomplete] = useState<{ date: string; missing: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -54,11 +62,39 @@ export default function RainfallRecordScreen() {
   const loadedRef = useRef(false);
   const isoDate = useMemo(() => displayToIso(dateDisplay), [dateDisplay]);
   const canEnterDate = !!isoDate && isoDate >= localDateISO(10) && isoDate <= localDateISO(0);
-  const requiredGauges = gauges.filter(gauge =>
-    !!isoDate &&
-    (!gauge.active_from || gauge.active_from <= isoDate) &&
-    (gauge.active_to ? isoDate <= gauge.active_to : gauge.active !== false)
-  );
+  const requiredGauges = gauges.filter(gauge => requiredOn(gauge, isoDate));
+
+  useEffect(() => {
+    let active = true;
+    void supabase.rpc("my_farm_app_roles").then(({data,error}) => {
+      if (active && !error) setIsAdmin((data ?? []).includes("admin"));
+    });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!gauges.length) return;
+    let active = true;
+    void supabase.from("rainfall").select("rainfall_date,rain_gauge_id,rainfall_received,created_by")
+      .gte("rainfall_date", localDateISO(10)).lte("rainfall_date", localDateISO(0))
+      .then(({data,error}) => {
+        if (!active || error) return;
+        const started = new Set<string>();
+        const recorded = new Map<string, Set<number>>();
+        for (const row of data ?? []) {
+          if (row.created_by != null) started.add(row.rainfall_date);
+          if (row.rainfall_received == null) continue;
+          const ids = recorded.get(row.rainfall_date) ?? new Set<number>();
+          ids.add(row.rain_gauge_id);
+          recorded.set(row.rainfall_date, ids);
+        }
+        setIncomplete([...started].sort().reverse().map(date => ({
+          date,
+          missing: gauges.filter(gauge => requiredOn(gauge, date) && !recorded.get(date)?.has(gauge.rain_gauge_id)).length,
+        })).filter(day => day.missing > 0));
+      });
+    return () => { active = false; };
+  }, [gauges, savedByGauge]);
 
   const goBack = () => {
     setStatus("↩️ Returning to index…");
@@ -167,7 +203,9 @@ export default function RainfallRecordScreen() {
     setStatus(`⏳ Saving ${payload.length} rows for ${iso}…`);
 
     try {
-      const { error } = await supabase.from("rainfall").insert(payload);
+      const { data, error: authError } = await supabase.auth.getUser();
+      if (authError || !data.user) { setStatus("Sign in before saving rainfall."); return; }
+      const { error } = await supabase.from("rainfall").insert(payload.map(row => ({ ...row, created_by: data.user.id })));
       if (error) {
         setStatus(error.code === "23505"
           ? "A gauge was already saved. Reload the readings before trying again."
@@ -205,7 +243,14 @@ export default function RainfallRecordScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <View style={styles.container}>
-        <Text style={styles.banner}>RAINFALL RECORD</Text>
+        <JsplModuleHeader title="Rainfall Entry" backLabel={isAdmin ? "Back to Rainfall" : undefined} onBack={isAdmin ? goBack : undefined}/>
+        {incomplete.length > 0 && <View style={{marginBottom:10}}>
+          <Text style={styles.label}>Finish incomplete dates</Text>
+          {incomplete.map(day => <Pressable accessibilityRole="button" key={day.date} disabled={saving} onPress={() => {
+            if (Object.values(mmByGauge).some(value => value.trim())) { setStatus("Save or clear the current draft before changing dates."); return; }
+            setDateDisplay(isoToDisplay(day.date));
+          }}><Text>{isoToDisplay(day.date)} · {day.missing} missing</Text></Pressable>)}
+        </View>}
 
         <Text style={styles.label}>Date (DD/MM/YYYY)</Text>
         <TextInput
@@ -261,14 +306,6 @@ export default function RainfallRecordScreen() {
 
           <Pressable accessibilityRole="button" disabled={saving || !isoDate} onPress={() => setReload(value => value + 1)}><Text>Reload readings</Text></Pressable>
           <View style={{ flexDirection: "row", gap: 10 }}>
-            <Pressable
-              style={[styles.btn, styles.btnGhost]}
-              onPress={goBack}
-              disabled={saving}
-            >
-              <Text style={styles.btnGhostText}>Back</Text>
-            </Pressable>
-
             <Pressable
               style={[styles.btn, styles.btnPrimary, saving && { opacity: 0.6 }]}
               onPress={onSave}
