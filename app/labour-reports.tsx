@@ -90,7 +90,7 @@ export default function LabourReports(){
  },[groups,mode]);
  function printReport(){
   if(!loaded||!rows.length){setError("Open a report before printing.");return}
-  try{labourPrintReport(reportTitle,columns,printable,totalValue)}catch(e:any){setError(e.message||"Unable to print")}
+  try{labourPrintReport(reportTitle,columns,printable,totalValue,mode==="daily"?undefined:{qty:formatJsplNumber(totalQty,0),kgs:formatJsplNumber(totalKgs,0)})}catch(e:any){setError(e.message||"Unable to print")}
  }
  function exportExcel(){
   if(!loaded||!rows.length){setError("Open a report before exporting.");return}
