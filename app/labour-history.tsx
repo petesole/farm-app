@@ -26,14 +26,14 @@ export default function LabourHistory(){
  useFocusEffect(useCallback(()=>{void fetchHistory()},[date]));
 
  const selectedDate=iso(date);
- const canAdd=isAdmin && !loading && rows.some(row=>row.source_type==="App" && row.labour_date===selectedDate);
+ const canAdd=isAdmin && !loading && rows.some(row=>row.labour_date===selectedDate);
 
  return <ScrollView contentContainerStyle={styles.page}>
  <JsplModuleHeader title="Labour Input History" backLabel="Back to Labour" backHref="/(tabs)/labour" />
  {!!error&&<Text style={styles.error}>{error}</Text>}
  <View style={styles.panel}><Text style={styles.label}>Labour Date (dd/mm/yyyy) — leave blank for latest 250</Text><View style={styles.row}><View style={{flex:1,minWidth:180}}><JsplSearchCombo label="Labour Date" selector="product" options={dates.map(d=>({id:displayJsplDate(d),label:displayJsplDate(d)}))} value={date} onChange={v=>setDate(String(v??""))} placeholder="Search dates or clear for latest" /></View><Pressable style={styles.primary} onPress={fetchHistory}><Text style={styles.white}>Search History</Text></Pressable></View>
  {canAdd&&<Pressable accessibilityRole="button" style={styles.button} onPress={()=>router.push({pathname:"/labour-correction",params:{workDate:selectedDate!,historyDate:date}})}><Text style={styles.btn}>Add Line to Saved Date</Text></Pressable>}
- {loading?<ActivityIndicator/>:<Text style={styles.hint}>{rows.length} records displayed · historical Access records are read-only</Text>}</View>
+ {loading?<ActivityIndicator/>:<Text style={styles.hint}>{rows.length} records displayed · Access originals are retained when Admin saves a correction</Text>}</View>
 
  <ScrollView horizontal contentContainerStyle={{minWidth:"100%"}}>
   <View style={{minWidth:1050,width:"100%",backgroundColor:"#FFF",borderWidth:1,borderColor:C.border,borderRadius:8}}>
@@ -57,7 +57,7 @@ export default function LabourHistory(){
     <Text style={[styles.historyCell,{width:72}]}>{r.labour_qty}</Text>
     <Text style={[styles.historyCell,{width:75}]}>{r.kgs??"—"}</Text>
     <Text style={[styles.historyCell,{width:90}]}>{amount(r.unit_cost)}</Text>
-    {isAdmin&&<View style={{width:85,padding:4}}>{r.source_type==="App"&&<Pressable accessibilityRole="button" accessibilityLabel={"Edit Labour Line "+r.source_id} style={styles.button} onPress={()=>router.push({pathname:"/labour-correction",params:{recordId:String(r.source_id),historyDate:date||displayJsplDate(r.labour_date)}})}><Text style={styles.btn}>Edit</Text></Pressable>}</View>}
+    {isAdmin&&<View style={{width:85,padding:4}}>{(r.source_type==="App"||r.source_type==="Access")&&<Pressable accessibilityRole="button" accessibilityLabel={"Edit Labour Line "+r.source_id} style={styles.button} onPress={()=>router.push({pathname:"/labour-correction",params:{recordId:String(r.source_id),source:r.source_type,historyDate:date||displayJsplDate(r.labour_date)}})}><Text style={styles.btn}>Edit</Text></Pressable>}</View>}
    </View>)}
   </View>
  </ScrollView>
