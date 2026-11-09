@@ -26,9 +26,9 @@ function isoToDisplay(iso: string) {
 
 function displayToIso(display: string) { return fuelDateISO(display) ?? ""; }
 
-function yesterdayISO() {
+function localDateISO(daysAgo: number) {
   const now = new Date();
-  const localYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  const localDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo);
   const y = localYesterday.getFullYear();
   const m = String(localYesterday.getMonth() + 1).padStart(2, "0");
   const d = String(localYesterday.getDate()).padStart(2, "0");
@@ -44,7 +44,7 @@ export default function RainfallRecordScreen() {
   // 👇 THIS is your “error / feedback”
   const [status, setStatus] = useState<string>("(status will show here)");
 
-  const [dateDisplay, setDateDisplay] = useState(isoToDisplay(yesterdayISO()));
+  const [dateDisplay, setDateDisplay] = useState(() => isoToDisplay(localDateISO(1)));
   const [savedByGauge, setSavedByGauge] = useState<Record<number, string>>({});
   const [loadedDate, setLoadedDate] = useState("");
   const [reload, setReload] = useState(0);
@@ -53,6 +53,7 @@ export default function RainfallRecordScreen() {
 
   const loadedRef = useRef(false);
   const isoDate = useMemo(() => displayToIso(dateDisplay), [dateDisplay]);
+  const canEnterDate = !!isoDate && isoDate >= localDateISO(10) && isoDate <= localDateISO(0);
   const requiredGauges = gauges.filter(gauge =>
     !!isoDate &&
     (!gauge.active_from || gauge.active_from <= isoDate) &&
@@ -139,6 +140,10 @@ export default function RainfallRecordScreen() {
       return;
     }
 
+    if (iso < localDateISO(10) || iso > localDateISO(0)) {
+      setStatus("Choose a reading date from today back through 10 days ago.");
+      return;
+    }
     if (loadedDate !== iso || saving) return;
     const payload = [];
     for (const gauge of requiredGauges) {
@@ -212,6 +217,7 @@ export default function RainfallRecordScreen() {
           keyboardType="numbers-and-punctuation"
         />
 
+        {!!isoDate && !canEnterDate && <Text accessibilityRole="alert">Read-only date. Entry is available from today back through 10 days ago.</Text>}
         <Text style={{ marginBottom: 8, opacity: 0.7 }}>
           {loadedDate === isoDate && isoDate && requiredGauges.length > 0
             ? `${savedCount} of ${requiredGauges.length} gauges saved. ${missing.length ? "Still missing: " + missing.map(gauge => gauge.rain_gauge ?? gauge.rain_gauge_id).join(", ") : "Complete."}`
@@ -238,7 +244,7 @@ export default function RainfallRecordScreen() {
               <TextInput
                 accessibilityLabel={`${item.rain_gauge ?? "Gauge"} millimetres`}
                 value={savedByGauge[item.rain_gauge_id] ?? mmByGauge[item.rain_gauge_id] ?? ""}
-                editable={!saving && loadedDate === isoDate && savedByGauge[item.rain_gauge_id] === undefined}
+                editable={canEnterDate && !saving && loadedDate === isoDate && savedByGauge[item.rain_gauge_id] === undefined}
                 onChangeText={(v) => setMm(item.rain_gauge_id, v)}
                 placeholder="—"
                 keyboardType="decimal-pad"
@@ -266,7 +272,7 @@ export default function RainfallRecordScreen() {
             <Pressable
               style={[styles.btn, styles.btnPrimary, saving && { opacity: 0.6 }]}
               onPress={onSave}
-              disabled={saving || !isoDate || loadedDate !== isoDate || !missing.length}
+              disabled={saving || !canEnterDate || loadedDate !== isoDate || !missing.length}
             >
               <Text style={styles.btnPrimaryText}>
                 {saving ? "Saving…" : "Save"}
