@@ -30,9 +30,9 @@ function displayToIso(display: string) { return fuelDateISO(display) ?? ""; }
 function localDateISO(daysAgo: number) {
   const now = new Date();
   const localDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo);
-  const y = localYesterday.getFullYear();
-  const m = String(localYesterday.getMonth() + 1).padStart(2, "0");
-  const d = String(localYesterday.getDate()).padStart(2, "0");
+  const y = localDate.getFullYear();
+  const m = String(localDate.getMonth() + 1).padStart(2, "0");
+  const d = String(localDate.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
 
@@ -181,7 +181,7 @@ export default function RainfallRecordScreen() {
       return;
     }
     if (loadedDate !== iso || saving) return;
-    const payload = [];
+    const payload: {rain_gauge_id: number; rainfall_date: string; rainfall_received: number}[] = [];
     for (const gauge of requiredGauges) {
       const id = gauge.rain_gauge_id;
       if (savedByGauge[id] !== undefined) continue;
