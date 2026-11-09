@@ -13,6 +13,8 @@ This is the shared workflow specification for Labour V2 on `development`. Busine
 
 These assignments are provisional. The verified inputter lock and Admin-only correction rule apply independently of the final staff assignments. Enforce permissions at both the UI and data boundary. Test unauthenticated and out-of-scope users, including direct route and data-operation attempts. This workflow introduces no mandatory approval stage.
 
+The HR Labour Inputter signs in directly to the Labour dashboard using the existing `labour` role. HR can draft and submit new days once live entry is approved, and can view History and run Labour reports. Saved dates are read-only for HR. Check that correction actions are hidden and that direct navigation or a direct correction request is rejected.
+
 ## Navigation and interface
 
 Main Dashboard → Labour dashboard → working screen. Access `LabourMainF` has five actions: **Labour Input**, **Daily Report**, **Weekly Report**, **Input History** and **AO Weekly**. Labour Form is a heading. Embed current- and previous-week cost and job summaries in the dashboard, using the same week and costing rules as the reports.
@@ -35,7 +37,7 @@ On the current shared FarmingMain connection, retain the development preview gua
 
 Input History (`LabourInputF` / `LabourInputQ`) shows ID, Date, Field, Crop, Labour Activity, Qty, Kgs and Unit Cost, in descending LabourID order for Access rows. Distinguish original Access archive rows from newly submitted app rows. Preserve the archive as read-only, including rows without a report mapping.
 
-From the history register an authorised Admin can open a separate correction screen for a submitted app day, amend a line, insert a missing line or remove an incorrect line. Require a reason and retain the affected day and line, action, before and after values, actor and timestamp. Apply the correction and audit together. Keep the date locked. After confirmed success, refresh History and the affected report groups and summaries. If rejected or uncertain, preserve the correction input and verify the result before retrying. Any correction to imported Access history requires a separately agreed overlay with reconciliation.
+From the history register an authorised Admin can open a separate correction screen for a submitted app day, amend a line, insert a missing line or remove an incorrect line. For an amendment, start from the specific line selected in History. Allow Admin to change Trace, Activity, the measure assigned to that activity, and Unit Cost. Show the recalculated Value using the corrected measure and Unit Cost. For an addition, start from the selected submitted date with a blank line and keep the date fixed. Require a reason and retain the affected day and line, action, before and after values, actor and timestamp. Apply the correction and audit together. Keep the date locked. After confirmed success, refresh History and the affected report groups and summaries. If rejected or uncertain, preserve the correction input and verify the result before retrying. Any correction to imported Access history requires a separately agreed overlay with reconciliation.
 
 ## Reports and costing
 
