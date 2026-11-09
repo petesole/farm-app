@@ -30,6 +30,14 @@ function Summary({title,days,jobs,week}:{title:string;days:Daily[];jobs:Job[];we
 }
 export default function LabourMain(){
  const [days,setDays]=useState<Daily[][]>([[],[]]),[jobs,setJobs]=useState<Job[][]>([[],[]]),[loading,setLoading]=useState(true),[error,setError]=useState("");
+ const [canReturnToMain,setCanReturnToMain]=useState(false);
+ useEffect(()=>{
+  let active=true;
+  void supabase.rpc("my_farm_app_roles").then(({data,error})=>{
+   if(active&&!error)setCanReturnToMain((data||[]).includes("admin"));
+  });
+  return()=>{active=false};
+ },[]);
  const week=accessWeek(0),previousWeek=accessWeek(-7);
  useEffect(()=>{let active=true;(async()=>{
   try{
@@ -52,7 +60,7 @@ export default function LabourMain(){
  {title:"AO Weekly",description:"Agri Orange weekly Labour report",path:"/labour-reports?mode=ao"},
  ];
  return <ScrollView contentContainerStyle={styles.page}>
-  <JsplModuleHeader title="Labour" backLabel="Back to Main" backHref="/(tabs)/main-dashboard" />
+  <JsplModuleHeader title="Labour" backLabel={canReturnToMain?"Back to Main":undefined} backHref="/(tabs)/main-dashboard" />
   <View style={styles.top}><Text style={styles.title}>Labour</Text>
    
   </View>
