@@ -93,11 +93,13 @@ export default function RainfallDashboardScreen() {
     <View style={styles.container}>
       <JsplModuleHeader title="Rainfall" backLabel="Back to Main" backHref="/(tabs)/main-dashboard" />
       <Pressable accessibilityRole="button" onPress={() => router.push("/home/rainfall/rainfall_record")} style={{paddingVertical:12}}>
-        <Text style={{fontWeight:"700",color:"#15694d"}}>Record Rainfall</Text>
+        <Text style={{fontWeight:"700",color:"#15694d"}}>Enter Rainfall</Text>
       </Pressable>
       <Pressable accessibilityRole="button" onPress={() => router.push("/home/rainfall/rainfall_monthly")} style={{paddingVertical:12}}>
         <Text style={{fontWeight:"700",color:"#15694d"}}>Monthly Rainfall Report</Text>
       </Pressable>
+      <Text style={{fontWeight:"700",marginTop:8}}>Gauge History</Text>
+      <Text style={{marginBottom:8}}>Open a gauge’s History to view readings. Admin can edit a saved reading there.</Text>
       {loading ? (
         <View style={{ paddingTop: 24 }}>
           <ActivityIndicator />
