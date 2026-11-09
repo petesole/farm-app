@@ -22,6 +22,7 @@ function landingForRole(roleName: string) {
 
   if (r === "admin") return "/(tabs)/main-dashboard";
   if (r === "manager") return "/(tabs)/fuel";
+  if (r === "labour") return "/(tabs)/labour";
   if (r === "fuel") return "/(tabs)/fuel";
 
   return "/login";
@@ -62,13 +63,13 @@ export default function LoginScreen() {
         return;
       }
       const roles = (access || []).map((r: string) => norm(r));
-      if (!roles.some((r: string) => ["admin", "manager", "fuel"].includes(r))) {
+      if (!roles.some((r: string) => ["admin", "manager", "fuel", "labour"].includes(r))) {
         await supabase.auth.signOut();
         setStatus("Your account has no assigned FarmingMainLive role.");
         return;
       }
       const role =
-        ["admin", "manager", "fuel", "irrigation", "scouting", "scout", "scouter", "viewer"]
+        ["admin", "manager", "fuel", "labour", "irrigation", "scouting", "scout", "scouter", "viewer"]
           .find((r) => roles.includes(r)) || roles[0];
       await AsyncStorage.setItem(
         "app_user",
