@@ -45,6 +45,7 @@ export default function RainfallRecordScreen() {
   const INDEX_PATH = "/home/rainfall/rainfall_index";
 
   const [isAdmin, setIsAdmin] = useState(false);
+  const [correction, setCorrection] = useState<{ id: number; previous: string; value: string; reason: string } | null>(null);
   const [incomplete, setIncomplete] = useState<{ date: string; missing: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -61,8 +62,9 @@ export default function RainfallRecordScreen() {
 
   const loadedRef = useRef(false);
   const isoDate = useMemo(() => displayToIso(dateDisplay), [dateDisplay]);
-  const canEnterDate = !!isoDate && isoDate >= localDateISO(10) && isoDate <= localDateISO(0);
+  const canEnterDate = !!isoDate && isoDate <= localDateISO(0) && (isAdmin || isoDate >= localDateISO(10));
   const requiredGauges = gauges.filter(gauge => requiredOn(gauge, isoDate));
+  const visibleGauges = gauges.filter(gauge => requiredOn(gauge, isoDate) || (isAdmin && savedByGauge[gauge.rain_gauge_id] !== undefined));
 
   useEffect(() => {
     let active = true;
@@ -131,6 +133,7 @@ export default function RainfallRecordScreen() {
   // Load rainfall for date (only when date is valid)
   useEffect(() => {
     // Never carry values from a previous selected day into the new date.
+    setCorrection(null);
     setLoadedDate("");
     setSavedByGauge({});
     setMmByGauge({});
@@ -176,7 +179,7 @@ export default function RainfallRecordScreen() {
       return;
     }
 
-    if (iso < localDateISO(10) || iso > localDateISO(0)) {
+    if (iso > localDateISO(0) || (!isAdmin && iso < localDateISO(10))) {
       setStatus("Choose a reading date from today back through 10 days ago.");
       return;
     }
@@ -225,6 +228,31 @@ export default function RainfallRecordScreen() {
     }
   };
 
+  async function saveCorrection() {
+    if (!isAdmin || !correction || saving || loadedDate !== isoDate) return;
+    const input = correction.value.trim();
+    const mm = Number(input.replace(",", "."));
+    if (!/^\d+(?:[.,]\d+)?$/.test(input) || !Number.isFinite(mm) || !correction.reason.trim()) {
+      setStatus("Enter valid millimetres and a reason for the correction.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const { error } = await supabase.rpc("correct_rainfall_reading", {
+        p_date: isoDate, p_gauge: correction.id, p_previous: Number(correction.previous),
+        p_mm: mm, p_reason: correction.reason.trim(),
+      });
+      if (error) { setStatus(error.message); return; }
+      setSavedByGauge(previous => ({ ...previous, [correction.id]: String(mm) }));
+      setCorrection(null);
+      setStatus("Correction saved and recorded in the audit history.");
+    } catch {
+      setStatus("Save could not be confirmed. Reload the readings before retrying.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const missing = requiredGauges.filter(gauge => savedByGauge[gauge.rain_gauge_id] === undefined);
   const savedCount = requiredGauges.length - missing.length;
 
@@ -243,7 +271,7 @@ export default function RainfallRecordScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <View style={styles.container}>
-        <JsplModuleHeader title="Rainfall Entry" backLabel={isAdmin ? "Back to Rainfall" : undefined} onBack={isAdmin ? goBack : undefined}/>
+        <JsplModuleHeader title={isAdmin ? "Enter or Correct Rainfall" : "Rainfall Entry"} backLabel={isAdmin ? "Back to Rainfall" : undefined} onBack={isAdmin ? goBack : undefined}/>
         {incomplete.length > 0 && <View style={{marginBottom:10}}>
           <Text style={styles.label}>Finish incomplete dates</Text>
           {incomplete.map(day => <Pressable accessibilityRole="button" key={day.date} disabled={saving} onPress={() => {
@@ -257,7 +285,7 @@ export default function RainfallRecordScreen() {
           value={dateDisplay}
           onChangeText={setDateDisplay}
           onBlur={()=>{const d=displayToIso(dateDisplay);if(d)setDateDisplay(isoToDisplay(d));}}
-          editable={!saving}
+          editable={!saving && !correction}
           style={styles.input}
           keyboardType="numbers-and-punctuation"
         />
@@ -276,10 +304,18 @@ export default function RainfallRecordScreen() {
         </View>
 
         <FlatList
-          data={requiredGauges}
+          data={visibleGauges}
           ListEmptyComponent={isoDate ? <Text>No gauges required for this date.</Text> : null}
           keyExtractor={(g) => String(g.rain_gauge_id)}
           contentContainerStyle={{ paddingBottom: 190 }} // space for bottom status+buttons
+          ListFooterComponent={correction ? <View style={{padding:12,gap:8}}>
+            <Text style={styles.label}>Correct {gauges.find(gauge => gauge.rain_gauge_id === correction.id)?.rain_gauge} · {isoToDisplay(isoDate)}</Text>
+            <Text>Saved reading: {correction.previous} mm</Text>
+            <TextInput accessibilityLabel="Corrected millimetres" style={styles.input} keyboardType="decimal-pad" value={correction.value} editable={!saving} onChangeText={value => setCorrection(current => current && {...current,value})}/>
+            <TextInput accessibilityLabel="Correction reason" style={styles.input} placeholder="Reason for correction" value={correction.reason} editable={!saving} onChangeText={reason => setCorrection(current => current && {...current,reason})}/>
+            <Pressable accessibilityRole="button" disabled={saving} onPress={() => void saveCorrection()}><Text style={styles.label}>Save Correction</Text></Pressable>
+            <Pressable accessibilityRole="button" disabled={saving} onPress={() => setCorrection(null)}><Text>Cancel Correction</Text></Pressable>
+          </View> : null}
           renderItem={({ item }) => (
             <View style={styles.row}>
               <Text style={styles.colGaugeText} numberOfLines={1}>
@@ -295,6 +331,10 @@ export default function RainfallRecordScreen() {
                 keyboardType="decimal-pad"
                 style={styles.colMmInput}
               />
+              {isAdmin && loadedDate === isoDate && savedByGauge[item.rain_gauge_id] !== undefined && <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${item.rain_gauge ?? "gauge"}`} disabled={saving} onPress={() => {
+                const previous = savedByGauge[item.rain_gauge_id];
+                setCorrection({ id: item.rain_gauge_id, previous, value: previous, reason: "" });
+              }}><Text>Edit</Text></Pressable>}
             </View>
           )}
         />
