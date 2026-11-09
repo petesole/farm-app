@@ -1,3 +1,4 @@
+import { parseJsplDateInput, displayJsplDate } from "@/utils/jspl-input";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { router, useLocalSearchParams } from "expo-router";
@@ -13,7 +14,7 @@ import {
 } from "react-native";
 import { supabase } from "../../../supabase";
 
-type Row = { rain_gauge_id: number; rain_gauge: string | null };
+type Row = { rain_gauge_id: number; rain_gauge: string | null; active_from: string | null; active_to: string | null };
 
 export default function RainGaugeEditScreen() {
   const { rainGaugeId } = useLocalSearchParams<{ rainGaugeId?: string }>();
@@ -28,11 +29,13 @@ export default function RainGaugeEditScreen() {
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState("");
+  const [activeFrom, setActiveFrom] = useState<string | null>(null);
+  const [lastRequired, setLastRequired] = useState("");
 
   async function loadRow(rain_gauge_id: number) {
     const res = await supabase
       .from("rain_gauge")
-      .select("rain_gauge_id,rain_gauge")
+      .select("rain_gauge_id,rain_gauge,active_from,active_to")
       .eq("rain_gauge_id", rain_gauge_id)
       .single();
     if (res.error) throw new Error(res.error.message);
@@ -51,6 +54,8 @@ export default function RainGaugeEditScreen() {
         setLoading(true);
         const r = await loadRow(id);
         setName(r.rain_gauge ?? "");
+        setActiveFrom(r.active_from);
+        setLastRequired(r.active_to ? displayJsplDate(r.active_to) : "");
       } catch (e: any) {
         Alert.alert("Load error", e?.message ?? "Failed to load rain gauge");
         router.back();
@@ -67,14 +72,24 @@ export default function RainGaugeEditScreen() {
       return;
     }
 
+    const end = lastRequired.trim() ? parseJsplDateInput(lastRequired) : null;
+    if (lastRequired.trim() && (!end || (activeFrom && end < activeFrom))) {
+      Alert.alert("Invalid date", "Enter a last required date on or after the gauge start date.");
+      return;
+    }
+
     try {
       setSaving(true);
+      const roles = await supabase.rpc("my_farm_app_roles");
+      if (roles.error || !(roles.data || []).includes("admin")) {
+        throw new Error("Only Admin can change rain gauges.");
+      }
       if (isNew) {
         const res = await supabase.from("rain_gauge").insert({ rain_gauge: v });
         if (res.error) throw new Error(res.error.message);
         Alert.alert("Saved", "Rain gauge created.");
       } else {
-        const res = await supabase.from("rain_gauge").update({ rain_gauge: v }).eq("rain_gauge_id", id);
+        const res = await supabase.from("rain_gauge").update({ rain_gauge: v, active_to: end }).eq("rain_gauge_id", id).select("rain_gauge_id").single();
         if (res.error) throw new Error(res.error.message);
         Alert.alert("Saved", "Rain gauge updated.");
       }
@@ -111,6 +126,18 @@ export default function RainGaugeEditScreen() {
             autoCapitalize="words"
             autoCorrect={false}
           />
+          {!isNew && <>
+            <ThemedText type="subtitle">Last required reading date</ThemedText>
+            <TextInput
+              accessibilityLabel="Last required reading date"
+              style={styles.input}
+              value={lastRequired}
+              onChangeText={setLastRequired}
+              placeholder="dd/mm/yyyy"
+              keyboardType="numbers-and-punctuation"
+            />
+            <ThemedText>Leave blank for no end date. The gauge is still required on the date entered here.</ThemedText>
+          </>}
         </ThemedView>
 
         <Pressable style={[styles.saveBtn, saving && { opacity: 0.7 }]} onPress={save} disabled={saving}>
