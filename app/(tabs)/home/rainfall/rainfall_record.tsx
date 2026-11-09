@@ -3,7 +3,7 @@ import {fuelDateISO} from "../fuel_admin_dates";
 import { supabase } from "@/supabase";
 import { jsplColors as C, jsplSpacing as S, jsplRadii as R } from "@/constants/jspl-design";
 import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -44,6 +44,8 @@ function requiredOn(gauge: Gauge, date: string) {
 }
 
 export default function RainfallRecordScreen() {
+  const { mode } = useLocalSearchParams<{ mode?: string }>();
+  const editingSaved = mode === "edit";
   const INDEX_PATH = "/home/rainfall/rainfall_index";
 
   const [isAdmin, setIsAdmin] = useState(false);
@@ -185,7 +187,7 @@ export default function RainfallRecordScreen() {
       setStatus("Choose a reading date from today back through 10 days ago.");
       return;
     }
-    if (loadedDate !== iso || saving) return;
+    if (editingSaved || loadedDate !== iso || saving) return;
     const payload: {rain_gauge_id: number; rainfall_date: string; rainfall_received: number}[] = [];
     for (const gauge of requiredGauges) {
       const id = gauge.rain_gauge_id;
@@ -289,8 +291,8 @@ export default function RainfallRecordScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <View style={styles.container}>
-        <JsplModuleHeader title={isAdmin ? "Enter or Correct Rainfall" : "Rainfall Entry"} backLabel={isAdmin ? "Back to Rainfall" : undefined} onBack={isAdmin ? goBack : undefined}/>
-        {incomplete.length > 0 && <View style={{marginBottom:10}}>
+        <JsplModuleHeader title={editingSaved ? "Edit Saved Rainfall" : "Add New Rainfall"} backLabel={isAdmin ? "Back to Rainfall" : undefined} onBack={isAdmin ? goBack : undefined}/>
+        {!editingSaved && incomplete.length > 0 && <View style={{marginBottom:10}}>
           <Text style={styles.label}>Finish incomplete dates</Text>
           {incomplete.map(day => <Pressable accessibilityRole="button" key={day.date} disabled={saving} onPress={() => {
             if (Object.values(mmByGauge).some(value => value.trim())) { setStatus("Save or clear the current draft before changing dates."); return; }
@@ -310,7 +312,7 @@ export default function RainfallRecordScreen() {
 
         {!!isoDate && !canEnterDate && <Text accessibilityRole="alert">Read-only date. Entry is available from today back through 10 days ago.</Text>}
         <Text style={{ marginBottom: 8, opacity: 0.7 }}>
-          {loadedDate === isoDate && isoDate && requiredGauges.length > 0
+          {editingSaved ? "Choose the reading date, then select Edit beside the gauge." : loadedDate === isoDate && isoDate && requiredGauges.length > 0
             ? `${savedCount} of ${requiredGauges.length} gauges saved. ${missing.length ? "Still missing: " + missing.map(gauge => gauge.rain_gauge ?? gauge.rain_gauge_id).join(", ") : "Complete."}`
             : "Choose the reading date. Enter 0 for a dry gauge and leave readings you are waiting for blank."}
         </Text>
@@ -322,8 +324,8 @@ export default function RainfallRecordScreen() {
         </View>
 
         <FlatList
-          data={visibleGauges}
-          ListEmptyComponent={isoDate ? <Text>No gauges required for this date.</Text> : null}
+          data={editingSaved ? visibleGauges.filter(gauge => isAdmin && savedByGauge[gauge.rain_gauge_id] !== undefined) : visibleGauges}
+          ListEmptyComponent={isoDate ? <Text>{editingSaved ? "No saved readings for this date." : "No gauges required for this date."}</Text> : null}
           keyExtractor={(g) => String(g.rain_gauge_id)}
           contentContainerStyle={{ paddingBottom: 190 }} // space for bottom status+buttons
           renderItem={({ item }) => (
@@ -335,13 +337,13 @@ export default function RainfallRecordScreen() {
               <TextInput
                 accessibilityLabel={`${item.rain_gauge ?? "Gauge"} millimetres`}
                 value={savedByGauge[item.rain_gauge_id] ?? mmByGauge[item.rain_gauge_id] ?? ""}
-                editable={canEnterDate && !saving && loadedDate === isoDate && savedByGauge[item.rain_gauge_id] === undefined}
+                editable={!editingSaved && canEnterDate && !saving && loadedDate === isoDate && savedByGauge[item.rain_gauge_id] === undefined}
                 onChangeText={(v) => setMm(item.rain_gauge_id, v)}
                 placeholder="—"
                 keyboardType="decimal-pad"
                 style={styles.colMmInput}
               />
-              {isAdmin && loadedDate === isoDate && savedByGauge[item.rain_gauge_id] !== undefined && <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${item.rain_gauge ?? "gauge"}`} style={styles.editLink} disabled={saving} onPress={() => {
+              {isAdmin && mode !== "add" && loadedDate === isoDate && savedByGauge[item.rain_gauge_id] !== undefined && <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${item.rain_gauge ?? "gauge"}`} style={styles.editLink} disabled={saving} onPress={() => {
                 const previous = savedByGauge[item.rain_gauge_id];
                 setStatus("");
                 setCorrection({ id: item.rain_gauge_id, previous, value: previous, reason: "" });
@@ -357,15 +359,15 @@ export default function RainfallRecordScreen() {
 
           <Pressable accessibilityRole="button" disabled={saving || !isoDate} onPress={() => setReload(value => value + 1)}><Text>Reload readings</Text></Pressable>
           <View style={{ flexDirection: "row", gap: 10 }}>
-            <Pressable
+            {!editingSaved && <Pressable
               style={[styles.btn, styles.btnPrimary, saving && { opacity: 0.6 }]}
               onPress={onSave}
-              disabled={saving || !canEnterDate || loadedDate !== isoDate || !missing.length}
+              disabled={editingSaved || saving || !canEnterDate || loadedDate !== isoDate || !missing.length}
             >
               <Text style={styles.btnPrimaryText}>
                 {saving ? "Saving…" : "Save"}
               </Text>
-            </Pressable>
+            </Pressable>}
           </View>
         </View>
       </View>
