@@ -1,0 +1,11 @@
+{
+  "name": "jspl-wb-dnote-checks",
+  "private": true,
+  "scripts": {
+    "test": "node test-utils.cjs && node test-backend.mjs && node test-screen.cjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.16",
+    "jsdom": "26.1.0"
+  }
+}

@@ -1,0 +1,55 @@
+DAILY FIELD D-NOTE REGISTER — 11/11/2026
+
+Agreed behaviour
+Daily DNotes has Add DNotes with one date (defaults to yesterday) and multiple
+start/end lines for changing books during the day. Successful, backend-confirmed
+save closes the entry screen and refreshes the table on that date. Missing WB
+slips have red rows. Missing / Not missing is an explicit two-position filter.
+All existing WB columns, net weights, field allocations, sorting, print and CSV
+are retained. Historical WB-only rows remain visible under Not missing, so
+registering expected notes does not hide previous report records.
+
+Matching
+Full book/note identifiers are text, never dates. 02/046 matches 2/46. A delayed
+WB arrival matches the original expected D-Note date. Multiple WB slips for one
+D-Note show a warning; multiple field allocations count the truck weight once.
+Missing rows remain visible under season/field filters because their field and
+season cannot be known until a WB record arrives. Auto-refresh is every 30 seconds,
+on browser visibility, manually, and immediately after a successful save.
+
+Validation / permissions
+Each line stays inside one book. End must be >= start. Overlaps in one save or
+against a previous day are rejected atomically; no partial ranges are saved.
+The same request UUID is used to retry uncertain saves. A committed save is
+verified before closing, including when a network timeout hid its response.
+Only the existing server-verified WB Admin role can read or add this register.
+There is no change to WB computer software, tickets, allocations or stock.
+No test D-Notes were left in the live database. No historical ranges are inferred.
+
+Tests
+- 21 local PostgreSQL checks: multi-book save, normalization, overlap, bounds,
+  idempotency, delayed/duplicate WB matches, history retention and access controls.
+- 18 UI-data checks: strict dates/ranges, two books, leading zeros, deduplicated
+  load totals, missing values and CSV export (including formula protection).
+- 7 rendered-screen checks with mocked API: filters, two-line entry, successful
+  close/table refresh, invalid dates, error/input retention and committed-timeout
+  verification. This used a DOM test environment, not a physical browser layout.
+- Expo production web export passed.
+- Full-project TypeScript checking reports existing errors in other screens.
+  No errors remain in the three added/changed D-Note TypeScript files.
+- Hosted SQL-role checks: Admin multi-book save, real 02/46 WB match, missing
+  synthetic notes, retry and overlap rejection passed inside a rolled-back test.
+  Non-Admin WB operator/anonymous writes and non-Admin report reads were rejected.
+  After rollback: 0 expected notes, 0 save requests; existing report still 107 rows.
+- Supabase advisor reports no new D-Note-specific security notices.
+
+Deployment
+Backend migration wb_field_dnote_register_ranges is applied to FarmingMain.
+The web change is prepared on a feature branch for review. It has not been
+merged into main or published to the live Main website.
+Real interactive browser login and live visual acceptance remain to be checked.
+
+Repeat the isolated checks from tests/wb-dnotes:
+  npm ci --ignore-scripts
+  npm test
+
