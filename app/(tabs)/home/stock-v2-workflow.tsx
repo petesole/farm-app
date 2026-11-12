@@ -1,3 +1,6 @@
+import {stockContext,WorkflowContext} from "@/utils/stock-workflow";
+import {useFocusEffect} from "expo-router";
+import {useCallback} from "react";
 import {StockV2Header} from "@/components/jspl/StockV2Header";
 import { JsplDashboardButton } from "@/components/jspl/JsplDashboardButton";
 import { JsplTable } from "@/components/jspl/JsplTable";
@@ -31,6 +34,8 @@ function Field({label,value,onChange,numeric=false,date=false}:{label:string;val
 }
 export default function StockV2Workflow(){
  const router=useRouter();
+ const [workflow,setWorkflow]=useState<WorkflowContext|null>(null);
+ useFocusEffect(useCallback(()=>{void stockContext().then(setWorkflow).catch(e=>setStatus(e.message));void refresh(false);},[]));
  const {width,height}=useWindowDimensions();
  const watermarkSize=Math.min(650,Math.max(240,width-48),Math.max(240,height-48));
  const [tab,setTab]=useState<Tab|null>(null),[snapshot,setSnapshot]=useState<Snapshot|null>(null);
@@ -63,7 +68,7 @@ export default function StockV2Workflow(){
   const r=await fetch(endpoint,{headers:{authorization:"Bearer "+await token()}});
   const d=await r.json();if(!r.ok)throw Error(d.error||"Unable to read Stock V2");setSnapshot(d);
  }catch(e){setStatus(e instanceof Error?e.message:String(e))}finally{if(show)setBusy(false)}};
- useEffect(()=>{refresh();(async()=>{
+ useEffect(()=>{(async()=>{
   const [t,c]=await Promise.all([
    supabase.from("tracecode").select("tracecode_id,tracecode_name,tracecode_size,crop_id,start_date,end_date").not("start_date","is",null).is("end_date",null).order("tracecode_name").limit(5000),
    supabase.from("crop").select("crop_id,crop_name").eq("active",true).order("crop_name")
@@ -80,7 +85,7 @@ export default function StockV2Workflow(){
  const changeLine=(id:number,key:keyof Line,value:string)=>{setLines(old=>old.map(l=>l.id===id?{...l,[key]:value}:l));resetEdit()};
  const addLine=()=>{setLines(old=>[...old,emptyLine(nextLine)]);setNextLine(n=>n+1);resetEdit()};
  const removeLine=(id:number)=>{setLines(old=>old.filter(l=>l.id!==id));resetEdit()};
- const switchTab=(v:Tab|null)=>{if(v==="POs Outstanding"){router.push("/stock-v2-po-receiving");return;}if(v==="GRV"){router.push("/stock-v2-grv-outstanding");return;}if(v==="Stock Transfer"){router.push("/stock-v2-owner-transactions");return;}if(v==="Corrections"){router.push("/(tabs)/home/stock-v2-corrections");return;}if(v==="Supplier Returns"){router.push("/(tabs)/home/stock-v2-supplier-returns");return;}if(v==="Stocktake & Adjustments"){router.push("/(tabs)/home/stock-v2-stocktake");return;}if(v==="PO Corrections"){router.push("/(tabs)/home/stock-v2-po-corrections");return;}setTab(v);if(v==="Planned Issue")void refresh(false);setLines([emptyLine(nextLine)]);setNextLine(n=>n+1);setOrderId(null);setJobId(null);setDropdown(null);setStatus("");setReceiptMode("dnote");setInvoiceNumber("");setDeliveryNote("");resetEdit()};
+ const switchTab=(v:Tab|null)=>{if(v==="Purchase Orders"||v==="PO Corrections"){router.push("/stock-v2-purchase-orders");return;}if(v==="POs Outstanding"){router.push("/stock-v2-po-receiving");return;}if(v==="GRV"){router.push("/stock-v2-grv-outstanding");return;}if(v==="Stock Transfer"){router.push("/stock-v2-owner-transactions");return;}if(v==="Corrections"){router.push("/(tabs)/home/stock-v2-corrections");return;}if(v==="Supplier Returns"){router.push("/(tabs)/home/stock-v2-supplier-returns");return;}if(v==="Stocktake & Adjustments"){router.push("/(tabs)/home/stock-v2-stocktake");return;}setTab(v);if(v==="Planned Issue")void refresh(false);setLines([emptyLine(nextLine)]);setNextLine(n=>n+1);setOrderId(null);setJobId(null);setDropdown(null);setStatus("");setReceiptMode("dnote");setInvoiceNumber("");setDeliveryNote("");resetEdit()};
  const products=snapshot?.items??[];
  const inputTypes=[...new Set(products.map(x=>x.input_type).filter((x):x is string=>!!x))].sort();
  const inputCategories=[...new Set(products.map(x=>x.input_category).filter((x):x is string=>!!x))].sort();
@@ -165,16 +170,20 @@ export default function StockV2Workflow(){
    <Image source={require("../../../assets/images/jspl_farm_watermark.png")} resizeMode="contain" style={[styles.watermark,{width:watermarkSize,height:watermarkSize}]}/>
   </View>
   <ScrollView style={styles.foreground} contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
-  <StockV2Header title={tab??"Stock Dashboard"} dashboard={tab===null} onStock={()=>switchTab(null)} onRefresh={tab===null?undefined:()=>void refresh()}/>
+  <StockV2Header title={tab??"Stock Dashboard"} dashboard={tab===null} allowMain={workflow?.access.can_main} onStock={()=>switchTab(null)} onRefresh={tab===null?undefined:()=>void refresh()}/>
   {tab===null?<View style={styles.home}>
     <ThemedText style={styles.homeTitle}>Stock Home</ThemedText>
     <ThemedText style={styles.muted}>Choose a stock operation</ThemedText>
     <View style={styles.navActions}>
 
-     <Pressable style={styles.back} onPress={()=>router.push("/stock-v2-setup")}><ThemedText style={styles.backText}>Manage Owners & Contracts</ThemedText></Pressable>
+     {workflow?.access.is_admin?<Pressable style={styles.back} onPress={()=>router.push("/stock-v2-setup")}><ThemedText style={styles.backText}>Manage Owners & Contracts</ThemedText></Pressable>:null}
      <Pressable style={styles.back} onPress={()=>router.push("/stock-v2-suppliers")}><ThemedText style={styles.backText}>Manage Suppliers</ThemedText></Pressable>
     </View>
-    <View style={styles.homeGrid}>{tabs.map(x=><View key={x} style={styles.dashboardCard}>
+    <View style={styles.homeGrid}>
+     {workflow?.access.is_admin?<View style={styles.dashboardCard}><JsplDashboardButton title={"Awaiting Approval ("+workflow.awaiting+")"} description="Purchase orders, credit notes and counted stocktakes" onPress={()=>router.push("/stock-v2-approvals")}/></View>:null}
+     <View style={styles.dashboardCard}><JsplDashboardButton title="Supplier Credit Notes" onPress={()=>router.push("/(tabs)/home/stock-v2-credits")}/></View>
+     {workflow?.access.is_admin?<><View style={styles.dashboardCard}><JsplDashboardButton title="GRV Corrections" onPress={()=>router.push("/stock-v2-grv-corrections")}/></View><View style={styles.dashboardCard}><JsplDashboardButton title="Stock Staff Access" onPress={()=>router.push("/stock-v2-staff")}/></View></>:null}
+     {tabs.filter(x=>x!=="PO Corrections").map(x=><View key={x} style={styles.dashboardCard}>
       <JsplDashboardButton title={x}
        description={x==="POs Outstanding"?String(new Set((snapshot?.orders??[]).filter(o=>o.ordered_quantity>o.received_quantity).map(o=>o.order_id)).size)+" outstanding orders":x==="GRV"?String(snapshot?.pending_invoice_count??0)+" pending invoices":undefined}
        onPress={()=>x==="Spray Planning"?router.push("/stock-v2-spray-planning"):switchTab(x)}/>

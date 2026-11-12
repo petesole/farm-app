@@ -1,6 +1,9 @@
+import {StockRecovery} from "@/components/jspl/StockWorkflowControls";
+import {stockContext,stockMutation,stockUUID,ApprovalDocument} from "@/utils/stock-workflow";
+import {StockDocumentSummary,StockButton,StockField,StockSelect,stockStyles} from "@/components/jspl/StockWorkflowControls";
 import {parseJsplDateInput,displayJsplDate} from "@/utils/jspl-input";
 import React,{useCallback,useEffect,useMemo,useState} from "react";
-import {useRouter} from "expo-router";
+import {useRouter,useFocusEffect} from "expo-router";
 import {ActivityIndicator,Modal,Pressable,ScrollView,StyleSheet,Text,TextInput,View} from "react-native";
 import {StockV2Header} from "@/components/jspl/StockV2Header";
 import {supabase} from "../../../supabase";
@@ -18,6 +21,7 @@ const toISO=(value:string)=>parseJsplDateInput(value) ?? "";
 const value=(v:unknown)=>Number(v||0);
 export default function SupplierCredits(){
  const router=useRouter();
+ const [staged,setStaged]=useState<ApprovalDocument[]>([]),[editDocument,setEditDocument]=useState<ApprovalDocument|null>(null),[draftId,setDraftId]=useState(stockUUID),[correctionReason,setCorrectionReason]=useState("");
  const [returns,setReturns]=useState<ReturnRow[]>([]),[credits,setCredits]=useState<Credit[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
  const [owner,setOwner]=useState("JS"),[supplier,setSupplier]=useState(""),[window,setWindow]=useState<"return"|"price"|"history"|null>(null),[selectedCredit,setSelectedCredit]=useState<Credit|null>(null);
  const [creditNo,setCreditNo]=useState(""),[date,setDate]=useState(""),[amount,setAmount]=useState(""),[notes,setNotes]=useState("");
@@ -25,37 +29,42 @@ export default function SupplierCredits(){
  const [receipts,setReceipts]=useState<Receipt[]>([]),[receiptSearch,setReceiptSearch]=useState(""),[receiptLine,setReceiptLine]=useState<Receipt|null>(null),[reason,setReason]=useState("");
  const token=async()=>{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Please sign in");return session.access_token};
  const request=async(url:string,payload?:unknown)=>{const t=await token();const r=await fetch(url,{method:payload?"POST":"GET",headers:{authorization:"Bearer "+t,...(payload?{"content-type":"application/json"}:{})},...(payload?{body:JSON.stringify(payload)}:{})});const j=await r.json();if(!r.ok)throw Error(j.error||"Request failed");return j};
- const load=useCallback(async()=>{setBusy(true);setError("");try{const x=await request(creditApi);setReturns(x.returns||[]);setCredits(x.credits||[]);setReceipts(x.receipts||[])}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}},[]);
- useEffect(()=>{void load()},[]);
+ const load=useCallback(async()=>{setBusy(true);setError("");try{const x=await request(creditApi);setReturns(x.returns||[]);setCredits(x.credits||[]);setReceipts(x.receipts||[]);setStaged((await stockContext()).documents.filter(d=>d.kind==="credit"))}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}},[]);
+ useFocusEffect(useCallback(()=>{void load()},[load]));
  const supplierNames=useMemo(()=>Array.from(new Set([...returns.filter(x=>x.owner_code===owner).map(x=>x.supplier_name),...receipts.filter(x=>x.owner_code==="TEST_"+owner).map(x=>x.supplier_name)])).sort(),[returns,receipts,owner]);
  const available=useMemo(()=>returns.filter(r=>r.owner_code===owner&&(!supplier||r.supplier_name===supplier)).flatMap(r=>r.lines.filter(l=>value(l.quantity)>value(l.credited_quantity)+0.000001).map(l=>({...l,ret:r}))),[returns,owner,supplier]);
  const expected=useMemo(()=>available.reduce((n,l)=>{const e=edits[l.line_id];return n+(e?value(e.qty)*value(e.price):0)},0),[available,edits]);
  const reset=()=>{setCreditNo("");setDate("");setAmount("");setNotes("");setReason("");setEdits({});setReceiptLine(null);setReceiptSearch("");setError("")};
- const open=(type:"return"|"price",s?:string)=>{reset();if(s)setSupplier(s);setWindow(type)};
+ const open=(type:"return"|"price",s?:string)=>{reset();setEditDocument(null);setDraftId(stockUUID());setCorrectionReason("");if(s)setSupplier(s);setWindow(type)};
  const close=()=>{setWindow(null);setSelectedCredit(null);setError("")};
  const add=(l:CreditLine)=>{const left=value(l.quantity)-value(l.credited_quantity);setEdits(prev=>({...prev,[l.line_id]:{qty:prev[l.line_id]?.qty??String(left),price:prev[l.line_id]?.price??String(l.agreed_price)}}))};
- const save=async()=>{if(!supplier){setError("Choose supplier");return}if(!creditNo.trim()||!toISO(date)||!amount.trim()||!Number.isFinite(Number(amount))||Number(amount)<0){setError("Enter credit note number, valid date dd/mm/yyyy, and actual credit note amount");return}setBusy(true);setError("");try{
+ const save=async(command:"save"|"submit"="submit")=>{if(!supplier){setError("Choose supplier");return}if(!creditNo.trim()||!toISO(date)||!amount.trim()||!Number.isFinite(Number(amount))||Number(amount)<0){setError("Enter credit note number, valid date dd/mm/yyyy, and actual credit note amount");return}setBusy(true);setError("");try{
   if(window==="return"){
    const selected:Allocation[]=available.filter(l=>Number(edits[l.line_id]?.qty)>0).map(l=>({return_line_id:l.line_id,quantity:Number(edits[l.line_id].qty),unit_credit_price:Number(edits[l.line_id].price)}));
    if(!selected.length)throw Error("Choose at least one returned item");
    for(const a of selected){const l=available.find(x=>x.line_id===a.return_line_id)!;if(!Number.isFinite(a.quantity)||a.quantity<=0||a.quantity>Number(l.quantity)-Number(l.credited_quantity)+0.000001||!Number.isFinite(a.unit_credit_price)||a.unit_credit_price<0)throw Error("Check the credit quantity and actual price for "+l.item_name)}
-   await request(creditApi,{action:"return_credit",owner_code:owner,supplier_name:supplier,credit_note_number:creditNo.trim(),credit_note_date:toISO(date),total_amount:Number(amount),notes,allocations:selected});
+   await stockMutation("credit",{action:"workflow_command",command,data:{id:draftId,version:editDocument?.version,kind:"credit",reason:correctionReason,payload:{action:"return_credit",owner_code:owner,supplier_name:supplier,credit_note_number:creditNo.trim(),credit_note_date:toISO(date),total_amount:Number(amount),notes,allocations:selected.map(a=>({...a,item_name:available.find(l=>l.line_id===a.return_line_id)?.item_name}))}}});
   }else{
    if(!receiptLine)throw Error("Select original D-Note/GRV and product");
    if(reason.trim().length<5)throw Error("Enter reason for price-only credit");
-   await request(creditApi,{action:"price_credit",owner_code:owner,supplier_name:supplier,credit_note_number:creditNo.trim(),credit_note_date:toISO(date),total_amount:Number(amount),notes,receipt_document_id:receiptLine.document_id,item_id:receiptLine.item_id,reason});
+   await stockMutation("credit",{action:"workflow_command",command,data:{id:draftId,version:editDocument?.version,kind:"credit",reason:correctionReason,payload:{action:"price_credit",owner_code:owner,supplier_name:supplier,credit_note_number:creditNo.trim(),credit_note_date:toISO(date),total_amount:Number(amount),notes,receipt_document_id:receiptLine.document_id,item_id:receiptLine.item_id,receipt_label:receiptLine.document_number+" · "+receiptLine.item_name,reason}}});
   }
-  close();await load();setNotice("Supplier credit note "+creditNo+" posted and recorded");
+  close();await load();setNotice("Supplier credit note "+creditNo+(command==="submit"?" submitted for Admin approval":" saved as draft"));
  }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
+ const cancelDraft=async()=>{if(!editDocument)return;setBusy(true);try{await stockMutation("credit",{action:"workflow_command",command:"cancel",data:{id:editDocument.id,version:editDocument.version,reason:correctionReason}});close();await load();}catch(e){setError((e as Error).message)}finally{setBusy(false)}};
  const fetchReceipts=async()=>{await load()};
  const button=(title:string,onPress:()=>void,disabled=false)=><Pressable disabled={disabled||busy} style={[styles.button,(disabled||busy)&&styles.dim]} onPress={onPress}><Text style={styles.buttonText}>{title}</Text></Pressable>;
  return <View style={styles.root}><ScrollView contentContainerStyle={styles.page}>
-  <StockV2Header title="Supplier Credit Notes"/>
-  <Pressable onPress={()=>router.back()}><Text style={styles.link}>‹ Back to Supplier Returns</Text></Pressable>
+  <StockV2Header title="Supplier Credit Notes" onRefresh={()=>void load()}/>
+
+  <Text style={styles.sub}>Stock submits credits. Admin approves and applies them. Approved and applied credits are locked.</Text>
+  {staged.filter(d=>d.status!=="applied"&&d.status!=="cancelled").map(d=><View style={stockStyles.card} key={d.id}><StockDocumentSummary document={d}/><StockButton title="Open / Edit" disabled={busy} onPress={()=>{
+   const p=d.payload;reset();setEditDocument(d);setDraftId(d.id);setOwner(p.owner_code);setSupplier(p.supplier_name);setCreditNo(p.credit_note_number);setDate(display(p.credit_note_date));setAmount(String(p.total_amount));setNotes(p.notes??"");setReason(p.reason??"");setCorrectionReason("");setEdits(Object.fromEntries((p.allocations??[]).map((a:any)=>[a.return_line_id,{qty:String(a.quantity),price:String(a.unit_credit_price)}])));setReceiptLine(receipts.find(r=>r.document_id===p.receipt_document_id&&r.item_id===p.item_id)??null);setWindow(p.action==="return_credit"?"return":"price");
+  }}/></View>)}
   <Text style={styles.sub}>Record the supplier's actual credit. One note can cover several returns, and individual returns can be credited in parts. Stock is NOT moved again.</Text>
   {notice?<Text style={styles.success}>{notice}</Text>:null}{!window&&error?<Text style={styles.error}>{error}</Text>:null}
-  <View style={styles.row}>{["JS","AO"].map(o=><Pressable key={o} onPress={()=>{setOwner(o);setSupplier("")}} style={[styles.choice,owner===o&&styles.selected]}><Text>{o}</Text></Pressable>)}</View>
-  <Text style={styles.label}>Supplier</Text><ScrollView horizontal contentContainerStyle={styles.row}>{supplierNames.map(s=><Pressable key={s} style={[styles.choice,supplier===s&&styles.selected]} onPress={()=>setSupplier(s)}><Text>{s}</Text></Pressable>)}</ScrollView>
+  <StockSelect label="Stock owner" value={owner} options={[{id:"JS",label:"JS"},{id:"AO",label:"AO"}]} onChange={v=>{setOwner(String(v??"JS"));setSupplier("")}}/>
+  <StockSelect label="Supplier" value={supplier} options={supplierNames.map(name=>({id:name,label:name}))} onChange={v=>setSupplier(String(v??""))}/>
   <View style={styles.row}>{button("Credit Returned Stock",()=>open("return"),!supplier)}{button("Price-only Credit",()=>open("price"),!supplier)}</View>
   <Text style={styles.heading}>Outstanding Returns</Text>
   {busy&&!window?<ActivityIndicator/>:null}
@@ -79,7 +88,7 @@ export default function SupplierCredits(){
  </ScrollView>
  <Modal visible={window!==null} animationType="slide" onRequestClose={close}>
   <View style={styles.root}><ScrollView contentContainerStyle={styles.page}>
-   <View style={styles.top}><Text style={styles.heading}>{window==="history"?"Supplier Credit Note":window==="price"?"Price-only Credit":"Record Supplier Credit"}</Text><Pressable onPress={close}><Text style={styles.link}>✕ Close</Text></Pressable></View>
+   <StockV2Header title={window==="history"?"Supplier Credit Note":window==="price"?"Price-only Credit":"Record Supplier Credit"} onStock={()=>{if(!busy)close()}}/>
    {window==="history"&&selectedCredit?<View style={styles.panel}><Text style={styles.bold}>{selectedCredit.credit_note_number} · {selectedCredit.supplier_name}</Text><Text>{display(selectedCredit.credit_note_date)} · ${value(selectedCredit.total_amount).toFixed(2)}</Text><Text>{selectedCredit.notes}</Text>{selectedCredit.price_adjustment?<Text>Linked {selectedCredit.price_adjustment.receipt_number} · {selectedCredit.price_adjustment.item_name} · ${Number(selectedCredit.price_adjustment.amount).toFixed(2)} · {selectedCredit.price_adjustment.reason}</Text>:null}{(selectedCredit.allocations||[]).map((a,i)=><Text key={i}>{a.return_number} · {a.item_name} · {a.quantity} × ${a.unit_credit_price} actual (expected ${Number(a.agreed_price).toFixed(2)}/unit; variance ${(Number(a.actual_value)-Number(a.expected_value)).toFixed(2)})</Text>)}
     {selectedCredit.credit_kind==="return"?<Text style={styles.bold}>Line allocations ${selectedCredit.allocations.reduce((n,a)=>n+Number(a.actual_value),0).toFixed(2)} · Actual supplier credit ${value(selectedCredit.total_amount).toFixed(2)} · Difference ${(value(selectedCredit.total_amount)-selectedCredit.allocations.reduce((n,a)=>n+Number(a.actual_value),0)).toFixed(2)}</Text>:null}</View>:null}
    {window==="return"||window==="price"?<>
@@ -103,8 +112,9 @@ export default function SupplierCredits(){
     </>:null}
     <Text style={styles.label}>Actual supplier credit note total ($)</Text><TextInput style={styles.input} keyboardType="decimal-pad" value={amount} onChangeText={setAmount} placeholder="Exact amount on supplier credit"/>
     <Text style={styles.label}>Notes / reason for any difference</Text><TextInput style={styles.input} multiline value={notes} onChangeText={setNotes} placeholder="Required if total differs from allocated lines"/>
-    {error?<Text style={styles.error}>{error}</Text>:null}
-    {button(busy?"Saving…":"Post Credit Note",()=>void save())}
+    {error?<><Text style={styles.error}>{error}</Text><StockRecovery scope="credit" onRecovered={()=>void load()}/></>:null}
+    <View style={styles.row}>{button("Save Draft",()=>void save("save"))}{button(busy?"Saving…":"Submit for Approval",()=>void save("submit"))}</View>
+    {editDocument?<><StockField label="Cancellation reason" value={correctionReason} onChange={setCorrectionReason}/><StockButton title="Cancel Credit Request" disabled={busy} onPress={()=>void cancelDraft()}/></>:null}
    </>:null}
   </ScrollView></View>
  </Modal>

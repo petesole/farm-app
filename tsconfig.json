@@ -9,6 +9,7 @@
       "@/*": ["./*"]
     }
   },
+  "exclude": ["node_modules", "supabase/functions"],
   "include": [
     "**/*.ts",
     "**/*.tsx",
@@ -16,5 +17,3 @@
     "expo-env.d.ts"
   ]
 }
-
-

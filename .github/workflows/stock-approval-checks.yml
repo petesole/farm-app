@@ -1,0 +1,18 @@
+name: Stock approval regression checks
+on:
+  pull_request:
+    branches: [development]
+  push:
+    branches: [feature/stock-approvals-20261112]
+jobs:
+  stock-approval-workflow:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - run: npm ci --prefix tests/stock-workflow --no-audit --no-fund
+      - run: node tests/stock-workflow/run.cjs

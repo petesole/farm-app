@@ -1,3 +1,5 @@
+import {stockMutation} from "@/utils/stock-workflow";
+import {StockRecovery} from "@/components/jspl/StockWorkflowControls";
 import {parseJsplDateInput,displayJsplDate} from "@/utils/jspl-input";
 import {StockV2Header} from "@/components/jspl/StockV2Header";
 import {useEffect,useMemo,useState} from "react";
@@ -48,7 +50,7 @@ export default function GRVOutstanding(){
  const documentReady=!!dateISO(date)&&!!number.trim();
  const hasPO=outstandingPO.length>0;
  const includeRow=(row:Chosen)=>setChosen(prev=>({...prev,[row.key]:prev[row.key]??row}));
- const valid=!!owner&&!!supplier&&!!type&&!!dateISO(date)&&!!number.trim()&&lines.length>0&&lines.every(x=>(type==="dnote"?(x.price.trim()===""||(Number.isFinite(Number(x.price))&&Number(x.price)>0)):(x.price.trim()!==""&&Number.isFinite(Number(x.price))&&Number(x.price)>0))&&(x.kind==="DN"||(x.quantity.trim()!==""&&Number.isFinite(Number(x.quantity))&&Number(x.quantity)>0&&Number(x.quantity)<=x.max)))&&(type!=="dnote"||lines.every(x=>x.kind==="PO"));
+ const valid=!!owner&&!!supplier&&!!type&&!!dateISO(date)&&!!number.trim()&&lines.length>0&&lines.every(x=>(type==="dnote"?(x.price.trim()===""||(Number.isFinite(Number(x.price))&&Number(x.price)>0)):(x.price.trim()!==""&&Number.isFinite(Number(x.price))&&Number(x.price)>0))&&(x.kind==="DN"||(x.quantity.trim()!==""&&Number.isFinite(Number(x.quantity))&&Number(x.quantity)>0&&Number(x.quantity)<=x.max)))&&(type!=="dnote"||lines.every(x=>x.kind===(noPO?"DIRECT":"PO")));
  const submitCombined=async()=>{if(!valid||busy||type!=="grv")return;setBusy(true);setError("");setSuccess("");try{
   const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");
   const grouped=new Map<string,{item_code:string;invoice_quantity:number;unit_price:number}>();
@@ -58,13 +60,11 @@ export default function GRVOutstanding(){
    grouped.set(line.item_code,{item_code:line.item_code,invoice_quantity:(prior?.invoice_quantity??0)+quantity,unit_price:price});
    if(line.kind==="PO"){const v=receipts.get(line.item_code);receipts.set(line.item_code,{item_code:line.item_code,quantity:(v?.quantity??0)+quantity});}
   }
-  const requestId="xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,v=>{const n=Math.floor(Math.random()*16);return(v==="x"?n:(n&3)|8).toString(16)});
   const payload={owner_code:owner,supplier,invoice_number:number.trim(),invoice_date:dateISO(date),receipt_date:dateISO(date),
    invoice_lines:[...grouped.values()],allocations:lines.filter(x=>x.kind==="DN").map(x=>({line_id:Number(x.key.slice(3)),quantity:Number(x.quantity)})),
    new_receipts:[...receipts.values()],
    po_allocations:lines.filter(x=>x.kind==="PO").map(x=>({order_line_id:x.orderLineId,item_code:x.item_code,quantity:Number(x.quantity)}))};
-  const response=await fetch(endpoint,{method:"POST",headers:{authorization:"Bearer "+session.access_token,"content-type":"application/json"},body:JSON.stringify({action:"combined_grv",request_id:requestId,payload})});
-  const result=await response.json();if(!response.ok)throw Error(result.error||"GRV posting failed");
+  await stockMutation("receiving",{action:"combined_grv",payload});
   setChosen({});setNumber("");setDate("");setSupplier("");setType("");setSuccess("Combined GRV saved and valued. Existing D-Note quantities were not posted again.");await load();
  }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
  const submitDNote=async()=>{if(!valid||busy||type!=="dnote")return;
@@ -73,11 +73,9 @@ export default function GRVOutstanding(){
   if(noPO&&!lines.every(x=>x.kind==="DIRECT")){setError("Choose unplanned receipt products only.");return;}
   setBusy(true);setError("");setSuccess("");
   try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");
-   const id="xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,v=>{const n=Math.floor(Math.random()*16);return(v==="x"?n:(n&3)|8).toString(16)});
    const payload={owner_code:owner,supplier,...(!noPO?{order_id:poIds[0]}:{}),receipt_mode:"dnote",delivery_note:number.trim(),receipt_date:dateISO(date),lines:(noPO?lines:selected).map(x=>({item_code:x.item_code,quantity:Number(x.quantity)}))};
    const multiPayload={owner_code:owner,supplier,delivery_note:number.trim(),receipt_date:dateISO(date),lines:selected.map(x=>({order_line_id:x.orderLineId,quantity:Number(x.quantity),...(x.price.trim()?{unit_price:Number(x.price)}:{})}))};
-   const response=await fetch(endpoint,{method:"POST",headers:{authorization:"Bearer "+session.access_token,"content-type":"application/json"},body:JSON.stringify({action:noPO?"unplanned_dnote":"multi_po_dnote",request_id:id,payload:noPO?payload:multiPayload})});
-   const result=await response.json();if(!response.ok)throw Error(result.error||"D-Note posting failed");
+   await stockMutation("receiving",{action:noPO?"unplanned_dnote":"multi_po_dnote",payload:noPO?payload:multiPayload});
    setChosen({});setNumber("");setSupplier("");setType("");setSuccess("D-Note received into stock. Unit prices remain pending GRV.");await load();
   }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}
  };
@@ -85,7 +83,7 @@ export default function GRVOutstanding(){
  return <ThemedView style={s.root}><ScrollView contentContainerStyle={s.page}>
    <StockV2Header title="POs Outstanding — Receiving" onRefresh={()=>void load()}/>
 
-  {busy?<ActivityIndicator/>:null}{error?<ThemedText style={s.warning}>{error}</ThemedText>:null}{success?<ThemedText>{success}</ThemedText>:null}
+  {busy?<ActivityIndicator/>:null}{error?<><ThemedText style={s.warning}>{error}</ThemedText><StockRecovery scope="receiving" onRecovered={()=>void load()}/></>:null}{success?<ThemedText>{success}</ThemedText>:null}
   <View style={s.panel}><ThemedText style={s.label}>Stock Owner</ThemedText><View style={s.wrap}>{owners.map(x=>selection(x,x+" ("+ownerCount(x)+")",x===owner,()=>{setOwner(x);setSupplier("");setType("");setChosen({});setNoPO(false)}))}</View></View>
   {!!owner?<View style={s.panel}><ThemedText style={s.label}>Supplier</ThemedText><View style={s.wrap}>{suppliers.map(x=>selection(x,x,x===supplier,()=>{setSupplier(x);setType("");setChosen({})}))}</View></View>:null}
   {!!supplier?<View style={s.panel}><ThemedText style={s.label}>Document Type</ThemedText><View style={s.wrap}>{selection("dnote","Delivery Note",type==="dnote",()=>{setType("dnote");setChosen({});setNoPO(false)})}{selection("grv","Invoice GRV",type==="grv",()=>{setType("grv");setChosen({});setNoPO(false)})}</View></View>:null}

@@ -1,0 +1,69 @@
+Stock development approval workflow — release notes, 12 November 2026
+
+Scope
+This branch targets development. It does not change or deploy Main, Weighbridge,
+Fuel or Labour. The FarmingMain backend is shared: stock_v2 is a private test
+schema, not a separate Supabase project. Test owners remain TEST_JS / TEST_AO.
+
+Changes
+- Dashboard: Admin Awaiting Approval count and queue for POs, supplier credit
+  notes and submitted stocktakes; Credit Notes, GRV Corrections and Staff Access.
+- PO lifecycle: Stock/Admin enters or edits before approval, Admin approves,
+  Stock/Admin finalises for receiving. Admin can change/cancel approved orders
+  before receipt with a reason. Any received quantity locks the entire PO.
+  Cancellation is audited; originals and subsequent receipts are preserved.
+- Existing POs acquire review metadata without recreating orders or stock.
+- Supplier credit entry is available to Stock/Admin. Submission has no inventory
+  or credit-allocation effect. Admin approval applies atomically and locks the
+  credit header and its allocations. Overcrediting is checked again at approval.
+- A new GRV can reference an applied supplier credit for the same owner/supplier,
+  with a reason; the applied credit itself remains intact.
+- Uninvoiced D-Note reference/date and physical quantities can be corrected by
+  Stock/Admin, with audit/linked adjustments. Once invoiced, Stock cannot change
+  the receipt. Admin uses the separate linked GRV correction screen.
+- Invoice quantity corrections record a discrepancy, not physical stock.
+  Example: received100/invoiced110 keeps100 physical and records10 variance.
+  Unit-price corrections recalculate costs and preserve original invoice lines.
+- Physical corrections check issued/transferred stock, quantities already
+  returned, and historical negative stock; failures roll back the transaction.
+  Corrected physical quantities flow into subsequent invoice matching/returns.
+- Counts, supplier returns and adjustments recalculate costs atomically.
+  Stock balances use the latest complete cost run and purchase-price corrections.
+- Stock access is checked by verified sign-in and database-managed roles. Stock
+  Admin/global Admin can assign existing users without changing other roles.
+  No ordinary user receives Stock access merely by being signed in. Owner and
+  contract-policy changes require Admin. Direct browser execution of private
+  Stock routines is revoked; new private tables have RLS and no browser grants.
+- New saves, receiving, corrections, counts and supplier returns retain an
+  operation reference and verify retries. A response lost after commit does not
+  create a second posting. Inputs remain on failed/uncertain saves.
+
+Verification
+Run tests/stock-workflow/run.cjs after installing its locked dependencies.
+The local checks execute captured Stock PostgreSQL schema/routines with synthetic
+data in PGlite, the checked-in Edge handlers with a SQL adapter, and the actual
+PO/approval screens with React/jsdom and mocked native controls. JWT validation,
+Deno, Supabase service connections and real staff sign-ins are not tested there.
+See the delivered test log for the final count/results and web-build result.
+Full repository TypeScript checking currently reports four existing errors from
+the missing @playwright/test dependency and its Labour test parameter types.
+No changed Stock screen errors were reported. Deno sources are excluded from
+Expo's TypeScript project and exercised through the local handler harness.
+
+Release boundary
+Nothing in this change automatically applies SQL or deploys an Edge function.
+stock_approval_workflow.sql is a release DRAFT, not an already-applied migration.
+Before an authorised development release: create a proper migration through the
+Supabase CLI, review it against current schema, and coordinate its application
+with the three Edge function updates and the development web build. Old clients
+will be told to reload for the new PO/credit/correction flows. Do not deploy only
+the new UI or only the new permission guard. Preserve existing records.
+
+After release, an existing global Admin must assign the actual Stock operators
+and test their real sign-ins. The stock_v2.staff_role table was empty at review.
+Confirm create/edit/save/list, approve/finalise/receive, corrections, credits,
+count approval, costs and printed/exported existing reports with those users
+before operational acceptance. Mobile devices/offline behaviour and a complete
+regression of every existing Stock report have not been commissioned here.
+Pastel/accounting integration has not been added. No production publish is
+authorised or performed by these notes.

@@ -1,3 +1,4 @@
+import {stockMutation} from "@/utils/stock-workflow";
 import {parseJsplDateInput,displayJsplDate} from "@/utils/jspl-input";
 import React,{useEffect,useState} from "react";
 import {useRouter} from "expo-router";
@@ -16,17 +17,17 @@ export default function DNoteCorrections(){
  const router=useRouter();const [docs,setDocs]=useState<Doc[]>([]),[selected,setSelected]=useState<Doc|null>(null),[search,setSearch]=useState("");
  const [number,setNumber]=useState(""),[date,setDate]=useState(""),[reason,setReason]=useState(""),[lines,setLines]=useState<Line[]>([]),[quantities,setQuantities]=useState<Record<number,string>>({});
  const [error,setError]=useState(""),[notice,setNotice]=useState(""),[loading,setLoading]=useState(true),[saving,setSaving]=useState(false);
- const request=async(query:string,payload?:unknown)=>{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");const r=await fetch(endpoint+query,{method:payload?"POST":"GET",headers:{authorization:"Bearer "+session.access_token,...(payload?{"content-type":"application/json"}:{})},...(payload?{body:JSON.stringify(payload)}:{})});const j=await r.json();if(!r.ok)throw Error(j.error||"Request failed");return j};
+ const request=async(query:string,payload?:unknown)=>{if(payload)return stockMutation("dnote-details",payload as Record<string,unknown>);const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");const r=await fetch(endpoint+query,{method:payload?"POST":"GET",headers:{authorization:"Bearer "+session.access_token,...(payload?{"content-type":"application/json"}:{})},...(payload?{body:JSON.stringify(payload)}:{})});const j=await r.json();if(!r.ok)throw Error(j.error||"Request failed");return j};
  const load=async()=>{setLoading(true);setError("");try{const j=await request("?correction_dnotes=1");setDocs(j.rows||[])}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setLoading(false)}};
  useEffect(()=>{void load()},[]);
  const open=async(d:Doc)=>{setSelected(d);setNumber(d.delivery_note||"");setDate(dateLabel(d.delivery_note_date||d.document_date));setReason("");setQuantities({});setLines([]);setError("");if(d.locked)return;try{const j=await request("?correction_dnote_lines=1&document_id="+d.document_id);setLines(j.rows||[])}catch(e){setError(e instanceof Error?e.message:String(e))}};
  const close=()=>{setSelected(null);setError("")};
  const save=async()=>{if(!selected||selected.locked)return;setSaving(true);setError("");try{if(!iso(date))throw Error("Enter valid date dd/mm/yyyy");if(reason.trim().length<5)throw Error("Enter a reason of at least 5 characters");await request("",{action:"correct_dnote_details",document_id:selected.document_id,delivery_note:number.trim(),delivery_note_date:iso(date),reason:reason.trim()});close();await load();setNotice("D-Note updated; audit record saved")}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setSaving(false)}};
- const reduce=async(l:Line)=>{if(!selected||selected.locked)return;const qty=Number(quantities[l.line_id]);setSaving(true);setError("");try{const remaining=Math.max(0,l.received_quantity-l.invoiced_quantity-l.reduced_quantity);if(!Number.isFinite(qty)||qty<=0||qty>remaining)throw Error("Enter a quantity within the available uninvoiced balance");if(reason.trim().length<5)throw Error("Enter a reason of at least 5 characters");await request("",{action:"correct_dnote_uninvoiced",line_id:l.line_id,quantity:qty,reason:reason.trim()});setLines(v=>v.map(x=>x.line_id===l.line_id?{...x,reduced_quantity:x.reduced_quantity+qty}:x));setQuantities(x=>({...x,[l.line_id]:""}));setNotice("Audited adjustment posted");await load()}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setSaving(false)}};
+ const reduce=async(l:Line)=>{if(!selected||selected.locked)return;const qty=Number(quantities[l.line_id]);setSaving(true);setError("");try{if(!Number.isFinite(qty)||qty<=0)throw Error("Enter the correct positive physical quantity");if(reason.trim().length<8)throw Error("Enter a correction reason of at least 8 characters");await stockMutation("dnote-quantity",{action:"workflow_correct_physical",payload:{receipt_line_id:l.line_id,quantity:qty,expected_quantity:l.received_quantity,reason:reason.trim()}});close();await load();setNotice("Linked physical correction posted; original D-Note retained")}catch(e){setError((e as Error).message)}finally{setSaving(false)}};
  const matched=docs.filter(d=>(d.delivery_note+" "+d.supplier_name+" "+d.display_no).toLowerCase().includes(search.toLowerCase()));
  return <ThemedView style={styles.root}><ScrollView contentContainerStyle={styles.page}>
   <StockV2Header title="D-Note Corrections"/>
-  <Pressable onPress={()=>router.back()}><ThemedText style={styles.link}>‹ Back to Stock</ThemedText></Pressable>
+
   <ThemedText>Open any D-Note to view its status. Once a GRV/invoice has been linked, the original D-Note is locked.</ThemedText>
   <TextInput style={styles.input} placeholder="Search D-Note or supplier" value={search} onChangeText={setSearch}/>
   {notice?<ThemedText style={styles.success}>{notice}</ThemedText>:null}{error&&!selected?<ThemedText style={styles.error}>{error}</ThemedText>:null}
@@ -37,7 +38,7 @@ export default function DNoteCorrections(){
  </ScrollView>
  <Modal visible={!!selected} animationType="slide" onRequestClose={close}>
   <ThemedView style={styles.root}><ScrollView contentContainerStyle={styles.page}>
-   <View style={styles.top}><ThemedText style={styles.heading}>D-Note {selected?.display_no}</ThemedText><Pressable onPress={close}><ThemedText style={styles.link}>✕ Close</ThemedText></Pressable></View>
+   <StockV2Header title={"D-Note "+selected?.display_no} onStock={()=>{if(!saving)close()}}/>
    <ThemedText style={styles.bold}>{selected?.supplier_name} · {selected?.delivery_note}</ThemedText>
    <ThemedText>Original date {dateLabel(selected?.delivery_note_date||selected?.document_date||null)} · {selected?.line_count} lines</ThemedText>
    {selected?.locked?<View style={styles.panel}><ThemedText style={styles.error}>Locked — GRV/invoice already linked</ThemedText><ThemedText>The original D-Note cannot be changed. Resolve subsequent quantity or price differences with a linked supplier return, credit or adjustment, preserving the original record.</ThemedText><Pressable onPress={()=>{close();router.push("/(tabs)/home/stock-v2-supplier-returns")}} style={styles.button}><ThemedText style={styles.white}>Open Supplier Returns</ThemedText></Pressable></View>:<>
@@ -46,9 +47,9 @@ export default function DNoteCorrections(){
     <ThemedText style={styles.bold}>Reason for correction</ThemedText><TextInput multiline style={styles.input} value={reason} onChangeText={setReason}/>
     <Pressable disabled={saving} style={styles.button} onPress={()=>void save()}><ThemedText style={styles.white}>{saving?"Saving…":"Save D-Note Details"}</ThemedText></Pressable>
     <ThemedText style={styles.heading}>Uninvoiced Stock Corrections</ThemedText>
-    {lines.map(l=>{const remaining=Math.max(0,l.received_quantity-l.invoiced_quantity-l.reduced_quantity);return <View key={l.line_id} style={styles.panel}>
-      <ThemedText style={styles.bold}>{l.item_name}</ThemedText><ThemedText>Received {l.received_quantity} · Invoiced {l.invoiced_quantity} · Reduced {l.reduced_quantity} · Available {remaining} {l.base_unit}</ThemedText>
-      {remaining>0?<View style={styles.top}><TextInput style={[styles.input,{flex:1}]} placeholder="Qty to remove" keyboardType="decimal-pad" value={quantities[l.line_id]||""} onChangeText={v=>setQuantities(x=>({...x,[l.line_id]:v}))}/><Pressable style={styles.button} disabled={saving} onPress={()=>void reduce(l)}><ThemedText style={styles.white}>Reduce</ThemedText></Pressable></View>:null}
+    {lines.map(l=>{const remaining=Math.max(0,l.received_quantity-l.invoiced_quantity);return <View key={l.line_id} style={styles.panel}>
+      <ThemedText style={styles.bold}>{l.item_name}</ThemedText><ThemedText>Received {l.received_quantity} · Invoiced {l.invoiced_quantity} · Available {remaining} {l.base_unit}</ThemedText>
+      {remaining>0?<View style={styles.top}><TextInput style={[styles.input,{flex:1}]} placeholder="Correct physical qty" keyboardType="decimal-pad" value={quantities[l.line_id]||""} onChangeText={v=>setQuantities(x=>({...x,[l.line_id]:v}))}/><Pressable style={styles.button} disabled={saving} onPress={()=>void reduce(l)}><ThemedText style={styles.white}>Correct Quantity</ThemedText></Pressable></View>:null}
      </View>})}
    </>}
    {error?<ThemedText style={styles.error}>{error}</ThemedText>:null}{notice?<ThemedText style={styles.success}>{notice}</ThemedText>:null}
