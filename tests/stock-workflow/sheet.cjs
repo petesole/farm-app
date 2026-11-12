@@ -1,0 +1,13 @@
+const assert=require('node:assert/strict'),fs=require('fs'),path=require('path'),Module=require('module');
+const root=path.resolve(__dirname,'../..'),ts=require(root+'/node_modules/typescript'),oldLoad=Module._load;
+Module._load=function(name,parent,isMain){return oldLoad.call(this,name.startsWith('@/')?root+'/'+name.slice(2):name,parent,isMain)};
+require.extensions['.ts']=(mod,file)=>mod._compile(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,file);
+const {sortStockItems,stockSheetHTML,stockSheetWorkbook}=require(root+'/utils/stock-sheet.ts');
+const rows=[{item_code:'Z',item_name:'Zebra',category:'Herbicide',stock_type:'Chemical',base_unit:'L',system_quantity:999},{item_code:'F',item_name:'Fertilizer <A>',category:'Nutrient',stock_type:'Fertilizer',base_unit:'kg'},{item_code:'A',item_name:'Alpha & Beta',category:'Herbicide',stock_type:'Chemical',base_unit:'L'}];
+assert.deepEqual(sortStockItems(rows).map(x=>x.item_code),['A','Z','F']);
+const header={take_number:'ST-TEST',owner_code:'TEST_JS',notes:'Test <stock>',printed_at:'2026-11-12T09:00:00Z'},html=stockSheetHTML(header,rows);
+assert(html.indexOf('Alpha &amp; Beta')<html.indexOf('Zebra'));assert(html.includes('Fertilizer &lt;A&gt;'));assert(!html.includes('999'));assert(!html.includes('system_quantity'));assert.equal((html.match(/class="count"><\/td>/g)||[]).length,3);
+const zip=Buffer.from(stockSheetWorkbook(header,rows)),entries=new Map();let offset=0;
+while(offset+30<zip.length&&zip.readUInt32LE(offset)===0x04034b50){assert.equal(zip.readUInt16LE(offset+8),0);const size=zip.readUInt32LE(offset+18),nameLength=zip.readUInt16LE(offset+26),extraLength=zip.readUInt16LE(offset+28),name=zip.subarray(offset+30,offset+30+nameLength).toString(),dataStart=offset+30+nameLength+extraLength;entries.set(name,zip.subarray(dataStart,dataStart+size).toString());offset=dataStart+size;}
+assert(entries.has('[Content_Types].xml'));const sheet=entries.get('xl/worksheets/sheet1.xml');assert(sheet&&sheet.indexOf('Alpha &amp; Beta')<sheet.indexOf('Zebra'));assert(!sheet.includes('999'));assert(sheet.includes('Quantity counted'));assert(sheet.includes('Herbicide'));assert(sheet.includes('Nutrient'));
+console.log('PASS Stock sheet category/product order, escaping, blank counts and genuine matching XLSX');Module._load=oldLoad;

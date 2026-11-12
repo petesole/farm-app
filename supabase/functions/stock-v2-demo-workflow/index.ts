@@ -97,11 +97,11 @@ Deno.serve(async(req)=>{
   if(req.method==="GET" && new URL(req.url).searchParams.has("stocktake_lines")){
     const takeId=Number(new URL(req.url).searchParams.get("take_id"));
     if(!Number.isSafeInteger(takeId))return reply({error:"Invalid count"},400);
-    const rows=await db`select x.take_id,i.item_code,i.item_name,i.category,i.base_unit,x.system_quantity::float8 as system_quantity,x.counted_quantity::float8 as counted_quantity from stock_v2.stocktake_line x join stock_v2.item i on i.item_id=x.item_id where x.take_id=${takeId} order by i.item_name`;
+    const rows=await db`select x.take_id,i.item_code,i.item_name,coalesce(nullif(btrim(i.input_category),''),nullif(btrim(i.category),''),'Uncategorised') as category,coalesce(nullif(btrim(i.input_type),''),'Other') as stock_type,i.base_unit,x.system_quantity::float8 as system_quantity,x.counted_quantity::float8 as counted_quantity from stock_v2.stocktake_line x join stock_v2.item i on i.item_id=x.item_id where x.take_id=${takeId} order by lower(coalesce(nullif(btrim(i.input_category),''),nullif(btrim(i.category),''),'Uncategorised')),lower(i.item_name),i.item_code`;
     return reply({rows});
   }
   if(req.method==="GET" && new URL(req.url).searchParams.has("adjustment_stock")){
-    const rows=await db`select i.item_code,i.item_name,i.category,i.base_unit,o.owner_code,l.location_code,coalesce(q.quantity,0)::float8 as quantity from stock_v2.item i cross join stock_v2.owner o cross join stock_v2.location l left join stock_v2.quantity_balance q on q.item_id=i.item_id and q.owner_id=o.owner_id and q.location_id=l.location_id where o.owner_code in ('TEST_JS','TEST_AO') and l.location_code='TEST_WH' and i.active=true order by i.item_name`;
+    const rows=await db`select i.item_code,i.item_name,coalesce(nullif(btrim(i.input_category),''),nullif(btrim(i.category),''),'Uncategorised') as category,coalesce(nullif(btrim(i.input_type),''),'Other') as stock_type,i.base_unit,o.owner_code,l.location_code,coalesce(q.quantity,0)::float8 as quantity from stock_v2.item i cross join stock_v2.owner o cross join stock_v2.location l left join stock_v2.quantity_balance q on q.item_id=i.item_id and q.owner_id=o.owner_id and q.location_id=l.location_id where o.owner_code in ('TEST_JS','TEST_AO') and l.location_code='TEST_WH' and i.active=true order by lower(coalesce(nullif(btrim(i.input_category),''),nullif(btrim(i.category),''),'Uncategorised')),lower(i.item_name),i.item_code`;
     return reply({rows});
   }
   if(req.method==="GET" && new URL(req.url).searchParams.has("correction_dnote_lines")){
@@ -192,7 +192,7 @@ Deno.serve(async(req)=>{
    from stock_v2.owner o left join stock_v2.owner_policy p on p.owner_id=o.owner_id
    where o.owner_code like 'TEST_%' order by o.owner_name`;
    const contracts=await db`select contract_id,contract_code,contract_name,active from stock_v2.contracts order by contract_code`;
-   const items=await db`select item_code,item_name,base_unit from stock_v2.item where item_code in ('DEMO_MOSQUITO','DEMO_GLYPHOSATE','DEMO_LAMBDA','DEMO_COMPOUND_D') order by item_name`;
+   const items=await db`select item_code,item_name,base_unit from stock_v2.item where active=true order by item_name`;
    const orders=await db`select h.order_id,h.order_number,h.supplier_name,replace(o.owner_code,'TEST_','') as owner_code,h.contract_id,
      i.item_code,i.item_name,i.base_unit,ol.ordered_quantity::float8 ordered_quantity,ol.received_quantity::float8 received_quantity,
      ol.ordered_unit_price::float8 ordered_unit_price
@@ -201,14 +201,10 @@ Deno.serve(async(req)=>{
      where o.owner_code like 'TEST_%' and h.status='approved'
        and ol.ordered_quantity>ol.received_quantity
      order by h.order_id desc limit 400`;
-   const balances=await db`select replace(o.owner_code,'TEST_','') owner_code,i.item_code,i.item_name,i.base_unit,
-       coalesce(sum(m.quantity_delta),0)::float8 quantity
-     from stock_v2.owner o cross join stock_v2.item i
-     left join stock_v2.document_line dl on dl.item_id=i.item_id
-     left join stock_v2.movement m on m.document_line_id=dl.line_id and m.owner_id=o.owner_id
-       and m.location_id=(select location_id from stock_v2.location where location_code='TEST_WH')
-     where o.owner_code like 'TEST_%' and i.item_code in ('DEMO_MOSQUITO','DEMO_GLYPHOSATE','DEMO_LAMBDA','DEMO_COMPOUND_D')
-     group by o.owner_code,i.item_code,i.item_name,i.base_unit order by o.owner_code,i.item_name`;
+   const balances=await db`select replace(o.owner_code,'TEST_','') owner_code,i.item_code,i.item_name,i.base_unit,coalesce(nullif(btrim(i.input_category),''),nullif(btrim(i.category),''),'Uncategorised') as category,
+    coalesce(q.quantity,0)::float8 as quantity from stock_v2.owner o cross join stock_v2.item i
+    left join stock_v2.quantity_balance q on q.owner_id=o.owner_id and q.item_id=i.item_id and q.location_id=(select location_id from stock_v2.location where location_code='TEST_WH')
+    where o.owner_code in ('TEST_JS','TEST_AO') and o.active and i.active order by o.owner_code,lower(i.item_name),i.item_code`;
    return reply({owners,contracts,items,orders,balances});
   }
   if(req.method==="GET" && new URL(req.url).searchParams.has("stock_setup")){
@@ -421,6 +417,10 @@ left join lateral (
    return reply({success:true});
   }
   // Old clients cannot bypass the new approval lifecycle.
+  if(body?.action==="ownership_transfer" && body.operation_id){
+   const result=await transaction(async tx=>{const rows=await tx`select stock_v2.demo_multi('ownership_transfer',${body.operation_id}::uuid,${tx.json(body.payload??{})}::jsonb) as result`;return rows[0].result;});
+   return reply({success:true,result});
+  }
   if(body?.action==="order")return reply({error:"Use Purchase Orders to submit for Admin approval and finalise the approved order."},409);
   if(body?.action==="unplanned_dnote"){
    const p=body.payload??{},id=String(body.operation_id??body.request_id??"");
