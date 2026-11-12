@@ -29,7 +29,7 @@ export default function OwnerTransactions(){
  const refresh=async()=>{setBusy(true);try{const r=await fetch(url+"?owner_workflow=1",{headers:{authorization:"Bearer "+await getToken()}});const d=await r.json();if(!r.ok)throw Error(d.error||"Failed to load");setData(d)}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
  useEffect(()=>{void refresh()},[]);
  const reset=()=>{setConfirmed(false);setRequest(null)};
- const changeTab=(v:typeof tab)=>{setTab(v);setLines([empty(seq)]);setSeq(x=>x+1);setOrderId(null);setSupplier("");setContractId(null);setNotice("");setError("");reset()};
+ const changeTab=(v:typeof tab)=>{if(v==="order"){router.push("/stock-v2-purchase-orders");return;}setTab(v);setLines([empty(seq)]);setSeq(x=>x+1);setOrderId(null);setSupplier("");setContractId(null);setNotice("");setError("");reset()};
  const owner=data?.owners.find(o=>o.owner_code===ownerCode);
  const defaultContract=owner?.default_contract_id??null;
  const selectedContract=defaultContract??contractId;

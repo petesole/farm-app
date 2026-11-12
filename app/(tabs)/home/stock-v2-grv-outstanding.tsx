@@ -1,3 +1,6 @@
+import {StockRecovery} from "@/components/jspl/StockWorkflowControls";
+import {stockMutation,stockRequest} from "@/utils/stock-workflow";
+import {StockSelect,StockField} from "@/components/jspl/StockWorkflowControls";
 import {parseJsplDateInput,displayJsplDate} from "@/utils/jspl-input";
 import {StockV2Header} from "@/components/jspl/StockV2Header";
 import {useEffect,useMemo,useState} from "react";
@@ -12,12 +15,13 @@ const dateISO=(value:string)=>parseJsplDateInput(value) ?? null;
 const formatDate=(v:string|null|undefined)=>{if(!v)return "—";const s=String(v);if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(8,10)+"/"+s.slice(5,7)+"/"+s.slice(0,4);return /^\d{2}\/\d{2}\/\d{4}$/.test(s)?s:"—";};
 const shortDNote=(x:Line)=>/^(?:DEMO-)?DN-[a-f0-9]{8}-[a-f0-9-]{27,}$/i.test(x.delivery_note)?String(x.document_id):x.delivery_note;
 export default function GRVOutstanding(){
+ const [credits,setCredits]=useState<any[]>([]),[sourceCredit,setSourceCredit]=useState<number|null>(null),[linkReason,setLinkReason]=useState("");
  const [rows,setRows]=useState<Line[]>([]),[owner,setOwner]=useState(""),[supplier,setSupplier]=useState("");
  const [date,setDate]=useState(""),[invoice,setInvoice]=useState("");
  const [prices,setPrices]=useState<Record<number,string>>({});
  const [checked,setChecked]=useState<number[]>([]);
  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[success,setSuccess]=useState("");
- const load=async()=>{setBusy(true);try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");const r=await fetch(endpoint+"?outstanding_dnotes=1",{headers:{authorization:"Bearer "+session.access_token}});const d=await r.json();if(!r.ok)throw Error(d.error||"Unable to load outstanding D Notes");setRows(d.rows??[]);}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
+ const load=async()=>{setBusy(true);try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");const r=await fetch(endpoint+"?outstanding_dnotes=1",{headers:{authorization:"Bearer "+session.access_token}});const d=await r.json();if(!r.ok)throw Error(d.error||"Unable to load outstanding D Notes");setRows(d.rows??[]);setCredits((await stockRequest("?linked_credit_options=1")).rows??[]);}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
  useEffect(()=>{void load()},[]);
  const owners=["JS","AO"];
  const ownerCount=(code:string)=>new Set(rows.filter(x=>x.owner_code===code).map(x=>x.document_id)).size;
@@ -31,19 +35,19 @@ export default function GRVOutstanding(){
  try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");
   const grouped=new Map<string,{item_code:string;invoice_quantity:number;unit_price:number}>();
   for(const line of included){const price=Number(prices[line.line_id]);const prev=grouped.get(line.item_code);if(prev&&prev.unit_price!==price)throw Error("Different prices for the same product must be invoiced separately.");grouped.set(line.item_code,{item_code:line.item_code,invoice_quantity:(prev?.invoice_quantity??0)+Number(line.quantity),unit_price:price});}
-  const payload={owner_code:owner,supplier,invoice_number:invoice.trim(),invoice_date:dateISO(date),receipt_date:dateISO(date),invoice_lines:[...grouped.values()],allocations:included.map(x=>({line_id:x.line_id,quantity:Number(x.quantity)})),new_receipts:[],po_allocations:[]};
-  const id="xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,v=>{const n=Math.floor(Math.random()*16);return(v==="x"?n:(n&3)|8).toString(16)});
-  const r=await fetch(endpoint,{method:"POST",headers:{authorization:"Bearer "+session.access_token,"content-type":"application/json"},body:JSON.stringify({action:"combined_grv",request_id:id,payload})});
-  const d=await r.json();if(!r.ok)throw Error(d.error||"GRV not posted");
+  const payload={source_credit_id:sourceCredit,credit_link_reason:linkReason,owner_code:owner,supplier,invoice_number:invoice.trim(),invoice_date:dateISO(date),receipt_date:dateISO(date),invoice_lines:[...grouped.values()],allocations:included.map(x=>({line_id:x.line_id,quantity:Number(x.quantity)})),new_receipts:[],po_allocations:[]};
+  await stockMutation("combined-grv",{action:"combined_grv",payload});
+  setSourceCredit(null);setLinkReason("");
   setSupplier("");setInvoice("");setDate("");setPrices({});setChecked([]);setSuccess("GRV posted. Outstanding D Notes have been valued without receiving stock again.");await load();
  }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
  const choice=(id:string,selected:boolean,onPress:()=>void,label:string)=><Pressable key={id} onPress={onPress} style={[s.option,selected&&s.active]}><ThemedText style={selected?s.activeText:undefined}>{label}</ThemedText></Pressable>;
  return <ThemedView style={s.root}><ScrollView contentContainerStyle={s.page} keyboardShouldPersistTaps="handled">
   <StockV2Header title="GRV — Outstanding D Notes" onRefresh={()=>void load()}/>
-  {busy?<ActivityIndicator/>:null}{error?<ThemedText style={s.warning}>{error}</ThemedText>:null}{success?<ThemedText>{success}</ThemedText>:null}
-  <View style={s.panel}><ThemedText style={s.label}>Stock Owner</ThemedText><View style={s.wrap}>{owners.map(x=>choice(x,owner===x,()=>{setOwner(x);setSupplier("");setPrices({});setChecked([]);setDate("");setInvoice("");},x+" ("+ownerCount(x)+")"))}</View></View>
-  {!!owner?<View style={s.panel}><ThemedText style={s.label}>Supplier — Outstanding D Notes Only</ThemedText><View style={s.wrap}>{suppliers.map(x=>choice(x,supplier===x,()=>{setSupplier(x);setPrices({});setInvoice("");},x))}</View>{!suppliers.length?<ThemedText>No outstanding D Notes for this owner.</ThemedText>:null}</View>:null}
+  {busy?<ActivityIndicator/>:null}{error?<><ThemedText style={s.warning}>{error}</ThemedText><StockRecovery scope="combined-grv" onRecovered={()=>void load()}/></>:null}{success?<ThemedText>{success}</ThemedText>:null}
+  <View style={s.panel}><StockSelect label="Stock owner" value={owner} options={owners.map(x=>({id:x,label:x+" ("+ownerCount(x)+")"}))} onChange={v=>{setOwner(String(v??""));setSupplier("");setSourceCredit(null);setLinkReason("");setPrices({});setChecked([]);setDate("");setInvoice("");}}/></View>
+  {!!owner?<View style={s.panel}><StockSelect label="Supplier — outstanding D-Notes" value={supplier} options={suppliers.map(x=>({id:x,label:x}))} onChange={v=>{setSupplier(String(v??""));setSourceCredit(null);setLinkReason("");setPrices({});setChecked([]);setInvoice("");}}/>{!suppliers.length?<ThemedText>No outstanding D Notes for this owner.</ThemedText>:null}</View>:null}
   {!!supplier?<><View style={s.panel}><View style={s.wrap}><View style={s.field}><ThemedText style={s.label}>Date</ThemedText><TextInput style={[s.input,s.required]} value={date} onChangeText={setDate} onBlur={()=>{const parsed=parseJsplDateInput(date);if(parsed)setDate(displayJsplDate(parsed));}} placeholder="d/m (year optional)"/></View><View style={s.field}><ThemedText style={s.label}>Invoice / GRV Number</ThemedText><TextInput style={[s.input,s.required]} value={invoice} onChangeText={setInvoice} placeholder="Invoice number"/></View></View></View>
+  {!!supplier?<View style={s.panel}><StockSelect label="Related approved credit (optional)" value={sourceCredit} options={credits.filter(c=>c.owner_code===owner&&c.supplier_name.trim().toLowerCase()===supplier.trim().toLowerCase()).map(c=>({id:Number(c.credit_id),label:c.credit_note_number+" · "+formatDate(c.credit_note_date)+" · "+c.total_amount}))} onChange={v=>setSourceCredit(v==null?null:Number(v))}/>{sourceCredit?<StockField label="Reason for linked GRV" value={linkReason} onChange={setLinkReason}/>:null}</View>:null}
   {documentReady?<View style={s.panel}><ThemedText style={s.label}>Outstanding D Notes — tick the lines included on this invoice</ThemedText>
    <ScrollView horizontal><View>
     <View style={s.trow}>{["Select","D Note #","Date (dd/mm/yyyy)","Product","Quantity Received","PO Price","Actual Price"].map((h,i)=><ThemedText key={h} style={[s.tcell,i===2&&s.wide,s.bold]}>{h}</ThemedText>)}</View>

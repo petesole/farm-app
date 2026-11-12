@@ -1,6 +1,7 @@
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { supabase } from "@/supabase";
+import {stockRequest} from '@/utils/stock-workflow';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
@@ -21,6 +22,7 @@ function landingForRole(roleName: string) {
   const r = norm(roleName);
 
   if (r === "admin") return "/(tabs)/main-dashboard";
+  if (r === "stock") return "/(tabs)/stock-test";
   if (r === "manager") return "/(tabs)/fuel";
   if (r === "rainfall") return "/rainfall-entry";
   if (r === "labour") return "/(tabs)/labour";
@@ -68,13 +70,14 @@ export default function LoginScreen() {
         return;
       }
       const roles = (access || []).map((r: string) => norm(r));
-      if (!roles.some((r: string) => ["admin", "manager", "fuel", "labour", "rainfall", "viewer", "irrigation", "scouting", "scout", "scouter"].includes(r))) {
+      try { if((await stockRequest('?stock_access=1')).access?.is_stock)roles.push('stock'); } catch { /* Other assigned modules retain their existing access. */ }
+      if (!roles.some((r: string) => ["admin", "manager", "fuel", "labour", "rainfall", "viewer", "irrigation", "scouting", "scout", "scouter", "stock"].includes(r))) {
         await supabase.auth.signOut();
         setStatus("Your account has no assigned Farm Management role.");
         return;
       }
       const role =
-        ["admin", "manager", "fuel", "labour", "rainfall", "irrigation", "scouting", "scout", "scouter", "viewer"]
+        ["admin", "manager", "fuel", "labour", "rainfall", "irrigation", "scouting", "scout", "scouter", "viewer", "stock"]
           .find((r) => roles.includes(r)) || roles[0];
       await AsyncStorage.setItem(
         "app_user",

@@ -1,4 +1,5 @@
 import { supabase } from "../../supabase";
+import {stockRequest} from '@/utils/stock-workflow';
 import { Redirect, Tabs } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Platform, View } from "react-native";
@@ -9,6 +10,7 @@ export default function TabsLayout() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [canFuel, setCanFuel] = useState(false);
   const [canLabour, setCanLabour] = useState(false);
+  const [canStock, setCanStock] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -28,10 +30,14 @@ export default function TabsLayout() {
         const admin = assigned.includes('admin');
         const fuelAccess = admin || assigned.includes('manager') || assigned.includes('fuel');
         const labourAccess = admin || assigned.includes('manager') || assigned.includes('labour');
+        let stockAccess=admin;
+        try { stockAccess=!!(await stockRequest('?stock_access=1')).access?.is_stock; } catch { /* Fail closed for Stock; other modules keep their assigned access. */ }
+        if(!alive)return;
         setIsAdmin(admin);
         setCanFuel(fuelAccess);
         setCanLabour(labourAccess);
-        setLoggedIn(admin || fuelAccess || labourAccess);
+        setCanStock(stockAccess);
+        setLoggedIn(admin || fuelAccess || labourAccess || stockAccess);
       } catch {
         if (!alive) return;
         setLoggedIn(false);
@@ -60,7 +66,7 @@ export default function TabsLayout() {
   }
 
   return (
-    <Tabs initialRouteName={isAdmin ? "main-dashboard" : canFuel ? "fuel" : "labour"} screenOptions={{ headerShown: false, tabBarStyle: { display: "none" } }}>
+    <Tabs initialRouteName={isAdmin ? "main-dashboard" : canFuel ? "fuel" : canLabour ? "labour" : "stock-test"} screenOptions={{ headerShown: false, tabBarStyle: { display: "none" } }}>
       <Tabs.Screen name="home" options={{ href: null }} />
       <Tabs.Screen name="control-panel" options={{ href: null }} />
       <Tabs.Screen name="vehicle-management" options={{ href: null }} />
@@ -72,7 +78,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="field-dashboard" options={{ title: "Trace", href: isAdmin ? "/field-dashboard" : null }} />
       <Tabs.Screen name="wb-admin" options={{ title: "Weighbridge", href: isAdmin && Platform.OS === "web" ? "/wb-admin" : null }} />
       <Tabs.Screen name="fuel" options={{ title: "Fuel", href: canFuel ? "/fuel" : null }} />
-      <Tabs.Screen name="stock-test" options={{ href: null }} />
+      <Tabs.Screen name="stock-test" options={{ href: canStock ? "/stock-test" : null }} />
       <Tabs.Screen name="labour" options={{ title: "Labour", href: canLabour && !isAdmin ? "/labour" : null }} />
       <Tabs.Screen name="cashbook" options={{ href: null }} />
       <Tabs.Screen
