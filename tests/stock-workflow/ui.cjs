@@ -6,6 +6,7 @@ async function testUI(db,admin,stock){
  const React=require(root+'/node_modules/react'),{createRoot}=require(root+'/node_modules/react-dom/client');const ts=require(root+'/node_modules/typescript');const oldLoad=Module._load;let actor=stock;
  const {edge}=require('./edge-harness.cjs');const storage=new Map();const routing=[];
  const native={StyleSheet:{create:x=>x},useWindowDimensions:()=>({width:1200,height:900}),Platform:{OS:'web'}};
+ const Tabs=({children,initialRouteName})=>React.createElement('div',{'data-initial-route':initialRouteName},children);Tabs.Screen=({name,options})=>React.createElement('span',{'data-tab':name,'data-href':options?.href??''});
  for(const name of ['View','ScrollView','Text','Image','ActivityIndicator','Modal','Pressable','TextInput'])native[name]=({children,style,contentContainerStyle,onPress,onChangeText,onFocus,onBlur,accessibilityLabel,accessibilityRole,keyboardType,editable,visible,disabled,...props})=>{
   if(name==='Modal'&&!visible)return null;
   if(name==='TextInput')return React.createElement('input',{value:props.value??'',placeholder:props.placeholder,'aria-label':accessibilityLabel,onChange:e=>onChangeText?.(e.target.value),onFocus,onBlur,disabled:editable===false});
@@ -14,9 +15,11 @@ async function testUI(db,admin,stock){
  };
  Module._load=function(name,parent,isMain){
   if(name==='react-native')return native;
-  if(name==='expo-router')return {useRouter:()=>({push:x=>routing.push(x),replace:x=>routing.push(x)}),router:{push:x=>routing.push(x),replace:x=>routing.push(x)},useFocusEffect:cb=>React.useEffect(cb,[cb])};
+  if(name==='expo-router')return {Tabs,Redirect:({href})=>React.createElement('div',{'data-redirect':href}),useRouter:()=>({push:x=>routing.push(x),replace:x=>routing.push(x)}),router:{push:x=>routing.push(x),replace:x=>routing.push(x)},useFocusEffect:cb=>React.useEffect(cb,[cb])};
+  if(name==='@/components/themed-text')return {ThemedText:native.Text};
+  if(name==='@/components/themed-view')return {ThemedView:native.View};
   if(name==='@react-native-async-storage/async-storage')return {getItem:async k=>storage.get(k)??null,setItem:async(k,v)=>storage.set(k,v),removeItem:async k=>storage.delete(k)};
-  if(name==='@/supabase'||name==='../../../supabase')return {supabase:{auth:{getSession:async()=>({data:{session:{access_token:'local',user:{id:actor}}}})}}};
+  if(name==='@/supabase'||name==='../../../supabase'||name==='../../supabase')return {supabase:{rpc:async()=>({data:(await db.query('select role_name from public.app_user_role where user_id=$1',[actor])).rows.map(r=>r.role_name)}),auth:{signInWithPassword:async()=>({data:{user:{id:actor,email:'stock@test'}}}),signOut:async()=>{},getUser:async()=>({data:{user:{id:actor}}}),getSession:async()=>({data:{session:{access_token:'local',user:{id:actor}}}})}}};
   if(name.endsWith('.png'))return 1;
   if(name.startsWith('@/'))name=root+'/'+name.slice(2);
   return oldLoad.call(this,name,parent,isMain);
@@ -49,6 +52,11 @@ async function testUI(db,admin,stock){
  const poLine=receiving.body.orders.find(o=>Number(o.order_id)===Number(latest.target_order_id));
  const receivingBody={action:'multi_po_dnote',payload:{owner_code:'JS',supplier:'Supplier A',delivery_note:'DN-UI-RECEIVE',receipt_date:'2026-11-12',lines:[{order_line_id:poLine.order_line_id,quantity:3,unit_price:15}]}};
  const received=await stockMutation('receiving-test',receivingBody);assert(received.result.document_id,'Finalised PO receives through existing D-Note routine');console.log('PASS Existing D-Note receiving routine accepts a finalised PO');
- await settle(()=>mount.unmount());Module._load=oldLoad;dom.window.close();return 6;
+ const Login=require(root+'/app/login.tsx').default;await settle(()=>mount.render(React.createElement(Login)));
+ for(const [placeholder,text] of [['email@example.com','stock@test'],['password','test-only']]){const input=document.querySelector('input[placeholder="'+placeholder+'"]');await settle(()=>{Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set.call(input,text);input.dispatchEvent(new window.Event('input',{bubbles:true}));});}
+ await click('Sign In');assert.equal(routing.at(-1),'/(tabs)/stock-test');console.log('PASS Stock-only account reaches Stock after sign-in');
+ const Layout=require(root+'/app/(tabs)/_layout.tsx').default;await settle(()=>mount.render(React.createElement(Layout)));await until(()=>document.querySelector('[data-initial-route]'),'Stock tabs admitted');assert.equal(document.querySelector('[data-initial-route]').getAttribute('data-initial-route'),'stock-test');assert.equal(document.querySelector('[data-tab="fuel"]').getAttribute('data-href'),'');assert.equal(document.querySelector('[data-tab="main-dashboard"]').getAttribute('data-href'),'');console.log('PASS Stock-only tabs admission does not grant Fuel or Main');
+ actor=admin;await settle(()=>mount.render(React.createElement('div')));await settle(()=>mount.render(React.createElement(Layout)));await until(()=>document.querySelector('[data-initial-route]'),'Admin tabs admitted');assert.equal(document.querySelector('[data-initial-route]').getAttribute('data-initial-route'),'main-dashboard');console.log('PASS Existing Admin landing remains unchanged');
+ await settle(()=>mount.unmount());Module._load=oldLoad;dom.window.close();return 9;
 }
 module.exports={testUI};

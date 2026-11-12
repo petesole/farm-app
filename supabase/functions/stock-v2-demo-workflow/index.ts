@@ -14,8 +14,9 @@ Deno.serve(async(req)=>{
  if(!url)return reply({error:"Private demo database connection missing"},503);
  const db=postgres(url,{max:1,connect_timeout:8,ssl:"require",prepare:false});
  try{
-  await db`select stock_v2.workflow_require(${user.id}::uuid)`;
   const access=(await db`select stock_v2.workflow_access(${user.id}::uuid) as value`)[0].value;
+  if(req.method==="GET" && new URL(req.url).searchParams.has("stock_access"))return reply({access});
+  await db`select stock_v2.workflow_require(${user.id}::uuid)`;
   if(req.method==="GET" && new URL(req.url).searchParams.has("workflow_context")){
    const documents=await db`select a.*,coalesce((select bool_or(l.received_quantity>0) from stock_v2.order_line l where l.order_id=a.target_order_id),false) as received,
     (select jsonb_agg(jsonb_build_object('action',x.action,'actor',x.actor,'created_at',x.created_at,'reason',x.reason) order by x.id) from stock_v2.approval_audit x where x.document_id=a.id) as audit
@@ -69,7 +70,7 @@ Deno.serve(async(req)=>{
   if(req.method==="GET" && new URL(req.url).searchParams.has("supplier_return_sources")){
    const supplier=String(new URL(req.url).searchParams.get("supplier")||"").trim();const owner=String(new URL(req.url).searchParams.get("owner")||"JS");
    if(!supplier)return reply({rows:[]});
-   const rows=await db`select dl.line_id as receipt_line_id,d.document_id,d.document_number,(select count(*) from stock_v2.document z where z.document_type='grv' and z.status='posted' and z.document_id<=d.document_id)::int as display_no,d.document_date::text as document_date,g.supplier_name,i.item_code,i.item_name,dstock_v2.workflow_physical_quantity(l.line_id)::float8 as received_quantity,coalesce((select p.actual_unit_cost::float8 from stock_v2.grv_line_price p where p.line_id=dl.line_id),(select (sum(a.quantity*al.invoice_unit_price)/nullif(sum(a.quantity),0))::float8 from stock_v2.accounting_grv_allocation a join stock_v2.accounting_grv_line al on al.id=a.grv_line_id where a.receipt_line_id=dl.line_id),(select p.provisional_unit_cost::float8 from stock_v2.grv_line_price p where p.line_id=dl.line_id)) as original_unit_price,
+   const rows=await db`select dl.line_id as receipt_line_id,d.document_id,d.document_number,(select count(*) from stock_v2.document z where z.document_type='grv' and z.status='posted' and z.document_id<=d.document_id)::int as display_no,d.document_date::text as document_date,g.supplier_name,i.item_code,i.item_name,stock_v2.workflow_physical_quantity(dl.line_id)::float8 as received_quantity,coalesce((select p.actual_unit_cost::float8 from stock_v2.grv_line_price p where p.line_id=dl.line_id),(select (sum(a.quantity*al.invoice_unit_price)/nullif(sum(a.quantity),0))::float8 from stock_v2.accounting_grv_allocation a join stock_v2.accounting_grv_line al on al.id=a.grv_line_id where a.receipt_line_id=dl.line_id),(select p.provisional_unit_cost::float8 from stock_v2.grv_line_price p where p.line_id=dl.line_id)) as original_unit_price,
      coalesce((select sum(src.quantity) from stock_v2.supplier_return_source src where src.receipt_line_id=dl.line_id),0)::float8 as previously_returned
      from stock_v2.document d join stock_v2.grv_detail g on g.document_id=d.document_id
      join stock_v2.document_line dl on dl.document_id=d.document_id join stock_v2.item i on i.item_id=dl.item_id
@@ -347,7 +348,7 @@ left join lateral (
  join stock_v2.cost_run cr on cr.run_id=ce.run_id and cr.status='complete'
  join stock_v2.movement m on m.movement_id=ce.movement_id join stock_v2.document_line dl on dl.line_id=m.document_line_id join stock_v2.document d using(document_id)
  where ce.item_id=i.item_id and ce.owner_id=ow.owner_id and m.location_id=loc.location_id and not ce.provisional and ce.quantity_after=coalesce(b.quantity,0)
- order by cr.run_id desc,d.document_date desc,m.created_at desc,m.movement_id desc limit 1
+ order by cr.run_id desc,d.document_date desc,d.document_id desc,m.movement_id desc limit 1
 ) wa on true
 left join lateral (
  select z.supplier_name as last_purchase_supplier from (

@@ -179,6 +179,7 @@ begin
   end if;
   if kind='po' then
    perform stock_v2.workflow_validate_po(p);
+   p:=p||jsonb_build_object('contract_id',coalesce((select op.default_contract_id from stock_v2.owner_policy op join stock_v2.owner ow using(owner_id) where ow.owner_code='TEST_'||(p->>'owner_code')),nullif(p->>'contract_id','')::bigint));
    p:=jsonb_set(p,'{lines}',(select jsonb_agg(l||jsonb_build_object('item_name',i.item_name) order by n) from jsonb_array_elements(p->'lines') with ordinality x(l,n) join stock_v2.item i on i.item_code=l->>'item_code'));
   else
    perform stock_v2.workflow_validate_credit(p);
@@ -529,6 +530,104 @@ begin
  insert into stock_v2.demo_workflow_requests(request_id,action,result) values(p_request,'combined_grv',result);
  return result;
 end $function$;
+
+CREATE OR REPLACE FUNCTION stock_v2.accounting_grv_check_allocation()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'pg_catalog', 'stock_v2'
+AS $function$
+declare h record; r record; already numeric;
+begin
+ perform pg_advisory_xact_lock(hashtext('stock_v2_inventory_posting'));
+ select g.owner_id,g.supplier_name,g.status,l.item_id into h from stock_v2.accounting_grv_line l
+ join stock_v2.accounting_grv g on g.id=l.grv_id where l.id=new.grv_line_id for update of g;
+ if not found or h.status not in ('draft','disputed') then raise exception 'GRV is not editable';end if;
+ select dl.item_id,stock_v2.workflow_physical_quantity(dl.line_id) as quantity,d.status,gd.supplier_name,m.owner_id into r
+ from stock_v2.document_line dl join stock_v2.document d on d.document_id=dl.document_id
+ join stock_v2.grv_detail gd on gd.document_id=d.document_id
+ join stock_v2.movement m on m.document_line_id=dl.line_id and m.quantity_delta>0
+ where dl.line_id=new.receipt_line_id and d.document_number like 'DEMO-%' for update of dl;
+ if not found or r.item_id<>h.item_id or r.owner_id<>h.owner_id or r.status<>'posted'
+ or lower(btrim(r.supplier_name))<>lower(btrim(h.supplier_name)) then
+ raise exception 'Receipt supplier, owner, product or status mismatch';end if;
+ select coalesce(sum(a.quantity),0) into already from stock_v2.accounting_grv_allocation a
+ where a.receipt_line_id=new.receipt_line_id and a.id<>coalesce(new.id,-1);
+ if already+new.quantity>r.quantity then raise exception 'Receipt quantity exceeded';end if;
+ return new;
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION stock_v2.recalculate_demo_item_costs(p_item_id bigint, p_reason text)
+ RETURNS bigint
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'pg_catalog', 'stock_v2'
+AS $function$
+declare r record; q numeric; v numeric; wa numeric; unit_price numeric; mv numeric; rk bigint; provisional_flag boolean; from_mov bigint;
+begin
+ perform pg_advisory_xact_lock(hashtext('stock_v2_inventory_posting'));
+ if not exists(select 1 from stock_v2.item where item_id=p_item_id and active) then raise exception 'Demo products only';end if;
+ insert into stock_v2.cost_run(reason,status) values(p_reason,'running') returning run_id into rk;
+ for r in
+ select m.movement_id,m.quantity_delta,m.owner_id,dl.item_id,dl.line_id,dl.source_line_id,d.document_type,d.document_id,d.document_date,
+   coalesce(pc.confirmed_unit_cost,gp.actual_unit_cost) actual_cost,gp.provisional_unit_cost,
+   (select m2.movement_id from stock_v2.movement m2 where m2.document_line_id=dl.line_id and m2.quantity_delta<0 limit 1) source_transfer_movement
+ from stock_v2.movement m join stock_v2.document_line dl on dl.line_id=m.document_line_id
+ join stock_v2.document d on d.document_id=dl.document_id
+ left join stock_v2.grv_line_price gp on gp.line_id=dl.line_id
+ left join stock_v2.price_confirmation pc on pc.line_id=dl.line_id
+ where d.status='posted' and dl.item_id=p_item_id
+ order by d.document_date,d.document_id,case when d.document_type='ownership_transfer' and m.quantity_delta<0 then 0 else 1 end,m.movement_id
+ loop
+ select coalesce(sum(mm.quantity_delta),0),coalesce(sum(ce.movement_value),0) into q,v
+ from stock_v2.cost_entry ce
+ join stock_v2.movement mm on mm.movement_id=ce.movement_id
+ where ce.run_id=rk and ce.owner_id=r.owner_id;
+ q:=coalesce(q,0);v:=coalesce(v,0);
+ wa:=case when q>0 then v/q else null end;
+ provisional_flag:=false;
+ if r.document_type in ('opening','grv') then
+  unit_price:=coalesce(r.actual_cost,r.provisional_unit_cost,wa,10::numeric);
+  if unit_price is null then raise exception 'Opening or GRV cost missing for line % (owner %)',r.line_id,r.owner_id;end if;
+  provisional_flag:=r.actual_cost is null;
+ elsif r.document_type='ownership_transfer' and r.quantity_delta>0 then
+  select ce.unit_cost into unit_price from stock_v2.cost_entry ce
+  where ce.run_id=rk and ce.movement_id=r.source_transfer_movement;
+  if unit_price is null then raise exception 'Source transfer cost missing for line %',r.line_id;end if;
+ elsif r.document_type='return' then
+  select ce.unit_cost into unit_price from stock_v2.cost_entry ce
+  join stock_v2.movement m2 on m2.movement_id=ce.movement_id
+  join stock_v2.document_line dl2 on dl2.line_id=m2.document_line_id
+  where ce.run_id=rk and dl2.line_id=r.source_line_id and m2.owner_id=r.owner_id and m2.quantity_delta<0 limit 1;
+  unit_price:=coalesce(unit_price,wa);
+  if unit_price is null then raise exception 'Return cost missing for line %',r.line_id;end if;
+ elsif r.document_type='adjustment' and r.source_line_id is not null and exists(select 1 from stock_v2.document_line sl join stock_v2.document sd using(document_id) where sl.line_id=r.source_line_id and sd.document_type='grv') then
+  -- A linked receipt correction reverses/adds the source receipt's cost.
+  -- Ordinary stocktakes and direct adjustments continue to use current WA.
+  select coalesce(pc.confirmed_unit_cost,gp.actual_unit_cost,gp.provisional_unit_cost,ce.unit_cost),
+         coalesce(ce.provisional,true) and pc.confirmed_unit_cost is null and gp.actual_unit_cost is null
+  into unit_price,provisional_flag from stock_v2.document_line sl
+  left join stock_v2.price_confirmation pc on pc.line_id=sl.line_id
+  left join stock_v2.grv_line_price gp on gp.line_id=sl.line_id
+  left join lateral(select x.unit_cost,x.provisional from stock_v2.cost_entry x join stock_v2.movement sm on sm.movement_id=x.movement_id where x.run_id=rk and sm.document_line_id=sl.line_id and sm.owner_id=r.owner_id limit 1)ce on true
+  where sl.line_id=r.source_line_id;
+  if unit_price is null then raise exception 'Source receipt cost missing for correction line %',r.line_id;end if;
+ else
+  unit_price:=wa;
+  if unit_price is null then raise exception 'WA cost unavailable for issue or adjustment line %',r.line_id;end if;
+ end if;
+ if q+r.quantity_delta < -0.000001 then raise exception 'Negative stock in historical replay for movement %',r.movement_id;end if;
+ mv:=r.quantity_delta*unit_price;
+ if v+mv < -0.0001 or (abs(q+r.quantity_delta)<0.000001 and abs(v+mv)>0.0001) then
+  raise exception 'Receipt correction conflicts with already consumed stock valuation. Reconcile issued costs before posting movement %',r.movement_id;
+ end if;
+ insert into stock_v2.cost_entry(run_id,movement_id,item_id,owner_id,quantity_after,value_after,unit_cost,movement_value,provisional)
+ values(rk,r.movement_id,r.item_id,r.owner_id,q+r.quantity_delta,v+mv,unit_price,mv,provisional_flag);
+ end loop;
+ update stock_v2.cost_run set status='complete',finished_at=now() where run_id=rk;
+ return rk;
+end $function$
+;
 
 -- Existing approved POs remain approved, represented as already finalised documents.
 -- This adds review metadata only; it does not change original orders, receipts or stock.
