@@ -30,3 +30,5 @@ Only Admin and active Clerk may create stocktake sheets or open print/reprint pr
 
 Staff access now distinguishes Clerk from Stock operator. Existing Clerk records retain their role; no accounts are reassigned. Stock operator is a separate assignable role with normal Stock input access and no stocktake printing. Supervisor also has no stocktake printing. Role assignment remains Admin-only and audited.
 Print permission migration applied: 20261113142833_stocktake_print_permissions. Workflow handler version 82 matches implementation commit 6c2ba69, JWT verification enabled. Existing 73 documents/388 movements and movement digest are unchanged.
+
+Separate Stock operator role migration: 20261113143309_stock_operator_role. Role assignment and admission support Clerk, Stock operator, Supervisor and Admin; only Clerk/Admin pass stocktake printing authorization. No user assignments changed. Rerun: all 123 checks, TypeScript, shared ERP UI/date checks and final Expo web export passed. Actual signed-in Clerk/Stock device acceptance remains unverified.
