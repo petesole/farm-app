@@ -22,6 +22,16 @@
       "android": {
         "buildType": "apk"
       }
+    },
+    "sprayer-apk": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_APP_VARIANT": "sprayer"
+      },
+      "android": {
+        "buildType": "apk"
+      },
+      "environment": "development"
     }
   },
   "submit": {

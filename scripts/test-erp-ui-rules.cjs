@@ -42,6 +42,8 @@ const requiredDateScreens=[
  "app/(tabs)/home/stock-v2-corrections.tsx",
  "components/jspl/LegacyStocktakeScreen.tsx",
  "app/stock-v2-adjustments.tsx",
+ "app/sprayer.tsx",
+ "app/stock-v2-sprayer-completions.tsx",
  "app/(tabs)/home/stock-v2-supplier-returns.tsx",
  "app/wheat-storage-classification.tsx",
  "lib/fieldControls.ts",

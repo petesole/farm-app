@@ -8,6 +8,7 @@ export function JsplReturnNavigation(){
   const params=useLocalSearchParams<{kind?:string}>();
   const path=pathname.toLowerCase();
   if(!path || path==="/" || path.startsWith("/login") || path.startsWith("/pending-access") || path.startsWith("/modal"))return null;
+  if(path.startsWith("/sprayer"))return null;
   // Labour screens provide exactly one local top-right return button.
   if(path==="/labour" || path.startsWith("/labour-"))return null;
   // Rainfall screens supply their own return control.

@@ -1,6 +1,9 @@
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { supabase } from "@/supabase";
+import {clearPhoneIdentity} from '@/lib/sprayer-identity';
+import {verifyPhoneAccess} from '@/utils/sprayer-api';
+import {SPRAYER_APP} from '@/utils/sprayer-config';
 import {stockRequest} from '@/utils/stock-workflow';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
@@ -22,6 +25,7 @@ function landingForRole(roleName: string) {
   const r = norm(roleName);
 
   if (r === "admin") return "/(tabs)/main-dashboard";
+  if (r === "sprayer") return "/sprayer";
   if (r === "stock") return "/(tabs)/stock-test";
   if (r === "manager") return "/(tabs)/fuel";
   if (r === "rainfall") return "/rainfall-entry";
@@ -62,6 +66,7 @@ export default function LoginScreen() {
         return;
       }
 
+      await clearPhoneIdentity();
       // Roles must come from the server; local storage is UI-only, not authorization.
       const { data: access, error: accessError } = await supabase.rpc("my_farm_app_roles");
       if (accessError) {
@@ -70,15 +75,17 @@ export default function LoginScreen() {
         return;
       }
       const roles = (access || []).map((r: string) => norm(r));
-      try { if((await stockRequest('?stock_access=1')).access?.is_stock)roles.push('stock'); } catch { /* Other assigned modules retain their existing access. */ }
-      if (!roles.some((r: string) => ["admin", "manager", "fuel", "labour", "rainfall", "viewer", "irrigation", "scouting", "scout", "scouter", "stock"].includes(r))) {
+      try { const a=(await stockRequest('?stock_access=1')).access;if(a?.is_stock)roles.push('stock');if(a?.is_sprayer)roles.push('sprayer'); } catch { /* Other assigned modules retain their existing access. */ }
+      if (!roles.some((r: string) => ["admin", "manager", "fuel", "labour", "rainfall", "viewer", "irrigation", "scouting", "scout", "scouter", "stock", "sprayer"].includes(r))) {
         await supabase.auth.signOut();
         setStatus("Your account has no assigned Farm Management role.");
         return;
       }
-      const role =
-        ["admin", "manager", "fuel", "labour", "rainfall", "irrigation", "scouting", "scout", "scouter", "viewer", "stock"]
+      if(SPRAYER_APP&&!roles.includes("sprayer")){await supabase.auth.signOut();setStatus("Sprayer access has not been assigned to this account.");return;}
+      const role = SPRAYER_APP?"sprayer":
+        ["admin", "manager", "fuel", "labour", "rainfall", "irrigation", "scouting", "scout", "scouter", "viewer", "stock", "sprayer"]
           .find((r) => roles.includes(r)) || roles[0];
+      if(role==="sprayer")await verifyPhoneAccess();
       await AsyncStorage.setItem(
         "app_user",
         JSON.stringify({ user_id: auth.user.id, username: auth.user.email, role })
@@ -96,7 +103,7 @@ export default function LoginScreen() {
     <ThemedView style={styles.container}>
       <View style={styles.brand}>
         <Image source={require("../assets/images/jspl_farm_logo.png")} resizeMode="contain" style={styles.logo} />
-        <ThemedText type="title">JSPL Farm Management</ThemedText>
+        <ThemedText type="title">{SPRAYER_APP?"JSPL Sprayer":"JSPL Farm Management"}</ThemedText>
         <ThemedText style={styles.subheading}>John Sole (Private) Limited</ThemedText>
       </View>
 
