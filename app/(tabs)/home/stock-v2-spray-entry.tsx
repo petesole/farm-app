@@ -4,7 +4,7 @@ import {StockRecovery} from "@/components/jspl/StockWorkflowControls";
 import {StockV2Header} from "@/components/jspl/StockV2Header";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter,useLocalSearchParams } from "expo-router";
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Image, Platform, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from "react-native";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { JsplSearchCombo } from "@/components/jspl/JsplSearchCombo";
@@ -154,7 +154,7 @@ export default function StockV2SprayPlanningPreview() {
     <StockV2Header title={editing?"Edit Spray Mix":"New Spray Plan"} onStock={()=>router.replace("/stock-v2-spray-planning")}/>
     {saveError?<StockRecovery scope="spray-plan" onRecovered={()=>router.replace("/stock-v2-spray-planning")}/>:null}
 
-    {loading?<ActivityIndicator/>:error?<ThemedText style={styles.error}>{error}</ThemedText>:<View style={[styles.traces,wide&&{flexDirection:"row",alignItems:"flex-start",gap:12}]}>
+    {loading?<ActivityIndicator/>:error?<ThemedText style={styles.error}>{error}</ThemedText>:<View style={[styles.traces,wide&&{flexDirection:"row",alignItems:"flex-start",gap:12},Platform.OS==="web"&&wide?({position:"sticky",top:0,zIndex:20,backgroundColor:jsplColors.background,paddingVertical:8} as any):null]}>
       <View style={{width:wide?240:"100%",gap:7}}>
       <JsplSearchCombo label="Crop" selector="crop"
         options={visibleCrops.map(c=>({id:c.crop_id,label:c.crop_name,active:true}))}
@@ -165,6 +165,7 @@ export default function StockV2SprayPlanningPreview() {
         value={traceId} onChange={value=>{setTraceId(typeof value==="number"?value:null);setWeekChosen(false);}}
         placeholder="Select Trace Code"/>:null}
       {selected?<ThemedText style={styles.muted}>Size: {fmt(Number(selected.tracecode_size??0))} ha · Growing days: {selected.actual_planting_date?Math.max(0,Math.floor((Date.now()-new Date(selected.actual_planting_date.slice(0,10)+"T12:00:00").getTime())/86400000)):"— (not planted)"}</ThemedText>:null}
+      {selected?<View style={styles.partField}><ThemedText style={styles.label}>Part spray (ha) — blank = whole field</ThemedText><TextInput accessibilityLabel="Part spray (ha)" style={styles.input} keyboardType="decimal-pad" value={part} onChangeText={setPart} placeholder="Whole field"/></View>:null}
       {cropId!=null&&visibleTraces.length===0?<ThemedText style={styles.muted}>No current tracecodes for this crop.</ThemedText>:null}
       </View>
       {selected?<View style={{flex:1,minWidth:0,flexDirection:wide?"row":"column",gap:8}}>
@@ -185,21 +186,27 @@ export default function StockV2SprayPlanningPreview() {
     </View>}
     {selected?<View style={[styles.panels,wide?styles.sideBySide:styles.stacked]}>
       <View style={styles.panel}>
-        <ThemedText type="subtitle">Weekly spray input</ThemedText>
-        <View style={styles.weekNav}><Pressable onPress={()=>{setOperationalOffset(0);setWeekChosen(true)}} style={styles.chip}><ThemedText>This week</ThemedText></Pressable><Pressable onPress={()=>{setOperationalOffset(1);setWeekChosen(true)}} style={styles.chip}><ThemedText>Next week</ThemedText></Pressable></View>
-        <ThemedText style={styles.muted}>Spray week begins {weekLabel(operationalWeek)}</ThemedText>
-        {weekChosen?<JsplSearchCombo label="Spray Type" selector="spray-type"
+        <View style={styles.weekControls}>
+          <ThemedText style={styles.heading}>Weekly spray input</ThemedText>
+          <View style={styles.weekChoices}>
+            <Pressable accessibilityRole="button" accessibilityState={{selected:weekChosen&&operationalOffset===0}} onPress={()=>{setOperationalOffset(0);setWeekChosen(true)}} style={[styles.chip,weekChosen&&operationalOffset===0&&styles.selectedWeek]}><ThemedText style={weekChosen&&operationalOffset===0?styles.selectedWeekText:undefined}>This week</ThemedText></Pressable>
+            <Pressable accessibilityRole="button" accessibilityState={{selected:weekChosen&&operationalOffset===1}} onPress={()=>{setOperationalOffset(1);setWeekChosen(true)}} style={[styles.chip,weekChosen&&operationalOffset===1&&styles.selectedWeek]}><ThemedText style={weekChosen&&operationalOffset===1?styles.selectedWeekText:undefined}>Next week</ThemedText></Pressable>
+          </View>
+          <ThemedText style={styles.weekDate}>Week begins {weekLabel(operationalWeek)}</ThemedText>
+        </View>
+        <View style={styles.sprayControls}>
+        {weekChosen?<View style={styles.sprayTypeField}><JsplSearchCombo label="Spray Type" selector="spray-type"
           options={sprayTypes.map(setup=>({id:setup.access_spray_type_id,label:setup.spray_type_name,active:true}))}
           value={sprayTypes.find(setup=>setup.spray_type_name===sprayType)?.access_spray_type_id??null}
           onChange={id=>{const choice=sprayTypes.find(setup=>setup.access_spray_type_id===id);setSprayType(choice?.spray_type_name??"");setWaterRate(choice?String(choice.spray_rate_per_ha):"");}}
-          placeholder="Select or search spray type"/>:null}
-        {weekChosen&&sprayType?<View><ThemedText style={styles.label}>Water rate (L/ha)</ThemedText><TextInput style={styles.input} keyboardType="decimal-pad" value={waterRate} onChangeText={setWaterRate} placeholder="Enter water rate"/></View>:null}
+          placeholder="Select spray type"/></View>:null}
+        {weekChosen&&sprayType?<View style={styles.waterRateField}><ThemedText style={styles.controlLabel}>Water rate (L/ha)</ThemedText><TextInput accessibilityLabel="Water rate (L/ha)" style={styles.input} keyboardType="decimal-pad" value={waterRate} onChangeText={setWaterRate} placeholder="Enter water rate"/></View>:null}
+        {weekChosen&&sprayType&&Number(waterRate)>0?<ThemedText style={styles.waterSummary}>Water required: {fmt(totalWater)} L</ThemedText>:null}
+        </View>
         {weekChosen&&sprayType&&Number(waterRate)>0?<>
 
 
-        <ThemedText style={styles.muted}>Water required: {fmt(totalWater)} L</ThemedText>
         {editing?<View><ThemedText style={styles.label}>Sprayer / equipment (optional)</ThemedText><TextInput style={styles.input} value={sprayer} onChangeText={setSprayer}/><ThemedText style={styles.label}>Job code (optional)</ThemedText><TextInput style={styles.input} value={jobCode} onChangeText={setJobCode}/></View>:null}
-        <View><ThemedText style={styles.label}>Part (ha) — blank = whole field</ThemedText><TextInput style={styles.input} keyboardType="decimal-pad" value={part} onChangeText={setPart}/></View>
         <ThemedText style={styles.heading}>Inputs & rates</ThemedText>
         {lines.map(x=><View key={x.key} style={styles.line}><View style={{flex:2}}><ThemedText style={styles.label}>Input</ThemedText><TextInput style={styles.input} value={x.input} onFocus={()=>setOpenLine(x.key)} onChangeText={v=>{changeLine(x.key,"input",v);setOpenLine(x.key)}} placeholder="Type product name or letters" autoCorrect={false}/>
           {openLine===x.key?<View style={styles.suggestions}><ThemedText style={styles.label}>Matching inputs ({matches(x.input).length}{catalog.length>=1000?"+":""})</ThemedText>
@@ -240,6 +247,7 @@ const styles=StyleSheet.create({saveButton:{backgroundColor:jsplColors.primary,m
  root:{flex:1,backgroundColor:jsplColors.background},header:{flexDirection:"row",alignItems:"flex-start",justifyContent:"space-between",gap:jsplSpacing.md},brand:{fontSize:jsplType.caption,fontWeight:"700",color:jsplColors.primary,letterSpacing:1},title:{color:jsplColors.primaryDark},page:{padding:jsplSpacing.lg,gap:jsplSpacing.lg,paddingBottom:50},heading:{fontWeight:"700",fontSize:16},warning:{color:jsplColors.warning},muted:{opacity:0.65},error:{color:jsplColors.danger},
  traces:{gap:8},chip:{borderWidth:1,borderColor:jsplColors.border,paddingHorizontal:12,paddingVertical:8,borderRadius:8,marginRight:6},selected:{backgroundColor:jsplColors.successTint,borderColor:jsplColors.primary},
  panels:{gap:14},sideBySide:{flexDirection:"row"},stacked:{flexDirection:"column"},panel:{flex:1,borderWidth:1,borderColor:jsplColors.border,backgroundColor:"rgba(255,255,255,0.65)",borderRadius:jsplRadii.lg,padding:jsplSpacing.lg,gap:9,minWidth:0},
+ weekControls:{flexDirection:"row",alignItems:"center",gap:12,flexWrap:"wrap"},weekChoices:{flexDirection:"row",alignItems:"center",gap:6},selectedWeek:{backgroundColor:jsplColors.primary,borderColor:jsplColors.primary},selectedWeekText:{color:"#fff",fontWeight:"700"},weekDate:{fontSize:13,color:jsplColors.textSecondary},sprayControls:{flexDirection:"row",alignItems:"flex-end",gap:12,flexWrap:"wrap"},sprayTypeField:{width:190,maxWidth:"100%"},waterRateField:{width:135,maxWidth:"100%"},controlLabel:{fontSize:16,fontWeight:"600",color:jsplColors.text,marginBottom:4},waterSummary:{fontSize:13,color:jsplColors.textSecondary,paddingBottom:12},partField:{gap:2,maxWidth:240},
  weekNav:{flexDirection:"row",alignItems:"center",justifyContent:"space-between",gap:4,flexWrap:"wrap"},label:{fontSize:12,opacity:0.75,marginBottom:3},
  input:{borderWidth:1,borderColor:jsplColors.border,borderRadius:jsplRadii.sm,padding:jsplSpacing.sm,minHeight:jsplSizes.inputHeight,color:jsplColors.text,backgroundColor:jsplColors.surface},two:{flexDirection:"row",gap:8},half:{flex:1},
  line:{flexDirection:"row",alignItems:"center",gap:7,flexWrap:"wrap"},action:{minHeight:jsplSizes.buttonHeight,justifyContent:"center",borderWidth:1,borderColor:jsplColors.border,paddingHorizontal:jsplSpacing.md,alignItems:"center",borderRadius:jsplRadii.sm},
