@@ -19,8 +19,8 @@ create view stock_v2.stocktake_adjustment_pending with(security_invoker=true) as
  select t.sheet_id,t.take_number,t.take_date,t.groups,t.version,l.item_id,l.item_code,l.item_name,l.category,l.position,i.base_unit,
  x.owner_code,x.required_quantity
  from stock_v2.combined_stocktake t join stock_v2.combined_stocktake_line l using(sheet_id) join stock_v2.item i using(item_id)
- cross join lateral(values ('HS',l.counted_hs-coalesce(l.applied_hs,l.system_hs)),('AO',l.counted_ao-coalesce(l.applied_ao,l.system_ao))) x(owner_code,required_quantity)
- where t.status<>'draft' and x.required_quantity<>0;
+ cross join lateral(values ('HS',l.counted_hs-stock_v2.stock_on_date(l.item_id,(select owner_id from stock_v2.owner where owner_code='TEST_JS'),(select location_id from stock_v2.location where location_code='TEST_WH'),t.take_date)),('AO',l.counted_ao-stock_v2.stock_on_date(l.item_id,(select owner_id from stock_v2.owner where owner_code='TEST_AO'),(select location_id from stock_v2.location where location_code='TEST_WH'),t.take_date))) x(owner_code,required_quantity)
+ where t.status='counted' and x.required_quantity<>0;
 revoke all on stock_v2.stocktake_adjustment_pending from public,anon,authenticated;
 
 create function stock_v2.stock_adjustment_command(p_actor uuid,p_operation uuid,p_action text,p_data jsonb) returns jsonb
@@ -64,7 +64,7 @@ begin
    select * into l from stock_v2.combined_stocktake_line where sheet_id=t.sheet_id and item_code=code for update;
    if not found then raise exception 'Product not on this stock sheet';end if;
    iid:=l.item_id;name:=l.item_name;
-   required:=case when own='HS' then l.counted_hs-coalesce(l.applied_hs,l.system_hs) else l.counted_ao-coalesce(l.applied_ao,l.system_ao) end;
+   required:=(case when own='HS' then l.counted_hs else l.counted_ao end)-stock_v2.stock_on_date(l.item_id,oid,loc,t.take_date);
    if required is null or required=0 or sign(required)<>sign(delta) or abs(delta)>abs(required) then raise exception 'Adjustment must have the same sign and not exceed the outstanding amount for % %',code,own;end if;
   else
    select item_id,item_name into iid,name from stock_v2.item where item_code=code and active;
@@ -158,7 +158,7 @@ begin
     update stock_v2.combined_stocktake_line set counted_hs=qty_hs,counted_ao=qty_ao where sheet_id=sid and item_code=rowdata->>'item_code';
     if not found then raise exception 'Product is not part of this printed sheet';end if;
    end loop;
-   update stock_v2.combined_stocktake set status=case when exists(select 1 from stock_v2.combined_stocktake_line x where x.sheet_id=sid and (x.counted_hs<>coalesce(x.applied_hs,x.system_hs) or x.counted_ao<>coalesce(x.applied_ao,x.system_ao))) then 'counted' else 'posted' end,version=version+1,counted_by=p_actor,counted_at=now() where sheet_id=sid returning * into t;
+   update stock_v2.combined_stocktake set status=case when exists(select 1 from stock_v2.combined_stocktake_line x where x.sheet_id=sid and (x.counted_hs<>stock_v2.stock_on_date(x.item_id,hs,loc,t.take_date) or x.counted_ao<>stock_v2.stock_on_date(x.item_id,ao,loc,t.take_date))) then 'counted' else 'posted' end,version=version+1,counted_by=p_actor,counted_at=now() where sheet_id=sid returning * into t;
   end if;
   select jsonb_build_object('header',to_jsonb(t),'lines',(select jsonb_agg(to_jsonb(l) order by position) from stock_v2.combined_stocktake_line l where sheet_id=sid)) into after_doc;
   insert into stock_v2.combined_stocktake_audit(sheet_id,actor,action,reason,before_values,after_values) values(sid,p_actor,p_action,nullif(reason,''),before_doc,after_doc);

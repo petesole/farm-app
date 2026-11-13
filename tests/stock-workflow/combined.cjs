@@ -60,5 +60,10 @@ exports.testCombined=async(db,admin,clerk)=>{
  check((await adminAPI('',{action:'individual_adjustment_save',operation_id:uuid(),...direct,adjustment_date:'2026-11-09'})).status!==200&&await qty('JS','COMB-A')===8,'Backdated adjustment that breaks historical valuation is rolled back');
  const old=await qty('JS','COMB-A');check((await adminAPI('',{action:'individual_adjustment_save',operation_id:uuid(),...direct,lines:[{item_code:'COMB-A',owner_code:'HS',quantity:-999}]})).status!==200&&await qty('JS','COMB-A')===old,'Insufficient-stock adjustment rolls back completely');
  const zero=await post(clerk,'combined_stocktake_create',{groups:['Fertilizer'],take_date:'2026-11-13'});const saved=await post(clerk,'combined_stocktake_save',{sheet_id:zero.sheet_id,version:zero.version,lines:[{item_code:'COMB-F',hs:10,ao:0}]});check(saved.status==='posted'&&!(await report()).rows.some(x=>Number(x.sheet_id)===Number(zero.sheet_id)),'Matching count creates no outstanding adjustment');
+ const duplicateA=await post(clerk,'combined_stocktake_create',{groups:['Fertilizer'],take_date:'2026-11-13'}),duplicateB=await post(clerk,'combined_stocktake_create',{groups:['Fertilizer'],take_date:'2026-11-13'});
+ const dupCounts=[{item_code:'COMB-F',hs:9,ao:0}];const da=await post(clerk,'combined_stocktake_save',{sheet_id:duplicateA.sheet_id,version:duplicateA.version,lines:dupCounts}),dbb=await post(clerk,'combined_stocktake_save',{sheet_id:duplicateB.sheet_id,version:duplicateB.version,lines:dupCounts});
+ await post(admin,'stocktake_adjustment_save',{sheet_id:da.sheet_id,version:da.version,lines:[{owner_code:'HS',item_code:'COMB-F',quantity:-1}]});
+ check(!(await report()).rows.some(x=>Number(x.sheet_id)===Number(dbb.sheet_id)),'Overlapping open sheet recognises adjustment already posted for its date');
+ check((await adminAPI('',{action:'stocktake_adjustment_save',operation_id:uuid(),sheet_id:dbb.sheet_id,version:dbb.version,lines:[{owner_code:'HS',item_code:'COMB-F',quantity:-1}]})).status!==200&&await qty('JS','COMB-F')===9,'Same stock discrepancy cannot be applied twice through another sheet');
  return passed;
 };
