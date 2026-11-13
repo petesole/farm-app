@@ -4,4 +4,12 @@ Spray Planning shows the outstanding spray-job count in red brackets, using the 
 
 The backend calculates the total over all matching jobs, independently of the recent spray feed's 200-row limit. The dashboard refreshes it on focus after creating, issuing or deleting sprays. Existing users and stock data are unchanged; this adds a read-only count to the existing authenticated response.
 
-Verification: the read-only hosted query returned 3 outstanding sprays at verification time. Existing SQL/Edge/UI regressions, TypeScript, shared ERP UI/date checks and the web export are checked before release. Actual signed-in browser/device acceptance remains unverified.
+Verification: the read-only hosted query returned 3 outstanding sprays at verification time. All 150 existing SQL/Edge/UI regression checks, full TypeScript, shared ERP UI/date checks and the Expo web export passed. Actual signed-in browser/device acceptance remains unverified.
+
+Release status
+- Source d67d986 pushed to development.
+- Backend deployed: stock-v2-demo-workflow version 84 with JWT verification enabled. Retrieved source matches the commit.
+- Frontend build includes outstanding_spray_count and uses entry-9901ae86d5101f960fbbf707a0aadc71.js.
+- Frontend publication BLOCKED: Expo Hosting returned Failed to upload worker (Internal Error) on two standard uploads and one upload excluding optional source maps. No new deployment identifier was returned and no alias reassignment succeeded.
+- Existing development site remains HTTP 200 and serves the previous entry-b937685c950d7917f4b816a93d4d13a5.js build. The new red count is NOT live on that site yet.
+- No production alias, database schema, stock records or account assignments changed. No operational transaction posted during verification.
