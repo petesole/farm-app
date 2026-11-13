@@ -17,6 +17,24 @@ Deno.serve(async(req)=>{
   const access=(await db`select stock_v2.workflow_access(${user.id}::uuid) as value`)[0].value;
   if(req.method==="GET" && new URL(req.url).searchParams.has("stock_access"))return reply({access});
   await db`select stock_v2.workflow_require(${user.id}::uuid)`;
+  if(req.method==='GET'&&new URL(req.url).searchParams.has('stock_adjustment_report')){
+   if(!(await db`select stock_v2.can_print_stocktake(${user.id}::uuid) as allowed`)[0].allowed)return reply({error:'Admin or Clerk access required'},403);
+   const rows=await db`select p.*,p.take_date::text as take_date,p.required_quantity::float8 as required_quantity from stock_v2.stocktake_adjustment_pending p order by p.take_date,p.sheet_id,p.position,p.owner_code`;
+   const history=await db`select d.document_id,d.document_number,d.document_date::text,d.reason,m.reason_code,
+    count(l.line_id)::int as lines from stock_v2.stock_adjustment_meta m join stock_v2.document d using(document_id) join stock_v2.document_line l using(document_id) where d.status='posted' group by d.document_id,m.reason_code order by d.document_date,d.document_id`;
+   return reply({rows,history,is_admin:access.is_admin});
+  }
+  if(req.method==='GET'&&new URL(req.url).searchParams.has('stock_adjustment_history_lines')){
+   if(!(await db`select stock_v2.can_print_stocktake(${user.id}::uuid) as allowed`)[0].allowed)return reply({error:'Admin or Clerk access required'},403);
+   const id=Number(new URL(req.url).searchParams.get('document_id'));if(!Number.isSafeInteger(id)||id<1)return reply({error:'Invalid adjustment'},400);
+   const rows=await db`select d.document_number,d.document_date::text,d.reason,coalesce(t.take_number,old.take_number) as take_number,
+    coalesce(s.owner_code,case when o.owner_code='TEST_JS' then 'HS' else 'AO' end) as owner_code,coalesce(s.item_code,i.item_code) as item_code,coalesce(s.item_name,i.item_name) as item_name,
+    m.quantity_delta::float8 as quantity from stock_v2.stock_adjustment_meta a join stock_v2.document d using(document_id) join stock_v2.document_line l using(document_id)
+    join stock_v2.movement m on m.document_line_id=l.line_id join stock_v2.owner o using(owner_id) join stock_v2.item i using(item_id)
+    left join stock_v2.stock_adjustment_source s on s.line_id=l.line_id left join stock_v2.combined_stocktake t on t.sheet_id=s.sheet_id left join stock_v2.stocktake old on old.take_id=a.stocktake_id
+    where d.status='posted' and d.document_id=${id} order by l.line_id`;
+   return reply({rows});
+  }
   if(req.method==='GET'&&new URL(req.url).searchParams.has('combined_stocktake_groups')){
    const canPrint=(await db`select stock_v2.can_print_stocktake(${user.id}::uuid) as allowed`)[0].allowed;
    const rows=await db`select distinct coalesce(nullif(btrim(i.input_type),''),'Other') as stock_type from stock_v2.item i
@@ -52,8 +70,9 @@ Deno.serve(async(req)=>{
      from stock_v2.stocktake_line x join stock_v2.item i using(item_id) left join stock_v2.quantity_balance q on q.item_id=x.item_id and q.owner_id=t.owner_id and q.location_id=t.location_id where x.take_id=t.take_id) as lines
     from stock_v2.stocktake t join stock_v2.owner o using(owner_id) join stock_v2.location l using(location_id) where t.status='counted' and o.owner_code in ('TEST_JS','TEST_AO') order by t.take_id`;
    const counts=(await db`select (select count(*) from stock_v2.approval_document where status='pending')::int+(select count(*) from stock_v2.stocktake t join stock_v2.owner o using(owner_id) where t.status='counted' and o.owner_code in ('TEST_JS','TEST_AO'))::int as awaiting`)[0];
-   const combined_stocktakes=await db`select sheet_id,take_number,take_date::text,groups,version from stock_v2.combined_stocktake where status='counted' order by take_date,created_at,sheet_id`;
-   return reply({access,documents,stocktakes,combined_stocktakes,awaiting:counts.awaiting+combined_stocktakes.length});
+   const can_adjustments=(await db`select stock_v2.can_print_stocktake(${user.id}::uuid) as allowed`)[0].allowed;
+   const adjustment_count=can_adjustments?(await db`select count(*)::int as n from stock_v2.stocktake_adjustment_pending`)[0].n:0;
+   return reply({access:{...access,can_adjustments},documents,stocktakes,combined_stocktakes:[],adjustment_count,awaiting:counts.awaiting});
   }
   if(req.method==="GET" && new URL(req.url).searchParams.has("workflow_operation")){
    const id=new URL(req.url).searchParams.get("workflow_operation");
@@ -432,6 +451,8 @@ left join lateral (
    if(body.operation_id)await tx`insert into stock_v2.approval_operation(id,actor,request,result) values(${body.operation_id}::uuid,${user.id}::uuid,${tx.json(body)}::jsonb,${tx.json(result)}::jsonb)`;
    return result;
   });
+  if(['stocktake_adjustment_save','individual_adjustment_save'].includes(body?.action)){const result=await db`select stock_v2.stock_adjustment_command(${user.id}::uuid,${body.operation_id}::uuid,${body.action}::text,${db.json(body)}::jsonb) as result`;return reply({success:true,result:result[0].result});}
+  if(body?.action==='stock_adjustment_post')return reply({error:'Use Stock Adjustment to save a numbered individual adjustment'},409);
   if(['combined_stocktake_create','combined_stocktake_save','combined_stocktake_post'].includes(body?.action)){
    const result=await db`select stock_v2.combined_stocktake_command(${user.id}::uuid,${body.operation_id}::uuid,${body.action}::text,${db.json(body)}::jsonb) as result`;return reply({success:true,result:result[0].result});
   }

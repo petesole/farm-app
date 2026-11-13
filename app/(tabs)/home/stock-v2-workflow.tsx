@@ -188,7 +188,8 @@ export default function StockV2Workflow(){
     <View style={styles.homeGrid}>
      {workflow?.access.is_admin?<View style={styles.dashboardCard}><JsplDashboardButton title={"Awaiting Approval ("+workflow.awaiting+")"} description="Purchase orders, credit notes and counted stocktakes" onPress={()=>router.push("/stock-v2-approvals")}/></View>:null}
      <View style={styles.dashboardCard}><JsplDashboardButton title="Supplier Credit Notes" onPress={()=>router.push("/(tabs)/home/stock-v2-credits")}/></View>
-     {workflow?.access.is_admin?<><View style={styles.dashboardCard}><JsplDashboardButton title="Stock Adjustments" onPress={()=>router.push("/stock-v2-adjustments")}/></View><View style={styles.dashboardCard}><JsplDashboardButton title="GRV Corrections" onPress={()=>router.push("/stock-v2-grv-corrections")}/></View><View style={styles.dashboardCard}><JsplDashboardButton title="Stock Staff Access" onPress={()=>router.push("/stock-v2-staff")}/></View></>:null}
+     {workflow?.access.can_adjustments?<View style={styles.dashboardCard}><JsplDashboardButton title="Stock Adjustment" alertCount={workflow.adjustment_count??0} onPress={()=>router.push("/stock-v2-adjustments")}/></View>:null}
+     {workflow?.access.is_admin?<><View style={styles.dashboardCard}><JsplDashboardButton title="GRV Corrections" onPress={()=>router.push("/stock-v2-grv-corrections")}/></View><View style={styles.dashboardCard}><JsplDashboardButton title="Stock Staff Access" onPress={()=>router.push("/stock-v2-staff")}/></View></>:null}
      {tabs.filter(x=>x!=="PO Corrections").map(x=><View key={x} style={styles.dashboardCard}>
       <JsplDashboardButton title={x}
        description={x==="POs Outstanding"?String(new Set((snapshot?.orders??[]).filter(o=>o.ordered_quantity>o.received_quantity).map(o=>o.order_id)).size)+" outstanding orders":x==="GRV"?String(snapshot?.pending_invoice_count??0)+" pending invoices":undefined}

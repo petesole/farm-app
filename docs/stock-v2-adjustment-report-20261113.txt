@@ -1,0 +1,19 @@
+Stock Adjustment workflow — development change, 13/11/2026
+
+Admin and Clerk have a separate Stock Adjustment dashboard button. When there are outstanding differences, a red bracketed count appears beside the title. The count is the number of outstanding item/owner lines, including partially applied lines; HS and AO are separate inventory owners. Stock operator and Supervisor do not receive this button or report access. Clerk can view and print/export the reports and history. Admin alone can post stock adjustments.
+
+A completed stocktake compares physical counts with posted stock on the fixed stocktake date. The book quantities are captured once, at first count completion, using document dates up to and including that date; later dated movements are excluded. Corrections to counts retain that original baseline and all previous adjustment allocations. Completing counts never posts an inventory adjustment.
+
+The adjustment screen lists dated sheets oldest first. Selecting a sheet fixes its date and shows each product/owner with the signed outstanding adjustment. Admin enters actual signed amounts, leaves untouched lines blank, and saves at the bottom. Same-sign partial amounts are accepted; exceeding the outstanding amount is rejected. Only entered nonzero amounts in the currently filtered report are posted. Untouched lines and partial remainders stay outstanding. Zero-difference stocktakes do not create an outstanding queue entry.
+
+Every successful adjustment save creates its own ADJ number and posted document dated to the stocktake date. HS/AO movements, source sheet/product snapshots, actual quantities and actor are retained. History shows all numbered saves and their lines. Prior posted entries are immutable. Concurrent versions and uncertain-save operation references prevent overwrites and duplicates. Negative stock and historical valuation failures roll back the entire save, including earlier valid lines in the same request.
+
+Individual Adjustment lets Admin select HS/AO and one active item, choose a valid date, enter a positive/negative amount and provide a required explanation. It creates its own numbered document/history record and does not silently consume an unrelated stocktake difference. Existing direct-adjustment and stocktake history are preserved.
+
+The former one-click combined stocktake posting is disabled at the database boundary and removed from its screen. Combined count differences now appear only in the dedicated adjustment workflow, not the general PO/credit approval count. Older owner-specific stocktake approvals remain unchanged for existing documents.
+
+Print and genuine XLSX export share the filtered rows, date and signed amounts. Close Preview retains filters and entered amounts. Input screens preserve data on errors and provide previous-save verification.
+
+Implementation is confined to the existing private stock_v2 schema and development frontend. New history table has RLS and no browser table permissions; the private command requires the authenticated Admin actor. No account assignments, historical documents or existing movements are rewritten.
+
+Verification: 144 local regression checks passed against the real SQL functions and Edge handler in an isolated synthetic database, plus actual React screen interactions with mocked native/auth boundaries. Covered same-sign partial saves, missing/zero/untouched amounts, stale versions, retry protection, HS/AO separation, fixed stocktake dates, later movements, failed-batch rollback, historical valuation rejection, count corrections, manual explanations, role restrictions, dashboard badge, history navigation, filtered printing/XLSX, and prior PO/GRV/spray/stock-report regressions. Full TypeScript, shared ERP UI/date checks and a visual browser check passed. Actual signed-in operator/Admin/Clerk device acceptance, physical printer output and native mobile behavior remain unverified.

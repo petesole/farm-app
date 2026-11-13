@@ -1,5 +1,5 @@
 import {displayJsplDate} from './jspl-input';
-export type ReportColumn<Row>={key:string;title:string;value?:(row:Row)=>unknown;render?:(row:Row)=>unknown;onPress?:(row:Row)=>void;kind?:string;width?:number};
+export type ReportColumn<Row>={key:string;title:string;value?:(row:Row)=>unknown;render?:(row:Row)=>unknown;onPress?:(row:Row)=>void;kind?:string;width?:number;filterable?:boolean};
 export function reportValue<Row>(row:Row,c:ReportColumn<Row>){const v=(c.value??c.render)?.(row);return c.key.includes('date')&&typeof v==='string'?displayJsplDate(v.slice(0,10)):v??'—'}
 export function reportRows<Row>(rows:readonly Row[],columns:ReportColumn<Row>[],filters:Record<string,string>,omit?:string){return rows.filter(r=>columns.every(c=>c.key===omit||!filters[c.key]||String(reportValue(r,c))===filters[c.key]))}
 export function reportOptions<Row>(rows:readonly Row[],columns:ReportColumn<Row>[],filters:Record<string,string>,key:string){const c=columns.find(c=>c.key===key)!;return [...new Set(reportRows(rows,columns,filters,key).map(r=>String(reportValue(r,c))))].sort((a,b)=>a.localeCompare(b,'en',{numeric:true}))}

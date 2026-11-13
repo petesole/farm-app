@@ -13,6 +13,7 @@ const root=require('path').resolve(__dirname,'../..');
  await db.exec(fs.readFileSync(root+'/supabase/drafts/combined_stocktake.sql','utf8'));
  await db.exec(fs.readFileSync(root+'/supabase/drafts/stocktake_print_permissions.sql','utf8'));
  await db.exec(fs.readFileSync(root+'/supabase/drafts/stock_operator_role.sql','utf8'));
+ await db.exec(fs.readFileSync(root+'/supabase/drafts/stock_adjustment_report.sql','utf8'));
  await q(`select stock_v2.workflow_assign_staff($1,$2,'clerk',true,'Test stock assignment')`,[admin,stock]);
  await q(`select stock_v2.workflow_assign_staff($1,$2,'admin',true,'Test stock admin')`,[admin,stockAdmin]);
  await rejects(()=>q('select stock_v2.workflow_require($1)',[other]),/Stock staff access/,'Unassigned user rejected');
