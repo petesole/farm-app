@@ -22,7 +22,6 @@ const shortDNote=(value:string,id:number)=>{const v=String(value??"").trim();ret
 const shortDate=(value:string|null|undefined)=>{if(!value)return "—";const v=String(value);if(/^\d{4}-\d{2}-\d{2}/.test(v))return v.slice(8,10)+"/"+v.slice(5,7)+"/"+v.slice(0,4);if(/^\d{2}\/\d{2}\/\d{4}/.test(v))return v.slice(0,10);return "—";};
 export default function GRVOutstanding(){
  const [dn,setDn]=useState<DLine[]>([]),[po,setPo]=useState<POLine[]>([]),[products,setProducts]=useState<Product[]>([]);
- const [allSuppliers,setAllSuppliers]=useState<string[]>([]);
  const [noPO,setNoPO]=useState(false);
  const [owner,setOwner]=useState(""),[supplier,setSupplier]=useState(""),[type,setType]=useState<""|"dnote"|"grv">("");
  const [date,setDate]=useState(""),[number,setNumber]=useState("");
@@ -35,16 +34,17 @@ export default function GRVOutstanding(){
   const [a,b]=await Promise.all([fetch(endpoint+"?outstanding_dnotes=1",{headers}),fetch(endpoint,{headers})]);
   const [x,y]=await Promise.all([a.json(),b.json()]);
   if(!a.ok||!b.ok)throw Error(x.error||y.error||"Unable to load supplier lines");
-  const vendors=await (await fetch(endpoint+"?supplier_list=1",{headers})).json();setAllSuppliers((vendors.suppliers??[]).filter((v:any)=>v.active).map((v:any)=>v.supplier_name).sort());
   setDn(x.rows??[]);setPo(y.orders??[]);setProducts((y.items??[]).map((i:Product)=>({item_code:i.item_code,item_name:i.item_name,base_unit:i.base_unit})));
 
  }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
  useEffect(()=>{void load()},[]);
  const owners=["JS","AO"];
  const ownerCount=(code:string)=>new Set(po.filter(x=>x.owner_code===code&&x.status==="approved"&&Number(x.ordered_quantity)>Number(x.received_quantity)).map(x=>x.order_id)).size;
- const suppliers=allSuppliers;
- const outstandingDN=dn.filter(x=>x.owner_code===owner&&x.supplier_name===supplier);
- const supplierPO=po.filter(x=>x.owner_code===owner&&x.supplier_name===supplier&&x.status==="approved");
+ const supplierKey=(name:string|null|undefined)=>String(name??'').trim().toLocaleLowerCase();
+ const matchingOrders=po.filter(x=>x.owner_code===owner&&x.status==='approved'&&Number(x.ordered_quantity)>Number(x.received_quantity));
+ const suppliers=useMemo(()=>[...new Map(matchingOrders.filter(x=>supplierKey(x.supplier_name)).map(x=>[supplierKey(x.supplier_name),x.supplier_name.trim()])).values()].sort((a,b)=>a.localeCompare(b)),[po,owner]);
+ const outstandingDN=dn.filter(x=>x.owner_code===owner&&supplierKey(x.supplier_name)===supplierKey(supplier));
+ const supplierPO=po.filter(x=>x.owner_code===owner&&supplierKey(x.supplier_name)===supplierKey(supplier)&&x.status==="approved");
  const outstandingPO=supplierPO.filter(x=>x.ordered_quantity>x.received_quantity).sort((a,b)=>String(a.order_date).localeCompare(String(b.order_date))||a.order_id-b.order_id||a.order_line_id-b.order_line_id);
  const receivedPending=outstandingDN.reduce((a,x)=>a+Number(x.quantity||0),0);
  const pick=(row:Chosen)=>setChosen(old=>old[row.key]?Object.fromEntries(Object.entries(old).filter(([k])=>k!==row.key)):{...old,[row.key]:row});
@@ -88,12 +88,12 @@ export default function GRVOutstanding(){
 
   {busy?<ActivityIndicator/>:null}{error?<><ThemedText style={s.warning}>{error}</ThemedText><StockRecovery scope="receiving" onRecovered={()=>void load()}/></>:null}{success?<ThemedText>{success}</ThemedText>:null}
   <StockSelect label="Stock owner" value={owner} options={owners.map(x=>({id:x,label:x+" ("+ownerCount(x)+")"}))} onChange={v=>{setOwner(String(v??''));setSupplier('');setType('');setChosen({});setNoPO(false)}}/>
-  {!!owner?<StockSelect label="Supplier" value={supplier} options={suppliers.map(x=>({id:x,label:x}))} onChange={v=>{setSupplier(String(v??''));setType('');setChosen({});setNoPO(false)}}/>:null}
+  {!!owner?<StockSelect label="Supplier" value={supplier} options={suppliers.map(x=>({id:x,label:x}))} onChange={v=>{setSupplier(String(v??''));setType(v?'dnote':'');setChosen({});setNoPO(false)}}/>:null}
   {!!supplier?<StockSelect label="Document type" value={type} options={[{id:'dnote',label:'Delivery Note'},{id:'grv',label:'Invoice GRV'}]} onChange={v=>{setType(v as 'dnote'|'grv');setChosen({});setNoPO(false)}}/>:null}
-  {type==='dnote'?<StockSelect label="Receipt source" value={noPO?'unplanned':'po'} options={[{id:'po',label:'Against outstanding POs'},{id:'unplanned',label:'Unplanned delivery — no PO'}]} onChange={v=>{setNoPO(v==='unplanned');setChosen({})}}/>:null}
+
   {!!type?<View style={s.panel}><ThemedText style={s.label}>Date</ThemedText><TextInput style={[s.input,s.required]} value={date} onChangeText={setDate} onBlur={()=>{const parsed=parseJsplDateInput(date);if(parsed)setDate(displayJsplDate(parsed));}} placeholder="d/m (year optional)"/></View>:null}
   {!!type?<View style={s.panel}><ThemedText style={s.label}>{type==="grv"?"Invoice GRV Number":"Delivery Note Number"}</ThemedText><TextInput style={[s.input,s.required]} value={number} onChangeText={setNumber} placeholder="Enter document number"/></View>:null}
-  {!!type&&documentReady?<View style={s.panel}>
+  {!!supplier?<View style={s.panel}>
   <ThemedText style={s.label}>Outstanding documents — tick the lines included in this {type==="grv"?"invoice":"delivery note"}</ThemedText>
   <ScrollView horizontal><View style={{minWidth:1040}}>
    <View style={s.trow}>{["Select","Document","Date (dd/mm/yyyy)","Product","Ordered / Received","PO Price","Actual Qty","Actual Price"].map((h,i)=><ThemedText key={h} style={[s.tcell,i===3&&s.wide,s.bold]}>{h}</ThemedText>)}</View>

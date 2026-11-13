@@ -54,6 +54,16 @@ async function testUI(db,admin,stock){
  const receivingBody={action:'multi_po_dnote',payload:{owner_code:'JS',supplier:'Supplier A',delivery_note:'DN-UI-RECEIVE',receipt_date:'2026-11-12',lines:[{order_line_id:poLine.order_line_id,quantity:3,unit_price:15}]}};
  const received=await stockMutation('receiving-test',receivingBody);assert(received.result.document_id,'Finalised PO receives through existing D-Note routine');console.log('PASS Existing D-Note receiving routine accepts a finalised PO');
 
+ // Receiving suppliers and lines must be usable before entering document details.
+ await db.exec("insert into stock_v2.order_header(order_number,owner_id,supplier_name,status,order_date) select 'UI-CLOSED',owner_id,'Completed Supplier','approved',current_date from stock_v2.owner where owner_code='TEST_JS';insert into stock_v2.order_line(order_id,item_id,ordered_quantity,received_quantity) select h.order_id,i.item_id,5,5 from stock_v2.order_header h cross join stock_v2.item i where h.order_number='UI-CLOSED' and i.item_code='ITEM1';insert into stock_v2.order_header(order_number,owner_id,supplier_name,status,order_date) select 'UI-OTHER-OWNER',owner_id,'Other Owner Supplier','approved',current_date from stock_v2.owner where owner_code='TEST_AO';insert into stock_v2.order_line(order_id,item_id,ordered_quantity,received_quantity) select h.order_id,i.item_id,5,0 from stock_v2.order_header h cross join stock_v2.item i where h.order_number='UI-OTHER-OWNER' and i.item_code='ITEM1'");
+ await render('stock-v2-po-receiving');
+ const jsCount=Number((await db.query("select count(distinct h.order_id) as n from stock_v2.order_header h join stock_v2.owner o using(owner_id) join stock_v2.order_line l using(order_id) where o.owner_code='TEST_JS' and h.status='approved' and l.ordered_quantity>l.received_quantity")).rows[0].n);
+ await until(()=>document.querySelector('input[aria-label="Stock owner"]'),'Receiving owner loaded');await combo('Stock owner','JS ('+jsCount+')');
+ await settle(()=>document.querySelector('input[aria-label="Supplier"]').focus());assert(!button('Completed Supplier')&&!button('Other Owner Supplier'),'Only suppliers with this owner outstanding POs are offered');await click('Supplier A');
+ assert(document.body.textContent.includes('PO-'+latest.target_order_id),'Supplier selection immediately shows outstanding PO before date/reference');assert(document.body.textContent.includes('8 / 3'),'Partially received PO displays ordered/received quantities');
+ const receivingInputs=[...document.querySelectorAll('input')];assert(receivingInputs.some(i=>i.placeholder==='d/m (year optional)'&&i.value===''),'PO visible while date is blank');
+ await combo('Stock owner','AO (1)');await settle(()=>document.querySelector('input[aria-label="Supplier"]').focus());assert(button('Other Owner Supplier')&&!button('Supplier A'),'Changing owner repairs supplier choices');await click('Other Owner Supplier');assert(document.body.textContent.includes('5 / 0'),'Other owner outstanding lines display immediately');
+ console.log('PASS Receiving offers only owner-specific outstanding suppliers and immediately displays their POs without date/reference');
  actor=stock;routeParams={};await render('stock-v2-owner-transactions');await until(()=>document.querySelector('input[aria-label="From stock owner"]')?.value.includes('JS'),'Transfer owners loaded');
  await combo('From stock owner','AO · AO');assert.equal(document.querySelector('input[aria-label="To stock owner"]').value,'JS · JS');
  await combo('From stock owner','JS · JS');assert.equal(document.querySelector('input[aria-label="To stock owner"]').value,'AO · AO');
@@ -80,6 +90,6 @@ async function testUI(db,admin,stock){
  await combo('Filter Product','Alpha');assert(document.body.textContent.includes('Quantity: 2'));assert(!document.body.textContent.includes('Quantity: 9'));
  await click('Print');const reportHTML=document.querySelector('iframe[title="Test Stock Report preview"]').getAttribute('srcdoc');assert(reportHTML.includes('Alpha')&&!reportHTML.includes('Beta'));assert(reportHTML.includes('Quantity: 2'));
  await click('Close Preview');assert.equal(document.querySelector('input[aria-label="Filter Product"]').value,'Alpha');console.log('PASS Report filters recalculate totals, print matching rows and preserve selections on Close');
- await settle(()=>mount.unmount());Module._load=oldLoad;dom.window.close();return 15;
+ await settle(()=>mount.unmount());Module._load=oldLoad;dom.window.close();return 16;
 }
 module.exports={testUI};
