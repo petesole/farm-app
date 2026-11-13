@@ -25,5 +25,8 @@ Release verification
 - No production alias or main branch change.
 
 Print permission clarification
-Only Admin and active Clerk may create stocktake sheets or open print/reprint preview. The Stock role (existing non-clerk supervisor access) retains count input, with no printing controls. No user role assignments are changed. Server authorization checks cover combined sheet creation, explicit print preview requests and legacy sheet creation. Historical editing and stock adjustment approval remain Admin-only.
+Only Admin and active Clerk may create stocktake sheets or open print/reprint preview. The separate Stock operator role retains count input, with no printing controls. No user role assignments are changed. Server authorization checks cover combined sheet creation, explicit print preview requests and legacy sheet creation. Historical editing and stock adjustment approval remain Admin-only.
 123 regression checks passed, including Admin/Clerk print access, inactive Clerk denial, Stock denial despite a forged client permission flag, Stock input access without printing, reprint access and previous workflow regressions. TypeScript and shared UI/date checks passed.
+
+Staff access now distinguishes Clerk from Stock operator. Existing Clerk records retain their role; no accounts are reassigned. Stock operator is a separate assignable role with normal Stock input access and no stocktake printing. Supervisor also has no stocktake printing. Role assignment remains Admin-only and audited.
+Print permission migration applied: 20261113142833_stocktake_print_permissions. Workflow handler version 82 matches implementation commit 6c2ba69, JWT verification enabled. Existing 73 documents/388 movements and movement digest are unchanged.
