@@ -8,10 +8,17 @@ exports.testCombined=async(db,admin,stock)=>{
  await db.exec("insert into stock_v2.item(item_code,item_name,base_unit,input_type,input_category) values('COMB-A','Alpha Chemical','L','Chemical','Herbicide'),('COMB-B','Beta Chemical','L','Chemical','Insecticide'),('COMB-F','Fertilizer Test','kg','Fertilizer','Nutrient')");
  const receive=async(owner,code,quantity)=>scalar("select stock_v2.demo_multi('direct_grv',$1,$2::jsonb)",[uuid(),JSON.stringify({owner_code:owner,supplier:'Supplier A',receipt_mode:'invoice',invoice_number:uuid(),receipt_date:'2026-11-13',lines:[{item_code:code,quantity,unit_price:10}]})]);
  await receive('JS','COMB-A',8);await receive('AO','COMB-A',3);await receive('JS','COMB-B',5);await receive('AO','COMB-B',1);await receive('JS','COMB-F',10);
+ const stockGuy=uuid(),inactiveClerk=uuid();await q("insert into auth.users(id,email) values($1,'store@test'),($2,'inactive-clerk@test')",[stockGuy,inactiveClerk]);await q("insert into stock_v2.staff_role(user_id,role_name,active) values($1,'supervisor',true),($2,'clerk',false)",[stockGuy,inactiveClerk]);const stockAPI=edge(db,'stock-v2-demo-workflow',stockGuy);
+ check((await api('?combined_stocktake_groups=1')).body.can_print===true&&(await adminAPI('?combined_stocktake_groups=1')).body.can_print===true,'Admin and active Clerk may print stocktake sheets');
+ check((await stockAPI('?combined_stocktake_groups=1')).body.can_print===false,'Stock role is not granted stocktake printing');
+ check((await stockAPI('',{action:'combined_stocktake_create',operation_id:uuid(),groups:['Chemical'],take_date:'2026-11-13',can_print:true})).status!==200,'Stock cannot bypass printing restriction with a direct create request');
+ check(!(await scalar('select stock_v2.can_print_stocktake($1)',[inactiveClerk])),'Inactive Clerk cannot print');
  const legacy=Number(await scalar('select count(*) from stock_v2.stocktake'));
  const older=await post(stock,'combined_stocktake_create',{groups:['Fertilizer'],take_date:'2026-11-10'});
  const createBody={groups:['Chemical'],take_date:'2026-11-11'},createOp=uuid();let sheet=await post(stock,'combined_stocktake_create',createBody,createOp);
  check((await post(stock,'combined_stocktake_create',createBody,createOp)).sheet_id===sheet.sheet_id,'Combined print retry retains one sheet');
+ check((await stockAPI('?combined_stocktake_lines=1&print=1&sheet_id='+sheet.sheet_id)).status===403&&(await stockAPI('?combined_stocktake_lines=1&sheet_id='+sheet.sheet_id)).status===200,'Stock can input counts but cannot open a print preview');
+ check((await api('?combined_stocktake_lines=1&print=1&sheet_id='+sheet.sheet_id)).status===200&&(await adminAPI('?combined_stocktake_lines=1&print=1&sheet_id='+sheet.sheet_id)).status===200,'Admin and Clerk may reprint saved sheets');
  check(Number(await scalar('select count(*) from stock_v2.stocktake'))===legacy,'Earlier owner-specific stocktakes remain unchanged');
  const read=await api('?combined_stocktake_lines=1&sheet_id='+sheet.sheet_id);check(read.body.rows.length===2&&read.body.rows[0].item_code==='COMB-A'&&read.body.rows.every(l=>l.hs===null&&l.ao===null),'Combined sheet stores ordered Pastel-code rows with blank HS and AO');
  check(!JSON.stringify(read.body.rows).includes('system_hs'),'Operator input stays blind to book stock');

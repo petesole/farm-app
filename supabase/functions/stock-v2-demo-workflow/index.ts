@@ -18,9 +18,10 @@ Deno.serve(async(req)=>{
   if(req.method==="GET" && new URL(req.url).searchParams.has("stock_access"))return reply({access});
   await db`select stock_v2.workflow_require(${user.id}::uuid)`;
   if(req.method==='GET'&&new URL(req.url).searchParams.has('combined_stocktake_groups')){
+   const canPrint=(await db`select stock_v2.can_print_stocktake(${user.id}::uuid) as allowed`)[0].allowed;
    const rows=await db`select distinct coalesce(nullif(btrim(i.input_type),''),'Other') as stock_type from stock_v2.item i
     where i.active and exists(select 1 from stock_v2.quantity_balance q join stock_v2.owner o using(owner_id) join stock_v2.location l using(location_id) where q.item_id=i.item_id and q.quantity>0 and o.owner_code in ('TEST_JS','TEST_AO') and l.location_code='TEST_WH') order by stock_type`;
-   return reply({groups:rows.map((r:any)=>r.stock_type),is_admin:access.is_admin});
+   return reply({groups:canPrint?rows.map((r:any)=>r.stock_type):[],is_admin:access.is_admin,can_print:canPrint});
   }
   if(req.method==='GET'&&new URL(req.url).searchParams.has('combined_stocktake_list')){
    const historical=new URL(req.url).searchParams.get('history')==='1';if(historical)await db`select stock_v2.workflow_require(${user.id}::uuid,true)`;
@@ -29,6 +30,8 @@ Deno.serve(async(req)=>{
    return reply({rows});
   }
   if(req.method==='GET'&&new URL(req.url).searchParams.has('combined_stocktake_lines')){
+   const canPrint=(await db`select stock_v2.can_print_stocktake(${user.id}::uuid) as allowed`)[0].allowed;
+   if(new URL(req.url).searchParams.has('print')&&!canPrint)return reply({error:'Only Admin and Clerk can print stocktake sheets'},403);
    const id=Number(new URL(req.url).searchParams.get('sheet_id'));if(!Number.isSafeInteger(id)||id<1)return reply({error:'Invalid stock sheet'},400);
    const sheets=await db`select t.*,t.take_date::text as take_date,d.document_number as adjustment_number from stock_v2.combined_stocktake t left join stock_v2.document d on d.document_id=t.adjustment_document_id where t.sheet_id=${id}`;
    if(!sheets.length)return reply({error:'Stock sheet not found'},404);
@@ -38,7 +41,7 @@ Deno.serve(async(req)=>{
     case when ${access.is_admin} then (l.counted_ao-coalesce(l.applied_ao,l.system_ao))::float8 else null end as delta_ao
     from stock_v2.combined_stocktake_line l where l.sheet_id=${id} order by l.position`;
    const audit=access.is_admin?await db`select action,reason,created_at from stock_v2.combined_stocktake_audit where sheet_id=${id} order by audit_id`:[];
-   return reply({sheet:sheets[0],rows,audit,is_admin:access.is_admin});
+   return reply({sheet:sheets[0],rows,audit,is_admin:access.is_admin,can_print:canPrint});
   }
   if(req.method==="GET" && new URL(req.url).searchParams.has("workflow_context")){
    const documents=await db`select a.*,coalesce((select bool_or(l.received_quantity>0) from stock_v2.order_line l where l.order_id=a.target_order_id),false) as received,
@@ -547,6 +550,7 @@ left join lateral (
       if(!ownerRow.length||!locationRow.length)throw Error("Invalid owner or location");
       const oid=ownerRow[0].owner_id,lid=locationRow[0].location_id;
       if(body.action==="stocktake_create"){
+        if(!(await tx`select stock_v2.can_print_stocktake(${user.id}::uuid) as allowed`)[0].allowed)throw Error("Only Admin and Clerk can print stocktake sheets");
         const ids=body.item_codes;
         if(!Array.isArray(ids)||ids.length<1||ids.length>500||new Set(ids).size!==ids.length)throw Error("Select stock items to print");
         const selected=await tx`select i.item_id,i.item_code,coalesce(q.quantity,0)::float8 as qty from stock_v2.item i left join stock_v2.quantity_balance q on q.item_id=i.item_id and q.owner_id=${oid} and q.location_id=${lid} where i.item_code in ${tx(ids)} and i.active=true`;
