@@ -100,6 +100,9 @@ async function testUI(db,admin,stock){
  await combo('Filter Product','Alpha');assert(document.body.textContent.includes('Quantity: 2'));assert(!document.body.textContent.includes('Quantity: 9'));
  await click('Print');const reportHTML=document.querySelector('iframe[title="Test Stock Report preview"]').getAttribute('srcdoc');assert(reportHTML.includes('Alpha')&&!reportHTML.includes('Beta'));assert(reportHTML.includes('Quantity: 2'));
  await click('Close Preview');assert.equal(document.querySelector('input[aria-label="Filter Product"]').value,'Alpha');console.log('PASS Report filters recalculate totals, print matching rows and preserve selections on Close');
- await settle(()=>mount.unmount());Module._load=oldLoad;dom.window.close();return 18;
+ let movementOpened=false;
+ await settle(()=>mount.render(React.createElement(StockReport,{compact:true,title:'Stock Balances',rows:[{name:'Alpha',qty:2,opening:999}],columns:[{key:'name',title:'Product',value:r=>r.name},{key:'qty',title:'JS On Hand',kind:'number',value:r=>r.qty},{key:'mov',title:'JS Movements',value:()=> 'Movements',onPress:()=>{movementOpened=true}}]})));
+ assert(!document.body.textContent.includes('Quantity:')&&!document.body.textContent.includes('Unposted')&&!document.body.textContent.includes('999'));assert(!document.querySelector('input[aria-label="Filter JS Movements"]')&&!document.querySelector('input[aria-label="Filter JS On Hand"]'));await click('Movements');assert(movementOpened,'Movements button retains navigation');await click('Print');const cleanPrint=document.querySelector('iframe[title="Stock Balances preview"]').getAttribute('srcdoc');assert(cleanPrint.includes('Alpha')&&!cleanPrint.includes('999')&&!cleanPrint.includes('Movements'));console.log('PASS Compact stock report excludes unposted/aggregate clutter and preserves movement action and clean printing');
+ await settle(()=>mount.unmount());Module._load=oldLoad;dom.window.close();return 19;
 }
 module.exports={testUI};

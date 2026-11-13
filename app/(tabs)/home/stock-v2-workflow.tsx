@@ -209,16 +209,13 @@ export default function StockV2Workflow(){
     {menu("balanceType",typeFilter||"All input types",[{label:"All input types",value:"all",onSelect:()=>setTypeFilter("")},...inputTypes.map(t=>({label:t,value:t,onSelect:()=>{setTypeFilter(t);setCategoryFilter("")}}))],true)}
     {menu("balanceCategory",categoryFilter||"All input categories",[{label:"All input categories",value:"all",onSelect:()=>setCategoryFilter("")},...inputCategories.map(x=>({label:x,value:x,onSelect:()=>{setCategoryFilter(x);setTypeFilter("")}}))],true)}
    </View>
-   <ThemedText style={styles.muted}>{balanceRows.length} products · Imported Access opening quantities are previews only (not posted). On Hand remains the live ledger balance.</ThemedText>
-   <StockReport title="Stock Balances" rows={balanceRows} measures={["js_qty","ao_qty"]} groupKey="unit"
+   <StockReport compact title="Stock Balances" rows={balanceRows}
     columns={[
       {key:"item",title:"Product",width:240,value:x=>x.item_name},
       {key:"ai",title:"Active Ingredient",width:210,value:x=>x.active_ingredient||"—"},
       {key:"js_qty",title:"JS On Hand",kind:"number",width:110,value:x=>x.quantity},
-      {key:"hs_opening",title:"Access Heyshott Opening (Unposted)",kind:"number",width:155,value:x=>x.opening_heyshott_quantity},
       {key:"js_mov",title:"JS Movements",width:116,value:()=>"Movements",onPress:x=>router.push({pathname:"/stock-v2-movements",params:{item_code:x.item_code,owner:"JS"}})},
       {key:"ao_qty",title:"AO On Hand",kind:"number",width:110,value:x=>x.ao_quantity},
-      {key:"ao_opening",title:"Access AO Opening (Unposted)",kind:"number",width:155,value:x=>x.opening_ao_quantity},
       {key:"ao_mov",title:"AO Movements",width:116,value:()=>"Movements",onPress:x=>router.push({pathname:"/stock-v2-movements",params:{item_code:x.item_code,owner:"AO"}})},
       {key:"unit",title:"Unit",width:75,value:x=>x.base_unit},
       {key:"last",title:"JS Last Purchase Price",kind:"number",width:160,value:x=>x.last_purchase_price},
