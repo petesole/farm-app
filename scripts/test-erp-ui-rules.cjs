@@ -40,7 +40,7 @@ const requiredDateScreens=[
  "app/(tabs)/home/stock-v2-grv-outstanding.tsx",
  "app/(tabs)/home/stock-v2-credits.tsx",
  "app/(tabs)/home/stock-v2-corrections.tsx",
- "app/(tabs)/home/stock-v2-stocktake.tsx",
+ "components/jspl/LegacyStocktakeScreen.tsx",
  "app/(tabs)/home/stock-v2-supplier-returns.tsx",
  "app/wheat-storage-classification.tsx",
  "lib/fieldControls.ts",

@@ -3,7 +3,7 @@ import {supabase} from '@/supabase';
 
 const endpoint='https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow';
 export type ApprovalDocument={id:string;request_number:number;kind:'po'|'credit';status:string;version:number;payload:any;received:boolean;target_order_id:number|null;decision_reason:string|null;audit?:{action:string;created_at:string;reason:string|null}[]};
-export type WorkflowContext={access:{is_admin:boolean;is_stock:boolean;can_main:boolean};documents:ApprovalDocument[];stocktakes:any[];awaiting:number};
+export type WorkflowContext={access:{is_admin:boolean;is_stock:boolean;can_main:boolean};documents:ApprovalDocument[];stocktakes:any[];combined_stocktakes?:any[];awaiting:number};
 export function stockUUID(){return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.floor(Math.random()*16);return(c==='x'?r:(r&3)|8).toString(16)});}
 export async function stockRequest(query='',payload?:unknown){
  const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error('Please sign in');

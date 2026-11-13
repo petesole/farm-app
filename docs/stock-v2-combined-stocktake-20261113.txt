@@ -1,0 +1,13 @@
+Combined HS/AO stocktake — development change, 13/11/2026
+
+Print Stock Take: choose stock groups only; Print Stock Sheet saves a dated snapshot and opens preview. Products are those with recorded positive HS or AO warehouse stock in the chosen groups, preserving the existing stock-sheet eligibility rule. Category, Pastel Code, Product, HS, AO are the only printed columns; count cells are blank. Category is narrower. Print and genuine XLSX use the same saved row positions. No stock-owner selector or product listing on the selection screen.
+
+Input Stock Take: oldest pending sheet first, identified by date, groups and business sheet number. Enter both HS and AO quantities, including explicit zero. Save requires all counts, saves atomically, closes the editor and removes the sheet from pending input. Saves do not directly post stock movements; the established Admin approval step remains.
+
+Admin History: all dated sheets oldest first. Reopen and correct completed sheets with a reason. Earlier owner-specific stock sheets remain accessible separately; existing records were not converted. Stock adjustments have a separate Admin dashboard entry.
+
+Admin approval: separate HS/AO inventory movements under one adjustment document; valuation uses existing posting routines. First approval blocks if stock moved since the print snapshot, preserving the existing reconciliation safeguard. Historical correction applies only the change from the last approved count, preserving subsequent movements. Version checks prevent overwriting another edit; operation references prevent duplicate submissions; count and correction audit records preserve prior values and reasons.
+
+New tables and command function are confined to the private stock_v2 test schema, with RLS and no direct browser access. Other schemas, older stocktakes and existing movement rows are unchanged.
+
+Verification: 116 local checks passed, including actual SQL/Edge/UI flows against an isolated synthetic database, operator/Admin permissions, frozen print ordering, count completion, pending-list removal, historical corrections, retry protection, stock movement safeguards and existing PO/receiving/spray/report regressions. Shared ERP UI/date checks and TypeScript passed. Physical printer output, mobile device behavior and real-role signed-in acceptance remain to be verified.

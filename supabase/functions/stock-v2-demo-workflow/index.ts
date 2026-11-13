@@ -17,6 +17,29 @@ Deno.serve(async(req)=>{
   const access=(await db`select stock_v2.workflow_access(${user.id}::uuid) as value`)[0].value;
   if(req.method==="GET" && new URL(req.url).searchParams.has("stock_access"))return reply({access});
   await db`select stock_v2.workflow_require(${user.id}::uuid)`;
+  if(req.method==='GET'&&new URL(req.url).searchParams.has('combined_stocktake_groups')){
+   const rows=await db`select distinct coalesce(nullif(btrim(i.input_type),''),'Other') as stock_type from stock_v2.item i
+    where i.active and exists(select 1 from stock_v2.quantity_balance q join stock_v2.owner o using(owner_id) join stock_v2.location l using(location_id) where q.item_id=i.item_id and q.quantity>0 and o.owner_code in ('TEST_JS','TEST_AO') and l.location_code='TEST_WH') order by stock_type`;
+   return reply({groups:rows.map((r:any)=>r.stock_type),is_admin:access.is_admin});
+  }
+  if(req.method==='GET'&&new URL(req.url).searchParams.has('combined_stocktake_list')){
+   const historical=new URL(req.url).searchParams.get('history')==='1';if(historical)await db`select stock_v2.workflow_require(${user.id}::uuid,true)`;
+   const rows=await db`select t.*,t.take_date::text as take_date,d.document_number as adjustment_number,(select count(*)::int from stock_v2.combined_stocktake_line l where l.sheet_id=t.sheet_id) as items
+    from stock_v2.combined_stocktake t left join stock_v2.document d on d.document_id=t.adjustment_document_id where ${historical} or t.status='draft' order by t.take_date,t.created_at,t.sheet_id`;
+   return reply({rows});
+  }
+  if(req.method==='GET'&&new URL(req.url).searchParams.has('combined_stocktake_lines')){
+   const id=Number(new URL(req.url).searchParams.get('sheet_id'));if(!Number.isSafeInteger(id)||id<1)return reply({error:'Invalid stock sheet'},400);
+   const sheets=await db`select t.*,t.take_date::text as take_date,d.document_number as adjustment_number from stock_v2.combined_stocktake t left join stock_v2.document d on d.document_id=t.adjustment_document_id where t.sheet_id=${id}`;
+   if(!sheets.length)return reply({error:'Stock sheet not found'},404);
+   if(sheets[0].status!=='draft'&&!access.is_admin)return reply({error:'Admin access required for saved stocktakes'},403);
+   const rows=await db`select l.item_code,l.item_name,l.category,l.stock_type,l.position,l.counted_hs::float8 as hs,l.counted_ao::float8 as ao,
+    case when ${access.is_admin} then (l.counted_hs-coalesce(l.applied_hs,l.system_hs))::float8 else null end as delta_hs,
+    case when ${access.is_admin} then (l.counted_ao-coalesce(l.applied_ao,l.system_ao))::float8 else null end as delta_ao
+    from stock_v2.combined_stocktake_line l where l.sheet_id=${id} order by l.position`;
+   const audit=access.is_admin?await db`select action,reason,created_at from stock_v2.combined_stocktake_audit where sheet_id=${id} order by audit_id`:[];
+   return reply({sheet:sheets[0],rows,audit,is_admin:access.is_admin});
+  }
   if(req.method==="GET" && new URL(req.url).searchParams.has("workflow_context")){
    const documents=await db`select a.*,coalesce((select bool_or(l.received_quantity>0) from stock_v2.order_line l where l.order_id=a.target_order_id),false) as received,
     (select jsonb_agg(jsonb_build_object('action',x.action,'actor',x.actor,'created_at',x.created_at,'reason',x.reason) order by x.id) from stock_v2.approval_audit x where x.document_id=a.id) as audit
@@ -26,7 +49,8 @@ Deno.serve(async(req)=>{
      from stock_v2.stocktake_line x join stock_v2.item i using(item_id) left join stock_v2.quantity_balance q on q.item_id=x.item_id and q.owner_id=t.owner_id and q.location_id=t.location_id where x.take_id=t.take_id) as lines
     from stock_v2.stocktake t join stock_v2.owner o using(owner_id) join stock_v2.location l using(location_id) where t.status='counted' and o.owner_code in ('TEST_JS','TEST_AO') order by t.take_id`;
    const counts=(await db`select (select count(*) from stock_v2.approval_document where status='pending')::int+(select count(*) from stock_v2.stocktake t join stock_v2.owner o using(owner_id) where t.status='counted' and o.owner_code in ('TEST_JS','TEST_AO'))::int as awaiting`)[0];
-   return reply({access,documents,stocktakes,awaiting:counts.awaiting});
+   const combined_stocktakes=await db`select sheet_id,take_number,take_date::text,groups,version from stock_v2.combined_stocktake where status='counted' order by take_date,created_at,sheet_id`;
+   return reply({access,documents,stocktakes,combined_stocktakes,awaiting:counts.awaiting+combined_stocktakes.length});
   }
   if(req.method==="GET" && new URL(req.url).searchParams.has("workflow_operation")){
    const id=new URL(req.url).searchParams.get("workflow_operation");
@@ -405,6 +429,9 @@ left join lateral (
    if(body.operation_id)await tx`insert into stock_v2.approval_operation(id,actor,request,result) values(${body.operation_id}::uuid,${user.id}::uuid,${tx.json(body)}::jsonb,${tx.json(result)}::jsonb)`;
    return result;
   });
+  if(['combined_stocktake_create','combined_stocktake_save','combined_stocktake_post'].includes(body?.action)){
+   const result=await db`select stock_v2.combined_stocktake_command(${user.id}::uuid,${body.operation_id}::uuid,${body.action}::text,${db.json(body)}::jsonb) as result`;return reply({success:true,result:result[0].result});
+  }
   if(body?.action==='reset_issue_slip_print'){
    if(!access.is_admin)return reply({error:'Admin access required'},403);
    if(!body.operation_id||String(body.reason??'').trim().length<8)return reply({error:'Enter a reprint reason (at least 8 characters)'},400);
