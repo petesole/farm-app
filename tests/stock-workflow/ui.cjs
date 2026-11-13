@@ -3,7 +3,7 @@ const root=require('path').resolve(__dirname,'../..');
 async function testUI(db,admin,stock){
  const {JSDOM}=require('jsdom');const dom=new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>',{url:'http://localhost'});
  global.window=dom.window;global.document=dom.window.document;Object.defineProperty(global,'navigator',{value:dom.window.navigator,configurable:true});global.HTMLElement=dom.window.HTMLElement;global.IS_REACT_ACT_ENVIRONMENT=true;
- const React=require(root+'/node_modules/react'),{createRoot}=require(root+'/node_modules/react-dom/client');const ts=require(root+'/node_modules/typescript');const oldLoad=Module._load;let actor=stock,routeParams={};const navigate=x=>{routing.push(x);routeParams=typeof x==='object'?x.params??{}:{}};
+ const React=require(root+'/node_modules/react'),{createRoot}=require(root+'/node_modules/react-dom/client');const ts=require(root+'/node_modules/typescript');const oldLoad=Module._load;let actor=stock,routeParams={},stringSprayIds=false;const navigate=x=>{routing.push(x);routeParams=typeof x==='object'?x.params??{}:{}};
  const {edge}=require('./edge-harness.cjs');const storage=new Map();const routing=[];
  const native={StyleSheet:{create:x=>x},useWindowDimensions:()=>({width:1200,height:900}),Platform:{OS:'web'}};
  const Tabs=({children,initialRouteName})=>React.createElement('div',{'data-initial-route':initialRouteName},children);Tabs.Screen=({name,options})=>React.createElement('span',{'data-tab':name,'data-href':options?.href??''});
@@ -19,13 +19,13 @@ async function testUI(db,admin,stock){
   if(name==='@/components/themed-text')return {ThemedText:native.Text};
   if(name==='@/components/themed-view')return {ThemedView:native.View};
   if(name==='@react-native-async-storage/async-storage')return {getItem:async k=>storage.get(k)??null,setItem:async(k,v)=>storage.set(k,v),removeItem:async k=>storage.delete(k)};
-  if(name==='@/supabase'||name==='../../../supabase'||name==='../../supabase')return {supabase:{rpc:async()=>({data:(await db.query('select role_name from public.app_user_role where user_id=$1',[actor])).rows.map(r=>r.role_name)}),auth:{signInWithPassword:async()=>({data:{user:{id:actor,email:'stock@test'}}}),signOut:async()=>{},getUser:async()=>({data:{user:{id:actor}}}),getSession:async()=>({data:{session:{access_token:'local',user:{id:actor}}}})}}};
+  if(name==='@/supabase'||name==='../../../supabase'||name==='../../supabase')return {supabase:{from:table=>({select:async()=>({data:(await db.query('select * from public.'+table)).rows})}),rpc:async()=>({data:(await db.query('select role_name from public.app_user_role where user_id=$1',[actor])).rows.map(r=>r.role_name)}),auth:{signInWithPassword:async()=>({data:{user:{id:actor,email:'stock@test'}}}),signOut:async()=>{},getUser:async()=>({data:{user:{id:actor}}}),getSession:async()=>({data:{session:{access_token:'local',user:{id:actor}}}})}}};
   if(name.endsWith('.png'))return 1;
   if(name.startsWith('@/'))name=root+'/'+name.slice(2);
   return oldLoad.call(this,name,parent,isMain);
  };
  for(const ext of ['.ts','.tsx'])require.extensions[ext]=(mod,file)=>mod._compile(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,file);
- global.fetch=async(url,options={})=>{const name=String(url).includes('stock-v2-credits')?'stock-v2-credits':'stock-v2-demo-workflow';const query=String(url).includes('?')?'?'+String(url).split('?')[1]:'';const r=await edge(db,name,actor)(query,options.body?JSON.parse(options.body):undefined);return new Response(JSON.stringify(r.body),{status:r.status})};
+ global.fetch=async(url,options={})=>{const name=String(url).includes('stock-v2-credits')?'stock-v2-credits':'stock-v2-demo-workflow';const query=String(url).includes('?')?'?'+String(url).split('?')[1]:'';const r=await edge(db,name,actor)(query,options.body?JSON.parse(options.body):undefined);if(stringSprayIds){if(r.body.sprays)r.body.sprays=r.body.sprays.map(l=>({...l,job_id:String(l.job_id),external_tracecode_id:String(l.external_tracecode_id)}));if(query.includes('spray_return_issues')&&r.body.rows)r.body.rows=r.body.rows.map(l=>({...l,document_id:String(l.document_id),source_line_id:String(l.source_line_id)}));}return new Response(JSON.stringify(r.body),{status:r.status})};
  const mount=createRoot(document.getElementById('root'));const sleep=ms=>new Promise(r=>setTimeout(r,ms));
  const settle=async(fn)=>{await React.act(async()=>{fn?.();await sleep(80)});};
  const until=async(fn,label)=>{for(let n=0;n<50;n++){if(fn())return;await settle();}throw Error(label+'\n'+document.body.textContent)};
@@ -69,6 +69,16 @@ async function testUI(db,admin,stock){
  await combo('From stock owner','JS · JS');assert.equal(document.querySelector('input[aria-label="To stock owner"]').value,'AO · AO');
  const ownerData=await edge(db,'stock-v2-demo-workflow',stock)('?owner_workflow=1');const transferItem=ownerData.body.balances.find(b=>b.owner_code==='JS'&&b.item_code==='ITEM1');assert(transferItem&&Number(transferItem.quantity)>0);
  await combo('Product 1','Test input · '+Number(transferItem.quantity).toLocaleString('en-GB')+' kg');await fill('Quantity','1');await click('Confirm transfer');await click('Save Stock Transfer');await until(()=>document.body.textContent.includes('Both owner balances have been updated'),'Transfer saved');console.log('PASS Transfer combos exclude same owner and post non-demo catalogue stock');
+ // Hosted postgres returns bigint identifiers as strings, unlike the local SQL adapter.
+ await db.exec("insert into stock_v2.access_spray_type_catalog(access_spray_type_id,spray_type_name,spray_tank_size,spray_rate_per_ha) values(1,'Issue test boom',600,200)");
+ const spray=(await db.query("select stock_v2.demo_multi('spray',$1,$2::jsonb) as result",[stockUUID(),JSON.stringify({owner_code:'JS',tracecode_id:1,area_ha:1,part_label:'Part 1 ha',spray_type:'Issue test boom',water_rate:200,lines:[{item_code:'ITEM1',rate_per_ha:1}]})])).rows[0].result;
+ stringSprayIds=true;routeParams={};await render('stock-v2-spray-planning');await until(()=>button('Open'),'Planned spray list loaded');await click('Open');await click('Transfer / Issue');assert.equal(routing.at(-1).pathname,'/stock-v2-spray-transaction');assert.equal(routing.at(-1).params.jobId,String(spray.job_id));
+ const Issue=require(root+'/app/stock-v2-spray-transaction.tsx').default;await settle(()=>mount.render(React.createElement(Issue)));await until(()=>document.querySelector('input[aria-label="Hectares to issue"]'),'Issue form displays string-ID spray');assert(document.body.textContent.includes('Test input'));await fill('Hectares to issue','0.5');
+ await settle(()=>[...document.querySelectorAll('button')].find(b=>b.textContent.includes('Confirm stock issue')).click());await click('Post Issue');await until(()=>routing.at(-1).params?.postedDocument,'Issue confirmation returns to spray list');
+ const issueDocument=Number(routing.at(-1).params.postedDocument);const issued=Number((await db.query('select sum(quantity) as qty from stock_v2.document_line where document_id=$1',[issueDocument])).rows[0].qty);assert.equal(issued,0.5);console.log('PASS Spray list opens Issue with hosted string IDs, displays products and posts the selected hectares once');
+ await edge(db,'stock-v2-demo-workflow',stock)('',{action:'planned_issue',operation_id:stockUUID(),payload:{job_id:spray.job_id,lines:[{item_code:'ITEM1',quantity:0.5}]}});
+ const returnFeed=await edge(db,'stock-v2-demo-workflow',stock)('?spray_return_issues=1&job_id='+spray.job_id);const returnRow=returnFeed.body.rows.find(r=>Number(r.document_id)===issueDocument);routeParams={jobId:String(spray.job_id),mode:'return'};await settle(()=>mount.render(React.createElement(Issue)));await until(()=>document.querySelector('input[aria-label="Original issue"]'),'Return issue selector loaded');await combo('Original issue',returnRow.document_number);assert(document.querySelector('input[aria-label="Return quantity '+returnRow.source_line_id+'"]'));console.log('PASS Spray return selects original issue and source lines with hosted string IDs');
+ stringSprayIds=false;
  await db.exec("update stock_v2.item set input_type='Chemical',input_category='Herbicide',category='91' where item_code='ITEM1';update stock_v2.item set input_type='Fertilizer',input_category='Nutrient',category='86' where item_code='ITEM2'");
  await render('stock-v2-stocktake');await until(()=>document.querySelector('[aria-label="Stock group: Chemical"]'),'Stocktake groups loaded');
  await settle(()=>document.querySelector('[aria-label="Stock group: Chemical"]').click());await settle(()=>document.querySelector('[aria-label="Stock group: Fertilizer"]').click());
@@ -90,6 +100,6 @@ async function testUI(db,admin,stock){
  await combo('Filter Product','Alpha');assert(document.body.textContent.includes('Quantity: 2'));assert(!document.body.textContent.includes('Quantity: 9'));
  await click('Print');const reportHTML=document.querySelector('iframe[title="Test Stock Report preview"]').getAttribute('srcdoc');assert(reportHTML.includes('Alpha')&&!reportHTML.includes('Beta'));assert(reportHTML.includes('Quantity: 2'));
  await click('Close Preview');assert.equal(document.querySelector('input[aria-label="Filter Product"]').value,'Alpha');console.log('PASS Report filters recalculate totals, print matching rows and preserve selections on Close');
- await settle(()=>mount.unmount());Module._load=oldLoad;dom.window.close();return 16;
+ await settle(()=>mount.unmount());Module._load=oldLoad;dom.window.close();return 18;
 }
 module.exports={testUI};

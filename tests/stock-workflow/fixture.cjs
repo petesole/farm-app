@@ -7,6 +7,7 @@ async function fixture(){
  for(const s of extra.sequences)await db.exec(`create sequence stock_v2.${s.relname}`);
  for(const t of [...new Set(m.columns.map(c=>c.table_name))])await db.exec(`create table stock_v2.${t}(${m.columns.filter(c=>c.table_name===t).map(c=>c.column_name+' '+c.data_type+(c.is_identity==='YES'?` generated ${c.identity_generation} as identity`:c.column_default?' default '+c.column_default:'')+(c.is_nullable==='NO'?' not null':'')).join(',')})`);
  for(const c of [...m.constraints.filter(c=>!c.definition.startsWith('FOREIGN KEY')),...m.constraints.filter(c=>c.definition.startsWith('FOREIGN KEY'))])await db.exec(`alter table ${c.table_name.includes('.')?c.table_name:'stock_v2.'+c.table_name} add constraint ${c.conname} ${c.definition}`);
+ for(const index of extra.indexes??[])await db.exec(index);
  for(const f of m.functions)await db.exec(f.definition);
  let views=[...m.views];while(views.length){let pending=[];for(const v of views){try{await db.exec(`create view stock_v2.${v.viewname} as ${v.definition}`)}catch(e){pending.push(v);v.error=e.message}}if(pending.length===views.length)throw Error(JSON.stringify(pending.map(v=>[v.viewname,v.error])));views=pending;}
  for(const t of m.triggers)await db.exec(t.definition);

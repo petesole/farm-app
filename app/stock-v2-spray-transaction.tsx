@@ -20,9 +20,9 @@ export default function SprayTransaction(){
  const [loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState("");
  const [hectares,setHectares]=useState(""),[documentId,setDocumentId]=useState<number|null>(null);
  const [amounts,setAmounts]=useState<Record<number,string>>({}),[complete,setComplete]=useState(false),[confirmed,setConfirmed]=useState(false);
- const selected=useMemo(()=>lines.filter(l=>l.job_id===jobId),[lines,jobId]);
+ const selected=useMemo(()=>lines.filter(l=>Number(l.job_id)===jobId),[lines,jobId]);
  const area=selected.length?Math.min(...selected.map(l=>l.rate_per_ha>0?Math.max(0,(l.planned_quantity-l.issued_quantity)/l.rate_per_ha):0)):0;
- const chosenIssues=issues.filter(x=>x.document_id===documentId);
+ const chosenIssues=issues.filter(x=>Number(x.document_id)===documentId);
  const token=async()=>{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");return session.access_token};
  useEffect(()=>{let alive=true;(async()=>{try{
   if(!Number.isSafeInteger(jobId)||jobId<=0)throw Error("Invalid spray reference");
@@ -34,8 +34,8 @@ export default function SprayTransaction(){
   if(mode==="return"&&job[0].status!=="completed")throw Error("Only completed sprays can return unused stock");
   if(mode==="issue"&&(job[0].status!=="planned"||job.every((l:SprayLine)=>Number(l.planned_quantity)<=Number(l.issued_quantity))))throw Error("No outstanding spray stock to issue");
   if(!alive)return;
-  setLines(job);setProducts(data.items??[]);
-  if(returnRes){const d=await returnRes.json();if(!returnRes.ok)throw Error(d.error||"Unable to load original issues");if(alive)setIssues(d.rows??[])}
+  setLines(job.map((l:SprayLine)=>({...l,job_id:Number(l.job_id),external_tracecode_id:Number(l.external_tracecode_id)})));setProducts(data.items??[]);
+  if(returnRes){const d=await returnRes.json();if(!returnRes.ok)throw Error(d.error||"Unable to load original issues");if(alive)setIssues((d.rows??[]).map((l:ReturnLine)=>({...l,document_id:Number(l.document_id),source_line_id:Number(l.source_line_id),available_to_return:Number(l.available_to_return)})))}
  }catch(e){if(alive)setError(e instanceof Error?e.message:String(e))}finally{if(alive)setLoading(false)}})();return()=>{alive=false}},[jobId,mode]);
  useEffect(()=>{if(mode==="issue"&&area>0&&!hectares)setHectares(String(Number(area.toFixed(3))))},[mode,area]);
  const post=async()=>{
@@ -70,20 +70,21 @@ export default function SprayTransaction(){
   <Text style={s.title}>Spray #{jobId} {selected[0]?.tracecode_name??""}</Text>
   {loading?<ActivityIndicator/>:null}
   {!!error&&<Text style={s.error}>{error}</Text>}
+  {!loading&&!error&&!selected.length?<Text style={s.error}>Spray details could not be displayed. Return to Spray Planning and reopen the issue.</Text>:null}
   {!loading&&selected.length>0&&<View style={s.panel}>
    {mode==="issue"?<>
     <Text>Remaining: {fmt(area)} ha</Text>
     <Text>Hectares to issue</Text>
-    <TextInput style={s.input} value={hectares} onChangeText={x=>{setHectares(x);setConfirmed(false)}} keyboardType="decimal-pad"/>
+    <TextInput accessibilityLabel="Hectares to issue" style={s.input} value={hectares} onChangeText={x=>{setHectares(x);setConfirmed(false)}} keyboardType="decimal-pad"/>
     <View style={s.row}><Text style={s.name}>Product</Text><Text style={s.value}>Required</Text><Text style={s.value}>Available</Text></View>
     {selected.map(l=><View key={l.item_code} style={s.row}><Text style={s.name}>{l.item_name}</Text><Text style={s.value}>{fmt(Number(hectares)*l.rate_per_ha)} {l.base_unit}</Text><Text style={s.value}>{fmt(products.find(p=>p.item_code===l.item_code)?.quantity??0)}</Text></View>)}
    </>:<>
     <JsplSearchCombo label="Original issue" selector="product" options={docOptions} value={documentId} onChange={v=>{setDocumentId(typeof v==="number"?v:null);setAmounts({});setConfirmed(false)}} placeholder="Select issue document"/>
     <View style={s.row}><Text style={s.name}>Product</Text><Text style={s.value}>Maximum return</Text><Text style={s.value}>Return quantity</Text></View>
-    {chosenIssues.map(x=><View key={x.source_line_id} style={s.row}><Text style={s.name}>{x.item_name}</Text><Text style={s.value}>{fmt(x.available_to_return)} {x.base_unit}</Text><TextInput style={[s.input,s.value]} keyboardType="decimal-pad" value={amounts[x.source_line_id]??""} onChangeText={v=>{setAmounts(a=>({...a,[x.source_line_id]:v}));setConfirmed(false)}}/></View>)}
+    {chosenIssues.map(x=><View key={x.source_line_id} style={s.row}><Text style={s.name}>{x.item_name}</Text><Text style={s.value}>{fmt(x.available_to_return)} {x.base_unit}</Text><TextInput accessibilityLabel={"Return quantity "+x.source_line_id} style={[s.input,s.value]} keyboardType="decimal-pad" value={amounts[x.source_line_id]??""} onChangeText={v=>{setAmounts(a=>({...a,[x.source_line_id]:v}));setConfirmed(false)}}/></View>)}
     <JsplSearchCombo label="Spray status" selector="product" options={[{id:"incomplete",label:"Incomplete — keep outstanding",active:true},{id:"complete",label:"Complete — close spray",active:true}]} value={complete?"complete":"incomplete"} onChange={v=>{setComplete(v==="complete");setConfirmed(false)}}/>
    </>}
-   <Pressable onPress={()=>setConfirmed(c=>!c)}><Text style={s.check}>{confirmed?"☑":"☐"} Confirm {mode==="issue"?"stock issue":"stock return"}</Text></Pressable>
+   <Pressable accessibilityRole="checkbox" accessibilityState={{checked:confirmed}} onPress={()=>setConfirmed(c=>!c)}><Text style={s.check}>{confirmed?"☑":"☐"} Confirm {mode==="issue"?"stock issue":"stock return"}</Text></Pressable>
    <View style={s.row}><Pressable style={s.button} onPress={()=>router.replace("/stock-v2-spray-planning")}><Text>Cancel</Text></Pressable><Pressable style={s.button} disabled={busy||!confirmed} onPress={()=>void post()}><Text>{busy?"Posting…":"Post "+(mode==="issue"?"Issue":"Return")}</Text></Pressable></View>
   </View>}
  </ScrollView>
