@@ -92,6 +92,8 @@ export default function StockV2Workflow(){
  const removeLine=(id:number)=>{setLines(old=>old.filter(l=>l.id!==id));resetEdit()};
  const switchTab=(v:Tab|null)=>{if(v==="Purchase Orders"||v==="PO Corrections"){router.push("/stock-v2-purchase-orders");return;}if(v==="POs Outstanding"){router.push("/stock-v2-po-receiving");return;}if(v==="GRV"){router.push("/stock-v2-grv-outstanding");return;}if(v==="Stock Transfer"){router.push("/stock-v2-owner-transactions");return;}if(v==="Corrections"){router.push("/(tabs)/home/stock-v2-corrections");return;}if(v==="Supplier Returns"){router.push("/(tabs)/home/stock-v2-supplier-returns");return;}if(v==="Stock Take"){router.push("/(tabs)/home/stock-v2-stocktake");return;}setTab(v);if(v==="Planned Issue")void refresh(false);setLines([emptyLine(nextLine)]);setNextLine(n=>n+1);setOrderId(null);setJobId(null);setDropdown(null);setStatus("");setReceiptMode("dnote");setInvoiceNumber("");setDeliveryNote("");resetEdit()};
  const products=snapshot?.items??[];
+ const issueStock=(p?:Item)=>{const n=Number(ownerCode==="AO"?p?.ao_quantity:p?.quantity);return Number.isFinite(n)?Math.max(0,n):0};
+ const stockLabel=(p:Item)=>issueStock(p).toLocaleString("en-GB",{maximumFractionDigits:6})+" "+p.base_unit;
  const inputTypes=[...new Set(products.filter(p=>(!categoryFilter||p.input_category===categoryFilter)&&(stockFilter==="all"||(stockFilter==="stock"?(p.quantity>0||p.ao_quantity>0):(p.quantity<=0&&p.ao_quantity<=0)))).map(x=>x.input_type).filter((x):x is string=>!!x))].sort();
  const inputCategories=[...new Set(products.filter(p=>(!typeFilter||p.input_type===typeFilter)&&(stockFilter==="all"||(stockFilter==="stock"?(p.quantity>0||p.ao_quantity>0):(p.quantity<=0&&p.ao_quantity<=0)))).map(x=>x.input_category).filter((x):x is string=>!!x))].sort();
  const balanceRows=products.filter(p=>(!typeFilter||p.input_type===typeFilter)&&(!categoryFilter||p.input_category===categoryFilter)&&(stockFilter==="all"||(stockFilter==="stock"?(p.quantity>0||p.ao_quantity>0):(p.quantity<=0&&p.ao_quantity<=0))));
@@ -118,21 +120,21 @@ export default function StockV2Workflow(){
  const lineCells=(l:Line,locked=false)=>{
   const product=products.find(p=>p.item_code===l.item_code);
   const reference=tab==="POs Outstanding"&&!directGrv?selectedPO?.lines.find(x=>x.item_code===l.item_code):tab==="Planned Issue"?selectedJob?.lines.find(x=>x.item_code===l.item_code):null;
-  const max=tab==="POs Outstanding"&&!directGrv&&reference?(reference as OrderLine).ordered_quantity-(reference as OrderLine).received_quantity:tab==="Planned Issue"&&reference?(reference as SprayLine).planned_quantity-(reference as SprayLine).issued_quantity:null;
+  const max=tab==="POs Outstanding"&&!directGrv&&reference?(reference as OrderLine).ordered_quantity-(reference as OrderLine).received_quantity:tab==="Planned Issue"&&reference?(reference as SprayLine).planned_quantity-(reference as SprayLine).issued_quantity:tab==="Direct Issue"&&product?issueStock(product):null;
   const grvSelectable=tab==="POs Outstanding"&&!directGrv;
   const enabled=!grvSelectable||checkedPOItems.includes(l.item_code);
   return <View key={l.id} style={styles.line}>
    {grvSelectable?<Pressable style={{width:55,alignItems:"center",justifyContent:"center"}} onPress={()=>{setCheckedPOItems(old=>old.includes(l.item_code)?old.filter(x=>x!==l.item_code):[...old,l.item_code]);resetEdit()}}><ThemedText style={{fontSize:23,color:enabled?jsplColors.primary:jsplColors.textSecondary}}>{enabled?"☑":"☐"}</ThemedText></Pressable>:null}
    <View style={styles.productColumn}>
-    {locked?<ThemedText>{product?.item_name??l.item_code}</ThemedText>:<Pressable style={styles.selector} onPress={()=>{setPickerLine(l.id);setPickerSearch("")}}><ThemedText numberOfLines={2}>{product?.item_name??"Select product"} ▾</ThemedText></Pressable>}
-    <ThemedText style={styles.muted}>{product?.base_unit??""}</ThemedText>
+    {locked?<ThemedText>{product?.item_name??l.item_code}</ThemedText>:<Pressable style={styles.selector} onPress={()=>{setPickerLine(l.id);setPickerSearch("");if(tab==="Direct Issue")void refresh(false)}}><ThemedText numberOfLines={2}>{product?.item_name??"Select product"} ▾</ThemedText></Pressable>}
+    <ThemedText style={styles.muted}>{tab==="Direct Issue"&&product?"Available: "+stockLabel(product):product?.base_unit??""}</ThemedText>
    </View>
    {tab==="POs Outstanding"&&!directGrv?<><View style={styles.numberColumn}><ThemedText>{(reference as OrderLine)?.ordered_quantity??"—"}</ThemedText></View><View style={styles.numberColumn}><ThemedText>{(reference as OrderLine)?.received_quantity??"—"}</ThemedText></View><View style={styles.numberColumn}><ThemedText>{currency((reference as OrderLine)?.ordered_unit_price??NaN)}</ThemedText></View></>:null}
    {tab==="Planned Issue"?<View style={styles.numberColumn}><ThemedText>{max?.toFixed(2)??"—"}</ThemedText></View>:null}
-   <View style={styles.numberColumn}><TextInput style={[styles.tableInput,grvSelectable&&enabled?{backgroundColor:"#fff4cb",borderColor:"#e5a700",borderWidth:2}:null,{textAlign:"right",fontVariant:["tabular-nums"]}]} editable={enabled} keyboardType="decimal-pad" value={l.quantity} onChangeText={v=>changeLine(l.id,"quantity",v)} placeholder="Quantity" placeholderTextColor="#777"/></View>
+   <View style={styles.numberColumn}><TextInput style={[styles.tableInput,grvSelectable&&enabled?{backgroundColor:"#fff4cb",borderColor:"#e5a700",borderWidth:2}:null,{textAlign:"right",fontVariant:["tabular-nums"]}]} accessibilityLabel={tab==="Direct Issue"?"Quantity to issue "+l.item_code:undefined} editable={enabled} keyboardType="decimal-pad" value={l.quantity} onChangeText={v=>changeLine(l.id,"quantity",v)} placeholder="Quantity" placeholderTextColor="#777"/></View>
    {tab==="Purchase Orders"||tab==="POs Outstanding"?<><View style={styles.numberColumn}><TextInput style={[styles.tableInput,grvSelectable&&enabled?{backgroundColor:"#fff4cb",borderColor:"#e5a700",borderWidth:2}:null]} editable={enabled} keyboardType="decimal-pad" value={l.unit_price} onChangeText={v=>changeLine(l.id,"unit_price",v)} placeholder="Unit price" placeholderTextColor="#777"/></View><View style={styles.numberColumn}><ThemedText>{currency(number(l.quantity)*number(l.unit_price))}</ThemedText></View></>:null}
    {tab==="Direct Issue"?<View style={[styles.numberColumn,{width:210}]}><TextInput style={styles.tableInput} value={l.mix_instruction} onChangeText={v=>changeLine(l.id,"mix_instruction",v)} placeholder="e.g. 1 L / 16 L knapsack" /></View>:null}
-   {max!==null&&max!==undefined&&number(l.quantity)>max?<ThemedText style={styles.alert}>Over outstanding</ThemedText>:null}
+   {max!==null&&max!==undefined&&number(l.quantity)>max?<ThemedText style={styles.alert}>{tab==="Direct Issue"?"Exceeds available stock":"Over outstanding"}</ThemedText>:null}
    {!locked?<Pressable style={[styles.remove,styles.removeColumn]} onPress={()=>removeLine(l.id)}><ThemedText style={styles.alert}>×</ThemedText></Pressable>:null}
   </View>;
  };
@@ -146,6 +148,7 @@ export default function StockV2Workflow(){
   if(!products.some(p=>p.item_code===l.item_code&&p.active))return false;
   const n=number(l.quantity);
   if(!Number.isFinite(n)||n<=0)return false;
+  if(tab==="Direct Issue"&&n>issueStock(products.find(p=>p.item_code===l.item_code)))return false;
   if(["Purchase Orders","POs Outstanding"].includes(tab ?? "")&&l.unit_price.trim()!==""&&(!Number.isFinite(number(l.unit_price))||number(l.unit_price)<0))return false;
   const ref=tab==="POs Outstanding"?selectedPO?.lines.find(x=>x.item_code===l.item_code):tab==="Planned Issue"?selectedJob?.lines.find(x=>x.item_code===l.item_code):null;
   if(tab==="POs Outstanding"&&!directGrv&&(!ref||n>(ref as OrderLine).ordered_quantity-(ref as OrderLine).received_quantity))return false;
@@ -166,7 +169,7 @@ export default function StockV2Workflow(){
       " — returned to Stock Home.");setConfirmed(false);setRequest(null);await refresh(false);setTab(null);
    if(tab==="POs Outstanding")setOrderId(null);if(tab==="Planned Issue")setJobId(null);
    setLines([emptyLine(nextLine)]);setNextLine(n=>n+1);
-  }catch(e){setStatus("Save not confirmed: "+(e instanceof Error?e.message:String(e)))}finally{setBusy(false)}
+  }catch(e){setStatus("Save not confirmed: "+(e instanceof Error?e.message:String(e)));if(tab==="Direct Issue")void refresh(false)}finally{setBusy(false)}
  };
  const header=(title:string,details:string[])=><View style={styles.documentHead}><ThemedText style={styles.heading}>{title}</ThemedText><View style={styles.headerDetails}>{details.map((x,i)=><ThemedText key={i} style={styles.detail}>{x}</ThemedText>)}</View></View>;
  const currentTrace=traces.find(t=>t.tracecode_id===traceId);
@@ -225,7 +228,7 @@ export default function StockV2Workflow(){
      ]}/>
 
   </View>:<View style={styles.sheet}>
-   {header(tab.toUpperCase(),["Owner: TEST_JS","Warehouse: TEST_WH","Date: "+new Date().toLocaleDateString("en-GB")])}
+   {header(tab.toUpperCase(),[tab==="Direct Issue"?"Owner: "+(ownerCode||"JS"):"Owner: TEST_JS","Warehouse: TEST_WH","Date: "+new Date().toLocaleDateString("en-GB")])}
    {(tab==="Purchase Orders"||tab==="POs Outstanding")?<View style={{gap:10,paddingBottom:14}}>
      <ThemedText style={styles.label}>1. Stock Owner</ThemedText>
      {menu("owner",owner?owner.owner_name:"Choose Stock Owner",owners.filter(o=>o.active).map(o=>({label:o.owner_name,value:o.owner_code,onSelect:()=>selectOwner(o.owner_code)})))}
@@ -279,7 +282,7 @@ export default function StockV2Workflow(){
    {pickerLine!==null?<View style={styles.pickerPanel}>
     <View style={styles.pickerTop}><ThemedText style={styles.section}>Choose product</ThemedText><Pressable onPress={()=>setPickerLine(null)}><ThemedText>Close</ThemedText></Pressable></View>
     <TextInput style={styles.input} placeholder="Find product" value={pickerSearch} onChangeText={setPickerSearch}/>
-    {products.filter(p=>p.active&&p.item_name.toLowerCase().startsWith(pickerSearch.trim().toLowerCase())&&!lines.some(x=>x.id!==pickerLine&&x.item_code===p.item_code)).map(p=><Pressable key={p.item_code} style={styles.choice} onPress={()=>{changeLine(pickerLine,"item_code",p.item_code);setPickerLine(null)}}><ThemedText>{p.item_name} ({p.base_unit})</ThemedText></Pressable>)}
+    {products.filter(p=>p.active&&p.item_name.toLowerCase().startsWith(pickerSearch.trim().toLowerCase())&&!lines.some(x=>x.id!==pickerLine&&x.item_code===p.item_code)).map(p=><Pressable key={p.item_code} disabled={tab==="Direct Issue"&&issueStock(p)<=0} style={[styles.choice,tab==="Direct Issue"&&issueStock(p)<=0?{opacity:.45}:null]} onPress={()=>{changeLine(pickerLine,"item_code",p.item_code);setPickerLine(null)}}><ThemedText>{p.item_name} ({p.base_unit}){tab==="Direct Issue"?" · Available: "+stockLabel(p):""}</ThemedText></Pressable>)}
    </View>:null}
    {(directGrv||!["POs Outstanding","Planned Issue"].includes(tab ?? ""))?<Pressable style={styles.add} onPress={addLine}><ThemedText>＋ Add product line</ThemedText></Pressable>:null}
    {(tab==="Purchase Orders"||(tab==="POs Outstanding"&&receiptMode==="invoice"))?<ThemedText style={styles.total}>Document total: {currency(lines.reduce((s,l)=>s+number(l.quantity)*number(l.unit_price||"0"),0))}</ThemedText>:null}
