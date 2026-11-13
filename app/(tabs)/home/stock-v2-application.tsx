@@ -47,9 +47,8 @@ export default function ApplicationSheet(){
    @page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}html,body{margin:0;padding:0;background:#fff;color:#111;font-family:Arial,sans-serif;font-size:10pt}
    main{width:100%;padding:5mm}.heading{background:#dce4ec;padding:8px 10px;margin-bottom:8px}h1{font-size:19pt;margin:0 0 9px}
    .meta{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px 16px;margin-bottom:9px}
-   .tanks{display:flex;gap:26px;align-items:center;border-top:1px solid #abb5be;padding-top:7px}
    table{width:100%;border-collapse:collapse;table-layout:fixed}th{background:#e7ebf0;text-align:left;font-size:10pt}th,td{padding:5px 7px;border-bottom:1px solid #dedede;vertical-align:top}
-   tbody tr:nth-child(even){background:#f3f3f3}.num{text-align:right;white-space:nowrap}th:first-child{width:28%}
+   tbody tr:nth-child(even){background:#f3f3f3}.num{text-align:right;white-space:nowrap}
    .foot{font-size:8.5pt;margin-top:12px;line-height:1.3}.toolbar{padding:10px;background:#e5e9ee;display:flex;gap:12px}
    .toolbar button{font-size:12pt;padding:6px 16px;cursor:pointer}
    @media print{.toolbar{display:none!important}main{padding:0}thead{display:table-header-group}tr{break-inside:avoid}}
@@ -57,8 +56,8 @@ export default function ApplicationSheet(){
    <div class="heading"><h1>APPLICATION · Spray #${id}</h1>
    <div class="meta"><div><b>Week:</b> ${esc(heading)}</div><div><b>Trace Code:</b> ${esc(first.tracecode_name)}</div><div><b>Spray Type:</b> ${esc(first.spray_type)}</div><div><b>Sprayer:</b> ${esc(first.sprayer_asset_code||"—")}</div>
    <div><b>Application Ha:</b> ${fmt(area)}</div><div><b>Water Rate:</b> ${fmt(water,0)} L/ha</div><div><b>Total Water:</b> ${fmt(totalWater,0)} L</div><div><b>Tank capacity:</b> ${fmt(capacity,0)} L</div></div>
-   <div class="tanks"><div><b>Full Tanks</b> ${full} × ${fmt(capacity,0)} L</div><div><b>Part Tank</b> ${fmt(rest,1)} L</div></div></div>
-   <table><thead><tr><th>Input Name</th><th class="num">Rate/ha</th><th class="num">Total</th><th class="num">Full Tank Mix</th><th class="num">Part Tank Mix</th></tr></thead><tbody>${lineHtml}</tbody></table>
+   </div>
+   <table><colgroup><col style="width:28%"/><col style="width:18%"/><col style="width:18%"/><col style="width:18%"/><col style="width:18%"/></colgroup><thead><tr><th colspan="3"></th><th class="num">${full}</th><th class="num">${rest.toLocaleString("en-GB",{maximumFractionDigits:1})} L</th></tr><tr><th>Input Name</th><th class="num">Rate/ha</th><th class="num">Total</th><th class="num">Full Tank Mix</th><th class="num">Part Tank Mix</th></tr></thead><tbody>${lineHtml}</tbody></table>
    <p class="foot">Full Tank Mix amounts are per full tank. Part Tank Mix amounts are for the remaining water. Confirm tank capacity and sprayer calibration before applying.</p></main></body></html>`;
   popup.document.open();popup.document.write(html);popup.document.close();popup.focus();
  };
@@ -73,9 +72,10 @@ export default function ApplicationSheet(){
    <View style={styles.top}>
     <ThemedText testID="application-print-title" style={styles.title}>APPLICATION · Spray #{id}</ThemedText>
     <View style={styles.meta}><ThemedText>Week: {heading}</ThemedText><ThemedText>Trace Code: {first.tracecode_name}</ThemedText><ThemedText>Spray Type: {first.spray_type}</ThemedText><ThemedText>Sprayer: {first.sprayer_asset_code||"—"}</ThemedText><ThemedText>Application Ha: {fmt(area)}</ThemedText><ThemedText>Water Rate: {fmt(water,0)} L/ha</ThemedText><ThemedText>Total Water: {fmt(totalWater,0)} L</ThemedText></View>
-    <View style={styles.tankRow}><View><ThemedText style={styles.label}>Tank capacity (L) — confirm before printing</ThemedText><TextInput style={styles.input} value={tankSize} onChangeText={setTankSize} keyboardType="decimal-pad"/></View><View><ThemedText style={styles.bold}>Full Tanks</ThemedText><ThemedText>{validTank?String(full):"—"} × {fmt(capacity,0)} L</ThemedText></View><View><ThemedText style={styles.bold}>Part Tank</ThemedText><ThemedText>{validTank?fmt(rest,1):"—"} L</ThemedText></View></View>
+    <View style={styles.tankRow}><View><ThemedText style={styles.label}>Tank capacity (L) — confirm before printing</ThemedText><TextInput style={styles.input} value={tankSize} onChangeText={setTankSize} keyboardType="decimal-pad"/></View></View>
     {!validTank?<ThemedText style={styles.error}>Enter valid tank capacity and spray water rate.</ThemedText>:null}
    </View>
+   <View style={styles.header}><View style={styles.product}/><View style={styles.n}/><View style={styles.n}/><ThemedText style={[styles.n,styles.bold]}>{validTank?String(full):"—"}</ThemedText><ThemedText style={[styles.n,styles.bold]}>{validTank?rest.toLocaleString("en-GB",{maximumFractionDigits:1})+" L":"—"}</ThemedText></View>
    <View style={styles.header}><ThemedText style={[styles.product,styles.bold]}>Input Name</ThemedText><ThemedText style={[styles.n,styles.bold]}>Rate/ha</ThemedText><ThemedText style={[styles.n,styles.bold]}>Total</ThemedText><ThemedText style={[styles.n,styles.bold]}>Full Tank Mix</ThemedText><ThemedText style={[styles.n,styles.bold]}>Part Tank Mix</ThemedText></View>
    {rows.map((line,i)=><View testID="application-print-row" key={line.item_code+":"+i} style={[styles.line,i%2===1&&styles.alt]}><ThemedText style={styles.product}>{line.item_name}</ThemedText><ThemedText style={styles.n}>{fmt(Number(line.rate_per_ha),3)}</ThemedText><ThemedText style={styles.n}>{fmt(area*Number(line.rate_per_ha),3)} {line.base_unit}</ThemedText><ThemedText style={styles.n}>{validTank?fmt(fullHa*Number(line.rate_per_ha),3):"—"} {line.base_unit}</ThemedText><ThemedText style={styles.n}>{validTank?fmt(partHa*Number(line.rate_per_ha),3):"—"} {line.base_unit}</ThemedText></View>)}
    <ThemedText style={styles.note}>Full Tank Mix quantities are per full tank, not the combined quantity for all full tanks. Part Tank Mix quantities are for the remaining water volume. Confirm tank capacity and sprayer calibration before application.</ThemedText>
