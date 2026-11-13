@@ -36,8 +36,8 @@ export default function StockV2MovementReport(){
    {key:'document',title:'Document',value:r=>r.document_number},
    {key:'description',title:'Description',value:r=>r.description,width:260},
    {key:'unit_price',title:'Unit Price (USD)',value:r=>r.unit_price??'Pending'},
-   {key:'stock_in',title:'Stock In',value:r=>Number(r.stock_in)},
-   {key:'stock_out',title:'Stock Out',value:r=>Number(r.stock_out)},
+   {key:'stock_in',title:'Stock In',value:r=>Number(r.stock_in)===0?'':Number(r.stock_in)},
+   {key:'stock_out',title:'Stock Out',value:r=>Number(r.stock_out)===0?'':Number(r.stock_out)},
    {key:'stock_pos',title:'Stock Position',value:r=>Number(r.stock_pos)}
   ]}/>}
 
