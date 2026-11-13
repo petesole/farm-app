@@ -11,3 +11,15 @@ Admin approval: separate HS/AO inventory movements under one adjustment document
 New tables and command function are confined to the private stock_v2 test schema, with RLS and no direct browser access. Other schemas, older stocktakes and existing movement rows are unchanged.
 
 Verification: 116 local checks passed, including actual SQL/Edge/UI flows against an isolated synthetic database, operator/Admin permissions, frozen print ordering, count completion, pending-list removal, historical corrections, retry protection, stock movement safeguards and existing PO/receiving/spray/report regressions. Shared ERP UI/date checks and TypeScript passed. Physical printer output, mobile device behavior and real-role signed-in acceptance remain to be verified.
+
+Release verification
+- Implementation commit: 3961263 on development.
+- Applied migration: 20261113142150_combined_stocktake (recorded exact Supabase-generated version).
+- Deployed workflow handler version 81, JWT verification enabled; downloaded source matches implementation commit.
+- Development web deployment: nny6mypv21, alias development.
+- Stock Take URL returned HTTP 200 and the expected new entry-966f9bf8a86c0511b2c91f695b38fea7.js bundle.
+- Existing 73 documents and 388 movement rows preserved; movement digest before/after 2656ffbe833a29c27f8c8f4b13b628cf.
+- No operational count, adjustment or test transaction posted during deployment verification; new combined sheet table remains empty.
+- All three new tables have RLS enabled and no authenticated browser SELECT permission.
+- Existing ST-1 through ST-5 retained.
+- No production alias or main branch change.
