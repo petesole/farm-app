@@ -426,7 +426,14 @@ left join lateral (
      join stock_v2.owner o on o.owner_id=m.owner_id
      where d.status='posted' and d.document_type='grv' and d.document_number like 'DEMO-%' and g.price_status='pending'
      and o.owner_code in ('TEST_JS','TEST_AO')`;
-   return reply({items,orders,sprays,documents,sprayers,pending_invoice_count:pendingInvoiceCount[0]?.n??0});
+   const outstandingSprayCount=await db`select count(*)::int as n from (
+    select j.job_id from stock_v2.spray_job j join stock_v2.spray_job_input ji using(job_id)
+    left join lateral(select coalesce(sum(case when d.document_type='issue' then dl.quantity when d.document_type='return' then -dl.quantity else 0 end),0) as issued
+     from stock_v2.document_line dl join stock_v2.document d using(document_id) where dl.requirement_id=ji.requirement_id and d.status='posted' and d.document_type in ('issue','return')) x on true
+    where j.owner_id=(select owner_id from stock_v2.owner where owner_code='TEST_JS') and j.status='planned'
+    group by j.job_id having min(case when ji.rate_per_ha>0 then greatest((ji.rate_per_ha*j.area_ha-x.issued)/ji.rate_per_ha,0) else 0 end)>0.0001
+   ) due`;
+   return reply({items,orders,sprays,documents,sprayers,pending_invoice_count:pendingInvoiceCount[0]?.n??0,outstanding_spray_count:outstandingSprayCount[0]?.n??0});
   }
   let body:any;try{body=await req.json()}catch{return reply({error:"Invalid JSON"},400)}
 

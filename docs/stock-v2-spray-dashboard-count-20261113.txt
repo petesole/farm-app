@@ -1,0 +1,7 @@
+Spray Planning dashboard count — development change, 13/11/2026
+
+Spray Planning shows the outstanding spray-job count in red brackets, using the existing shared dashboard badge. Each spray is counted once across its product lines. The definition matches the Outstanding planner list: planned jobs with more than 0.0001 hectares remaining under the existing minimum remaining-area rule. Partial issues stay outstanding until that rule is fulfilled; completed/deleted jobs are excluded. The badge is omitted when none are outstanding.
+
+The backend calculates the total over all matching jobs, independently of the recent spray feed's 200-row limit. The dashboard refreshes it on focus after creating, issuing or deleting sprays. Existing users and stock data are unchanged; this adds a read-only count to the existing authenticated response.
+
+Verification: the read-only hosted query returned 3 outstanding sprays at verification time. Existing SQL/Edge/UI regressions, TypeScript, shared ERP UI/date checks and the web export are checked before release. Actual signed-in browser/device acceptance remains unverified.

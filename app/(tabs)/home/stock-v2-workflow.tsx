@@ -21,7 +21,7 @@ type Item={item_code:string;item_name:string;base_unit:string;active:boolean;ope
 type OrderLine={owner_code:string;contract_id:number|null;order_id:number;order_number:string;supplier_name:string;item_code:string;item_name:string;base_unit:string;ordered_quantity:number;received_quantity:number;ordered_unit_price:number|null;status:string};
 type SprayLine={job_id:number;external_tracecode_id:number;tracecode_name:string;item_code:string;item_name:string;area_ha:number;rate_per_ha:number;planned_quantity:number;issued_quantity:number;status:string};
 type Doc={document_id:number;document_type:string;document_number:string;item_name:string;quantity:number;tracecode_name:string|null};
-type Snapshot={items:Item[];orders:OrderLine[];sprays:SprayLine[];documents:Doc[];pending_invoice_count?:number;sprayers?:{setup_name:string;water_litres_per_ha:number}[]};
+type Snapshot={items:Item[];orders:OrderLine[];sprays:SprayLine[];documents:Doc[];pending_invoice_count?:number;outstanding_spray_count?:number;sprayers?:{setup_name:string;water_litres_per_ha:number}[]};
 type Trace={tracecode_id:number;tracecode_name:string;tracecode_size:number;crop_id:number|null};
 type Crop={crop_id:number;crop_name:string};
 type Line={id:number;item_code:string;quantity:string;unit_price:string;rate_per_ha:string;mix_instruction:string};
@@ -107,6 +107,7 @@ export default function StockV2Workflow(){
   const map=new Map<number,SprayLine[]>();for(const j of snapshot?.sprays??[]){if(j.status!=="planned")continue;if(!map.has(j.job_id))map.set(j.job_id,[]);map.get(j.job_id)!.push(j)}
   return [...map.entries()].map(([id,lines])=>({id,lines,trace:lines[0].tracecode_name,remaining:lines.reduce((s,x)=>s+Math.max(0,x.planned_quantity-x.issued_quantity),0)})).filter(x=>x.remaining>0);
  },[snapshot]);
+ const outstandingSprays=snapshot?.outstanding_spray_count??jobs.filter(j=>j.lines.length>0&&Math.min(...j.lines.map(l=>l.rate_per_ha>0?Math.max(0,(l.planned_quantity-l.issued_quantity)/l.rate_per_ha):0))>0.0001).length;
  const selectedJob=jobs.find(x=>x.id===jobId);
  const activeTraces=traces.filter(t=>(cropId===null||(cropId===-1?t.crop_id==null:t.crop_id===cropId))&&(t.crop_id==null||crops.some(c=>c.crop_id===t.crop_id)));
  const choosePO=(po:typeof orders[number])=>{setCheckedPOItems([]);setOrderId(po.id);setContractId(po.contract_id);setSupplier(po.supplier);setLines(po.lines.filter(x=>x.received_quantity<x.ordered_quantity).map((x,i)=>({...emptyLine(nextLine+i,x.item_code),quantity:"",unit_price:""})));setNextLine(n=>n+po.lines.length);setDropdown(null);resetEdit()};
@@ -194,7 +195,7 @@ export default function StockV2Workflow(){
      {workflow?.access.can_adjustments?<View style={styles.dashboardCard}><JsplDashboardButton title="Stock Adjustment" alertCount={workflow.adjustment_count??0} onPress={()=>router.push("/stock-v2-adjustments")}/></View>:null}
      {workflow?.access.is_admin?<><View style={styles.dashboardCard}><JsplDashboardButton title="GRV Corrections" onPress={()=>router.push("/stock-v2-grv-corrections")}/></View><View style={styles.dashboardCard}><JsplDashboardButton title="Stock Staff Access" onPress={()=>router.push("/stock-v2-staff")}/></View></>:null}
      {tabs.filter(x=>x!=="PO Corrections").map(x=><View key={x} style={styles.dashboardCard}>
-      <JsplDashboardButton title={x}
+      <JsplDashboardButton title={x} alertCount={x==="Spray Planning"?outstandingSprays:undefined}
        description={x==="POs Outstanding"?String(new Set((snapshot?.orders??[]).filter(o=>o.ordered_quantity>o.received_quantity).map(o=>o.order_id)).size)+" outstanding orders":x==="GRV"?String(snapshot?.pending_invoice_count??0)+" pending invoices":undefined}
        onPress={()=>x==="Spray Planning"?router.push("/stock-v2-spray-planning"):switchTab(x)}/>
      </View>)}</View>
