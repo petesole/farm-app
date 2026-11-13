@@ -1,7 +1,7 @@
 import {useEffect,useMemo,useState} from 'react';
 import {useRouter} from 'expo-router';
 import * as Network from 'expo-network';
-import {ActivityIndicator,Image,Pressable,ScrollView,Text,TextInput,View} from 'react-native';
+import {ActivityIndicator,BackHandler,Image,Pressable,ScrollView,Text,TextInput,View} from 'react-native';
 import {StockButton as Button,StockSelect as Select,stockStyles as S} from '@/components/jspl/StockWorkflowControls';
 import {jsplColors as C} from '@/constants/jspl-design';
 import {PhoneCache,PhoneIdentity,PhoneSpray,emptyPhoneCache,phoneOutstanding,phoneHistory,historyChoices,historyMatches,tankMix,sprayDate,syncDateTime,localCompletion} from '@/utils/sprayer-model';
@@ -28,6 +28,7 @@ export default function SprayerPhone(){
  }catch(e){if(alive)setError((e as Error).message)}finally{if(alive)setReady(true)}})();
  const subscription=Network.addNetworkStateListener(()=>{void phoneConnection().then(n=>{if(alive){setConnection(n.label);setWifi(n.wifi)}}).catch(()=>{})});
  return()=>{alive=false;subscription.remove()};},[router]);
+ useEffect(()=>{const sub=BackHandler?.addEventListener('hardwareBackPress',()=>{if(busy)return true;if(view!=='home'){setView('home');setError('');setNotice('');return true;}return false;});return()=>sub?.remove()},[view,busy]);
  const outstanding=useMemo(()=>phoneOutstanding(cache),[cache]),history=useMemo(()=>phoneHistory(cache),[cache]);
  const visibleHistory=useMemo(()=>history.filter(r=>historyMatches(r,filters)),[history,filters]);
  useEffect(()=>{setFilters(old=>{const next={...old};for(const k of ['date','trace','input'] as const)if(next[k]&&!historyChoices(history,old,k).includes(next[k]))delete next[k];return JSON.stringify(next)===JSON.stringify(old)?old:next})},[history]);
@@ -36,7 +37,7 @@ export default function SprayerPhone(){
  const pending=cache.outbox.filter(o=>o.state==='queued').length,reviews=cache.outbox.filter(o=>o.state==='review').length;
  const open=(j:PhoneSpray)=>{setSelected(j.id);setCapacity(cache.tanks[j.id]??(j.tank_capacity?String(j.tank_capacity):''));setDate(displayJsplDate(j.completed_date??cache.outbox.find(o=>o.job_id===j.id)?.completed_date??localISODate(new Date())));setView('detail');setError('');setNotice('')};
  const perform=async(fn:()=>Promise<void>)=>{setBusy(true);setError('');setNotice('');try{await fn()}catch(e){setError((e as Error).message);if(e instanceof SprayerAccessError){await clearPhoneIdentity();router.replace('/login')}}finally{setBusy(false)}};
- const sync=(full=false)=>perform(async()=>{if(!identity)return;const result=await syncPhone(identity,{allowMobileDownload:mobile,full,onProgress:setCache});setCache(result.cache);const n=result.cache.outbox.filter(o=>o.state==='review').length;setNotice(n?'Synced. '+n+' completion change(s) need review.':'Sync complete');});
+ const sync=(full=false)=>perform(async()=>{if(!identity)return;const result=await syncPhone(identity,{allowMobileDownload:mobile,full,onProgress:setCache});setCache(result.cache);const n=result.cache.outbox.filter(o=>o.state==='review').length;setNotice(result.requiresWifi?'Connect to Wi-Fi to finish refreshing offline records.':n?'Synced. '+n+' completion change(s) need review.':'Sync complete');});
  const complete=()=>perform(async()=>{if(!identity||!job)return;if(!job.fully_issued)throw Error('Awaiting stock');const iso=parseJsplDateInput(date);if(!iso)throw Error('Enter a valid completed date');if(iso>localISODate(new Date()))throw Error('Completed date cannot be in the future');if(job.last_issue_date&&iso<job.last_issue_date)throw Error('Completed date cannot precede the last stock issue');
   const next=await queuePhoneCompletion(identity.id,{operation_id:stockUUID(),job_id:job.id,completed_date:iso,base_hash:job.hash,attempted:false,state:'queued',created_at:new Date().toISOString()});setCache(next);setView('home');setNotice('Completion saved on this phone. Awaiting sync.');
  });

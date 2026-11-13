@@ -53,7 +53,7 @@ alter table stock_v2.sprayer_feed_meta enable row level security;
 revoke all on stock_v2.sprayer_completion,stock_v2.sprayer_completion_audit,stock_v2.sprayer_operation,stock_v2.sprayer_feed,stock_v2.sprayer_dirty,stock_v2.sprayer_feed_revision from public,anon,authenticated;
 revoke all on stock_v2.sprayer_feed_meta from public,anon,authenticated;
 
-create function stock_v2.sprayer_payload(p_job bigint) returns jsonb
+create function stock_v2.sprayer_payload(p_job bigint,p_include_closed boolean default false) returns jsonb
 language sql stable security invoker set search_path='' as $$
  select jsonb_build_object('id',j.job_id::text,'trace_id',t.tracecode_id::text,'trace',t.tracecode_name,
  'week',j.planned_week_start::text,'area',j.area_ha,'spray_type',j.spray_type,'water_rate',coalesce(j.water_litres_per_ha,s.water_litres_per_ha),
@@ -73,7 +73,7 @@ language sql stable security invoker set search_path='' as $$
    from stock_v2.document_line dl join stock_v2.document d using(document_id) where dl.requirement_id=ji.requirement_id and d.status='posted' and d.document_type in ('issue','return')) x
   where ji.job_id=j.job_id
  ) a on true
- where j.job_id=p_job and o.owner_code='TEST_JS' and j.status in ('planned','completed') and t.end_date is null
+ where j.job_id=p_job and o.owner_code='TEST_JS' and j.status in ('planned','completed') and (p_include_closed or t.end_date is null)
 $$;
 
 create function stock_v2.sprayer_mark_dirty() returns trigger
@@ -128,7 +128,7 @@ end $$;
 create function stock_v2.sprayer_complete(p_actor uuid,p_operation uuid,p_data jsonb,p_admin boolean default false) returns jsonb
 language plpgsql security invoker set search_path='' as $$
 declare access jsonb:=stock_v2.workflow_access(p_actor);prior stock_v2.sprayer_operation;c stock_v2.sprayer_completion;
- p jsonb;before_doc jsonb;result jsonb;jid bigint;day date;reason text;today date:=(now() at time zone 'Africa/Harare')::date;
+ p jsonb;before_doc jsonb;result jsonb;jid bigint;day date;reason text;closed_date date;today date:=(now() at time zone 'Africa/Harare')::date;
 begin
  if not coalesce((access->>'is_sprayer')::boolean,false) or (p_admin and not coalesce((access->>'is_admin')::boolean,false)) then raise exception 'Sprayer % access required',case when p_admin then 'Admin' else 'phone' end using errcode='42501';end if;
  if p_operation is null then raise exception 'Save reference required';end if;
@@ -141,19 +141,21 @@ begin
  jid:=(p_data->>'job_id')::bigint;
  perform 1 from stock_v2.spray_job where job_id=jid for update;
  perform 1 from public.tracecode where tracecode_id=(select external_tracecode_id from stock_v2.spray_job where job_id=jid) for share;
- p:=stock_v2.sprayer_payload(jid);
+ p:=stock_v2.sprayer_payload(jid,true);
+ select t.end_date into closed_date from public.tracecode t join stock_v2.spray_job j on j.external_tracecode_id=t.tracecode_id where j.job_id=jid;
  select * into c from stock_v2.sprayer_completion where job_id=jid for update;before_doc:=case when found then to_jsonb(c) else null end;
  if p_admin then
   perform stock_v2.workflow_require(p_actor,true);reason:=btrim(coalesce(p_data->>'reason',''));
   if c.job_id is null or c.version is distinct from (p_data->>'version')::integer or length(reason)<8 then raise exception 'Current completion version and correction reason required';end if;
  else
-  if p is null then raise exception 'Spray is cancelled, removed or its trace is closed. Sync and review';end if;
+  if p is null then raise exception 'Spray is cancelled or removed. Sync and review';end if;
   if p_data->>'base_hash' is distinct from md5(p::text) then raise exception 'Spray details changed. Sync, review the tank mix and confirm again';end if;
   if not coalesce((p->>'fully_issued')::boolean,false) then raise exception 'Awaiting stock: full spray must be issued before completion';end if;
   if c.completed_date is not null then raise exception 'Spray already has a completion date. Sync to view it';end if;
  end if;
  day:=nullif(p_data->>'completed_date','')::date;
  if not p_admin and day is null then raise exception 'Completion date required';end if;
+ if not p_admin and day>closed_date then raise exception 'Completed date is after this trace closed. Ask Admin to review';end if;
  if day>today then raise exception 'Completion date cannot be in the future';end if;
  if day is not null and p is not null and p->>'last_issue_date' is not null and day<(p->>'last_issue_date')::date then raise exception 'Completion date cannot precede the last stock issue';end if;
  if not exists(select 1 from stock_v2.spray_job where job_id=jid) then raise exception 'Spray not found';end if;
@@ -164,4 +166,4 @@ begin
  insert into stock_v2.sprayer_operation(operation_id,actor,request,result) values(p_operation,p_actor,jsonb_build_object('admin',p_admin,'data',p_data),result);
  return result;
 end $$;
-revoke all on function stock_v2.workflow_access(uuid),stock_v2.workflow_assign_staff(uuid,uuid,text,boolean,text),stock_v2.sprayer_payload(bigint),stock_v2.sprayer_mark_dirty(),stock_v2.sprayer_refresh_feed(),stock_v2.sprayer_complete(uuid,uuid,jsonb,boolean) from public,anon,authenticated;
+revoke all on function stock_v2.workflow_access(uuid),stock_v2.workflow_assign_staff(uuid,uuid,text,boolean,text),stock_v2.sprayer_payload(bigint,boolean),stock_v2.sprayer_mark_dirty(),stock_v2.sprayer_refresh_feed(),stock_v2.sprayer_complete(uuid,uuid,jsonb,boolean) from public,anon,authenticated;

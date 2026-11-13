@@ -47,8 +47,9 @@ Deno.serve(async req=>{
   const meta=(await db`select epoch::text from stock_v2.sprayer_feed_meta`)[0];
   const max=(await db`select coalesce(max(revision),0)::text as revision from stock_v2.sprayer_feed`)[0].revision;
   const reset=body.epoch!==meta.epoch||BigInt(body.cursor??'0')>BigInt(max);const cursor=reset?'0':String(body.cursor??'0');
+  if(body.allow_full===false&&(reset||body.full_needed===true))return reply({epoch:meta.epoch,reset,changes:[],results,cursor:reset?'0':cursor,more:true,requires_full:true,server_time:new Date().toISOString()});
   const limit=Math.max(1,Math.min(500,Number(body.limit)||100));
-  const rows=await db`select job_id::text as id,revision::text,hash,payload from stock_v2.sprayer_feed where revision>${cursor}::bigint and revision<=${max}::bigint order by revision limit ${limit+1}`;
+  const rows=await db`select f.job_id::text as id,f.revision::text,f.hash,f.payload from stock_v2.sprayer_feed f where f.revision>${cursor}::bigint and f.revision<=${max}::bigint order by f.revision limit ${limit+1}`;
   const hasMore=rows.length>limit,changes=rows.slice(0,limit),next=hasMore?changes[changes.length-1].revision:max;
   const dirty=(await db`select exists(select 1 from stock_v2.sprayer_dirty) as pending`)[0].pending;
   return reply({epoch:meta.epoch,reset,changes,results,cursor:next,more:hasMore||dirty,server_time:new Date().toISOString()});

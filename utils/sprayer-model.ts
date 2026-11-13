@@ -5,11 +5,12 @@ export type CompletionChange={operation_id:string;job_id:string;completed_date:s
 export type PhoneCache={jobs:PhoneSpray[];outbox:CompletionChange[];cursor:string;epoch:string|null;lastSync:string|null;ready:boolean;tanks:Record<string,string>;rebuilding?:{epoch:string;seen:string[]}};
 export type PhoneIdentity={id:string;name:string};
 export type FeedChange={id:string;revision:string;hash:string;payload:Omit<PhoneSpray,'hash'|'revision'>|null};
-export type SyncPage={epoch:string;reset:boolean;changes:FeedChange[];cursor:string;more:boolean;server_time:string;results:{operation_id:string;status:'accepted'|'rejected'|'unconfirmed';error?:string}[]};
+export type SyncPage={epoch:string;reset:boolean;changes:FeedChange[];cursor:string;more:boolean;requires_full?:boolean;server_time:string;results:{operation_id:string;status:'accepted'|'rejected'|'unconfirmed';error?:string;result?:{job_id:string;completed_date:string|null;version:number}}[]};
 export const emptyPhoneCache=():PhoneCache=>({jobs:[],outbox:[],cursor:'0',epoch:null,lastSync:null,ready:false,tanks:{}});
 export function applyPhonePage(previous:PhoneCache,page:SyncPage):PhoneCache{
  if(!page||!Array.isArray(page.changes)||!/^\d+$/.test(page.cursor)||typeof page.epoch!=='string'||!Array.isArray(page.results))throw Error('Invalid sync response; saved phone data has been retained');
  const jobs=new Map(previous.jobs.map(j=>[j.id,j]));
+ for(const receipt of page.results.filter(r=>r.status==='accepted')){const op=previous.outbox.find(o=>o.operation_id===receipt.operation_id);if(!op)continue;if(!receipt.result||String(receipt.result.job_id)!==op.job_id||receipt.result.completed_date!==op.completed_date)throw Error('Invalid completion receipt; saved date has been retained');const job=jobs.get(op.job_id);if(job&&receipt.result.version>=job.completion_version)jobs.set(job.id,{...job,completed_date:receipt.result.completed_date,completion_version:receipt.result.version});}
  const rebuilding=page.reset?{epoch:page.epoch,seen:[] as string[]}:previous.rebuilding;const seen=new Set(rebuilding?.seen??[]);
  for(const c of page.changes){seen.add(c.id);if(!/^\d+$/.test(c.id)||!/^\d+$/.test(c.revision))throw Error('Invalid spray change');if(c.payload===null)jobs.delete(c.id);else{
   if(String(c.payload.id)!==c.id||!Array.isArray(c.payload.lines)||!c.payload.trace||!/^[a-f0-9]{32}$/.test(c.hash))throw Error('Invalid spray details');
