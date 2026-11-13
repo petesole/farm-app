@@ -1,3 +1,4 @@
+import {StockSelect} from "@/components/jspl/StockWorkflowControls";
 import {stockMutation} from "@/utils/stock-workflow";
 import {parseJsplDateInput,displayJsplDate} from "@/utils/jspl-input";
 import {useEffect,useRef,useState} from "react";
@@ -16,13 +17,13 @@ const displayDate=(s:string)=>/^\d{4}-\d{2}-\d{2}/.test(s)?s.slice(8,10)+"/"+s.s
 const iso=(value:string)=>parseJsplDateInput(value) ?? "";
 export default function SupplierReturns(){
  const router=useRouter();const pageRef=useRef<ScrollView>(null);const [owner,setOwner]=useState("JS"),[supplier,setSupplier]=useState(""),[reference,setReference]=useState(""),[reason,setReason]=useState("");
- const [mode,setMode]=useState<"specific_grv"|"supplier_stock">("specific_grv"),[suppliers,setSuppliers]=useState<string[]>([]),[supplierOpen,setSupplierOpen]=useState(false);const [products,setProducts]=useState<Product[]>([]),[returns,setReturns]=useState<Return[]>([]),[search,setSearch]=useState("");
+ const [mode,setMode]=useState<"specific_grv"|"supplier_stock">("specific_grv"),[suppliers,setSuppliers]=useState<{name:string;owner_code:string}[]>([]),[supplierOpen,setSupplierOpen]=useState(false);const [products,setProducts]=useState<Product[]>([]),[returns,setReturns]=useState<Return[]>([]),[search,setSearch]=useState("");
  const [lines,setLines]=useState<Record<string,{qty:string;price:string}>>({});const [receipts,setReceipts]=useState<Receipt[]>([]);const [alloc,setAlloc]=useState<Record<number,string>>({});
  const [grvId,setGrvId]=useState<number|null>(null),[grvOpen,setGrvOpen]=useState(false);
  const [creditId,setCreditId]=useState<number|null>(null),[creditNo,setCreditNo]=useState(""),[creditDate,setCreditDate]=useState("");
  const [loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
  const getSession=async()=>{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");return session.access_token};
- const load=async()=>{setLoading(true);try{const token=await getSession();const [a,b,c]=await Promise.all([fetch(endpoint,{headers:{authorization:"Bearer "+token}}),fetch(endpoint+"?supplier_returns=1",{headers:{authorization:"Bearer "+token}}),fetch(endpoint+"?supplier_return_suppliers=1",{headers:{authorization:"Bearer "+token}})]);const x=await a.json(),y=await b.json(),z=await c.json();if(!a.ok||!b.ok||!c.ok)throw Error(x.error||y.error||z.error||"Could not load stock");setProducts(x.items??[]);setReturns(y.rows??[]);setSuppliers((z.rows??[]).map((v:{name:string})=>v.name))}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setLoading(false)}};
+ const load=async()=>{setLoading(true);try{const token=await getSession();const [a,b,c]=await Promise.all([fetch(endpoint,{headers:{authorization:"Bearer "+token}}),fetch(endpoint+"?supplier_returns=1",{headers:{authorization:"Bearer "+token}}),fetch(endpoint+"?supplier_return_suppliers=1",{headers:{authorization:"Bearer "+token}})]);const x=await a.json(),y=await b.json(),z=await c.json();if(!a.ok||!b.ok||!c.ok)throw Error(x.error||y.error||z.error||"Could not load stock");setProducts(x.items??[]);setReturns(y.rows??[]);setSuppliers(z.rows??[])}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setLoading(false)}};
  useEffect(()=>{void load()},[]);
  const fetchReceipts=async()=>{setError("");try{const token=await getSession();const r=await fetch(endpoint+"?supplier_return_sources=1&supplier="+encodeURIComponent(supplier.trim())+"&owner="+encodeURIComponent(owner),{headers:{authorization:"Bearer "+token}});const d=await r.json();if(!r.ok)throw Error(d.error||"Could not load GRVs");setReceipts(d.rows??[]);setAlloc({});setGrvId(null);setGrvOpen(false)}catch(e){setError(e instanceof Error?e.message:String(e))}};
  const selectedGrvLines=receipts.filter(x=>x.document_id===grvId);
@@ -34,17 +35,13 @@ export default function SupplierReturns(){
  <Pressable style={styles.button} onPress={()=>router.push("/(tabs)/home/stock-v2-credits")}><ThemedText style={styles.white}>Open Supplier Credit Notes & Reconciliation</ThemedText></Pressable>
  <ThemedText>Supplier returns reduce physical stock when dispatched. Stock enters the actual credit separately for Admin approval, including partial credit notes, multiple returns and differences.</ThemedText>
   <ThemedText style={styles.heading}>New Supplier Return</ThemedText>
- <View style={styles.row}>{["JS","AO"].map(x=><Pressable key={x} onPress={()=>{setOwner(x);setGrvId(null);setLines({});setReceipts([]);setAlloc({})}} style={[styles.choice,owner===x&&styles.active]}><ThemedText>{x}</ThemedText></Pressable>)}</View>
- <ThemedText style={styles.strong}>Return Type</ThemedText>
- <View style={styles.row}>{([{value:"specific_grv",label:"Against Specific GRV"},{value:"supplier_stock",label:"General Return to Supplier"}] as const).map(x=><Pressable key={x.value} style={[styles.choice,mode===x.value&&styles.active]} onPress={()=>{setMode(x.value);setGrvId(null);setAlloc({});setReceipts([]);setLines({})}}><ThemedText>{x.label}</ThemedText></Pressable>)}</View>
- <ThemedText style={styles.strong}>Supplier</ThemedText>
- <Pressable style={styles.choice} onPress={()=>setSupplierOpen(v=>!v)}><ThemedText>{supplier||"Choose existing supplier ▾"}</ThemedText></Pressable>
- {supplierOpen?<ScrollView style={{maxHeight:200,backgroundColor:"#fff"}} nestedScrollEnabled>{suppliers.map(name=><Pressable key={name} style={styles.choice} onPress={()=>{setSupplier(name);setSupplierOpen(false);setReceipts([]);setAlloc({});setGrvId(null);setLines({})}}><ThemedText>{name}</ThemedText></Pressable>)}</ScrollView>:null}
+ <StockSelect label="Stock owner" value={owner} options={['JS','AO'].map(x=>({id:x,label:x}))} onChange={v=>{setOwner(String(v??'JS'));setSupplier('');setGrvId(null);setLines({});setReceipts([]);setAlloc({})}}/>
+ <StockSelect label="Return type" value={mode} options={[{id:'specific_grv',label:'Against specific GRV'},{id:'supplier_stock',label:'General return to supplier'}]} onChange={v=>{setMode(v as 'specific_grv'|'supplier_stock');setGrvId(null);setAlloc({});setReceipts([]);setLines({})}}/>
+ <StockSelect label="Supplier" value={supplier} options={suppliers.filter(v=>v.owner_code===owner).map(v=>({id:v.name,label:v.name}))} onChange={v=>{setSupplier(String(v??''));setReceipts([]);setAlloc({});setGrvId(null);setLines({})}}/>
  <TextInput style={styles.input} placeholder="Supplier collection reference (optional)" value={reference} onChangeText={setReference}/>
  <TextInput style={styles.input} placeholder="Reason for return (required)" value={reason} onChangeText={setReason}/>
  {mode==="specific_grv"?<View style={{gap:8}}><Pressable style={styles.choice} onPress={()=>void fetchReceipts()}><ThemedText>Load GRVs for Selected Supplier</ThemedText></Pressable>
- {receipts.length>0?<><ThemedText style={styles.strong}>Original GRV (number and date)</ThemedText><Pressable style={styles.choice} onPress={()=>setGrvOpen(v=>!v)}><ThemedText>{grvId?(()=>{const r=receipts.find(x=>x.document_id===grvId);return r?"GRV "+r.display_no+" · "+displayDate(r.document_date):"Select GRV"})():"Select GRV ▾"}</ThemedText></Pressable>
- {grvOpen?<ScrollView nestedScrollEnabled style={{maxHeight:200,backgroundColor:"#fff"}}>{receipts.filter((v,i,a)=>a.findIndex(x=>x.document_id===v.document_id)===i).map(x=><Pressable key={x.document_id} style={styles.choice} onPress={()=>{setGrvId(x.document_id);setGrvOpen(false);setLines({});setAlloc({})}}><ThemedText>GRV {x.display_no} · {displayDate(x.document_date)}</ThemedText></Pressable>)}</ScrollView>:null}</>:null}
+ {receipts.length>0?<StockSelect label="Original GRV" value={grvId} options={receipts.filter((v,i,a)=>a.findIndex(x=>x.document_id===v.document_id)===i&&receipts.some(x=>x.document_id===v.document_id&&x.received_quantity>x.previously_returned)).map(x=>({id:x.document_id,label:'GRV '+x.display_no+' · '+displayDate(x.document_date)}))} onChange={v=>{setGrvId(v==null?null:Number(v));setLines({});setAlloc({})}}/>:null}
  </View>:null}
  <ThemedText>{mode==="specific_grv"?"Allocate each returned quantity against its original GRV.":"Return any available stock to the selected supplier without linking it to a specific GRV. Inventory value and negotiated credit are reconciled separately."}</ThemedText>
  {mode==="supplier_stock"?<View style={{gap:6}}> <TextInput style={styles.input} placeholder="Find product" value={search} onChangeText={setSearch}/>

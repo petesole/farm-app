@@ -3,7 +3,7 @@ on:
   pull_request:
     branches: [development]
   push:
-    branches: [feature/stock-approvals-20261112]
+    branches: [development, feature/stock-approvals-20261112]
 jobs:
   stock-approval-workflow:
     runs-on: ubuntu-latest

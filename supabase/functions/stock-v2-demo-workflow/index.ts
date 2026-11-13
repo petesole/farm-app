@@ -64,7 +64,7 @@ Deno.serve(async(req)=>{
    return reply({invoices,receipts,history,physical_history});
   }
   if(req.method==="GET" && new URL(req.url).searchParams.has("supplier_return_suppliers")){
-   const rows=await db`select distinct trim(g.supplier_name) as name from stock_v2.grv_detail g join stock_v2.document d on d.document_id=g.document_id where d.status='posted' and d.document_type='grv' and nullif(trim(g.supplier_name),'') is not null order by name`;
+   const rows=await db`select distinct trim(g.supplier_name) as name,replace(o.owner_code,'TEST_','') as owner_code from stock_v2.grv_detail g join stock_v2.document d on d.document_id=g.document_id join stock_v2.document_line dl on dl.document_id=d.document_id join stock_v2.movement m on m.document_line_id=dl.line_id join stock_v2.owner o on o.owner_id=m.owner_id where d.status='posted' and d.document_type='grv' and nullif(trim(g.supplier_name),'') is not null order by name`;
    return reply({rows});
   }
   if(req.method==="GET" && new URL(req.url).searchParams.has("supplier_return_sources")){
@@ -134,7 +134,7 @@ Deno.serve(async(req)=>{
   if(req.method==="GET" && new URL(req.url).searchParams.has("spray_admin")){return reply({is_admin:access.is_admin});}
   if(req.method==="GET" && new URL(req.url).searchParams.has("outstanding_dnotes")){
    const rows=await db`select d.document_id,d.document_date,g.delivery_note,g.delivery_note_date,g.supplier_name,
-     replace(o.owner_code,'TEST_','') owner_code,i.item_code,i.item_name,i.base_unit,dl.line_id,stock_v2.workflow_physical_quantity(dl.line_id)::float8 quantity,
+     replace(o.owner_code,'TEST_','') owner_code,i.item_code,i.item_name,i.base_unit,dl.line_id,(stock_v2.workflow_physical_quantity(dl.line_id)-coalesce((select sum(a.quantity) from stock_v2.accounting_grv_allocation a where a.receipt_line_id=dl.line_id),0))::float8 quantity,
      coalesce(lp.provisional_unit_cost,price_ref.received_price,price_ref.po_price)::float8 original_price,price_ref.po_price::float8 po_price,
      case when lp.provisional_unit_cost is not null then 'DNote'
           when price_ref.received_price is not null and price_ref.po_price is distinct from price_ref.received_price then 'DNote'
@@ -160,7 +160,7 @@ Deno.serve(async(req)=>{
   if(req.method==="GET" && new URL(req.url).searchParams.has("spray_return_issues")){
    const jobId=Number(new URL(req.url).searchParams.get("job_id"));
    if(!Number.isSafeInteger(jobId)||jobId<=0)return reply({error:"Valid spray required"},400);
-   const rows=await db`select d.document_id,d.document_number,d.document_date::text as document_date,dl.line_id as source_line_id,i.item_code,i.item_name,i.base_unit,(dl.quantity-coalesce((select sum(rl.quantity) from stock_v2.document_line rl join stock_v2.document rd on rd.document_id=rl.document_id where rl.source_line_id=dl.line_id and rd.status='posted' and rd.document_type='return'),0))::float8 as available_to_return
+   const rows=await db`select d.document_id,stock_v2.business_number(d.document_id) as document_number,d.document_date::text as document_date,dl.line_id as source_line_id,i.item_code,i.item_name,i.base_unit,(dl.quantity-coalesce((select sum(rl.quantity) from stock_v2.document_line rl join stock_v2.document rd on rd.document_id=rl.document_id where rl.source_line_id=dl.line_id and rd.status='posted' and rd.document_type='return'),0))::float8 as available_to_return
    from stock_v2.document d join stock_v2.document_line dl on dl.document_id=d.document_id join stock_v2.spray_job_input ji on ji.requirement_id=dl.requirement_id join stock_v2.spray_job j on j.job_id=ji.job_id join stock_v2.item i on i.item_id=dl.item_id
    where j.job_id=${jobId} and j.owner_id=(select owner_id from stock_v2.owner where owner_code='TEST_JS') and d.document_type='issue' and d.status='posted' order by d.document_id desc,dl.line_id`;
    return reply({rows:rows.filter((x:any)=>x.available_to_return>0)});
@@ -220,7 +220,7 @@ Deno.serve(async(req)=>{
   if(req.method==="GET" && new URL(req.url).searchParams.has("issue_slip")){
    const id=Number(new URL(req.url).searchParams.get("issue_slip"));
    if(!Number.isSafeInteger(id)||id<=0)return reply({error:"Invalid issue slip number"},400);
-   const header=await db`select d.document_id,d.document_number,d.document_date,d.status,
+   const header=await db`select d.document_id,stock_v2.business_number(d.document_id) as document_number,d.document_date,d.status,
      max(t.tracecode_name) as tracecode_name,max(j.job_id)::text as job_id,
      max(j.water_litres_per_ha)::float8 as water_rate,max(j.sprayer_asset_code) as sprayer,
      max(j.spray_type) as spray_type
@@ -248,7 +248,7 @@ Deno.serve(async(req)=>{
       group by i.item_id,i.item_name,i.base_unit,i.item_code
       order by i.item_name`;
    const printStatus=await db`select 1 from stock_v2.issue_slip_print_lock where document_id=${id} limit 1`;
-   return reply({header:header[0],lines,already_printed:printStatus.length>0});
+   return reply({header:header[0],lines,already_printed:printStatus.length>0,can_reprint:access.is_admin});
   }
   if(req.method==="GET" && new URL(req.url).searchParams.has("spray_types")){
     const spray_types=await db`select access_spray_type_id,spray_type_name,spray_tank_size::float8 as spray_tank_size,spray_rate_per_ha::float8 as spray_rate_per_ha from stock_v2.access_spray_type_catalog order by spray_type_name`;
@@ -292,7 +292,7 @@ Deno.serve(async(req)=>{
       greatest(m.quantity_delta,0)::float8 as stock_in,
       greatest(-m.quantity_delta,0)::float8 as stock_out,
       sum(m.quantity_delta) over(order by d.document_date,m.created_at,m.movement_id rows between unbounded preceding and current row)::float8 as stock_pos,
-      d.document_number,
+      stock_v2.business_number(d.document_id) as document_number,
       case when d.document_type='grv' and m.quantity_delta>0 then
         coalesce(pc.confirmed_unit_cost,gp.actual_unit_cost,gx.received_unit_price)
       when m.quantity_delta<0 then ce.unit_cost else null end::float8 as unit_price,
@@ -395,6 +395,7 @@ left join lateral (
     }return {...previous[0].result,replayed:true};}
    }
    const result=await fn(tx);
+   if(result.document_id)result.document_number=(await tx`select stock_v2.business_number(${result.document_id}::bigint) as number`)[0].number;
    if(["stocktake_post","stock_adjustment_post","supplier_return_post"].includes(body.action)){
     const documentId=result.adjustment_document_id??result.document_id;
     if(documentId){const items=await tx`select distinct item_id from stock_v2.document_line where document_id=${documentId}`;
@@ -404,6 +405,26 @@ left join lateral (
    if(body.operation_id)await tx`insert into stock_v2.approval_operation(id,actor,request,result) values(${body.operation_id}::uuid,${user.id}::uuid,${tx.json(body)}::jsonb,${tx.json(result)}::jsonb)`;
    return result;
   });
+  if(body?.action==='reset_issue_slip_print'){
+   if(!access.is_admin)return reply({error:'Admin access required'},403);
+   if(!body.operation_id||String(body.reason??'').trim().length<8)return reply({error:'Enter a reprint reason (at least 8 characters)'},400);
+   const result=await transaction(async tx=>{
+    const previous=await tx`select * from stock_v2.issue_slip_print_lock where document_id=${Number(body.document_id)} for update`;
+    if(previous.length){
+     await tx`insert into stock_v2.correction_audit(document_id,correction_type,old_values,new_values,reason,changed_by) values(${Number(body.document_id)},'issue_slip_reprint',${tx.json(previous[0])}::jsonb,'{}'::jsonb,${String(body.reason).trim()},${user.id}::uuid)`;
+     await tx`delete from stock_v2.issue_slip_print_lock where document_id=${Number(body.document_id)}`;
+    }return {already_printed:false};
+   });return reply({success:true,result});
+  }
+  if(['spray','spray_edit','spray_return','planned_issue','direct_issue'].includes(body?.action)&&!body.operation_id)return reply({error:'Reload Stock to use verified, recoverable saves'},409);
+  if(['spray','spray_edit','spray_return','planned_issue','direct_issue'].includes(body?.action)&&body.operation_id){
+   if(!body.payload||!Array.isArray(body.payload.lines)||!body.payload.lines.length||body.payload.lines.length>30)return reply({error:'Provide 1–30 product lines'},400);
+   const result=await transaction(async tx=>{
+    if(body.action==='spray_return')return (await tx`select stock_v2.demo_return_spray(${tx.json(body.payload)}::jsonb) as result`)[0].result;
+    if(body.action==='spray_edit')return (await tx`select stock_v2.demo_edit_spray(${Number(body.payload.job_id)}::bigint,${tx.json(body.payload)}::jsonb) as result`)[0].result;
+    return (await tx`select stock_v2.demo_multi(${body.action}::text,${body.operation_id}::uuid,${tx.json(body.payload)}::jsonb) as result`)[0].result;
+   });return reply({success:true,result});
+  }
   if(body?.action==="workflow_command"){
    const rows=await db`select stock_v2.workflow_command(${user.id}::uuid,${body.operation_id}::uuid,${body.command}::text,${db.json(body.data)}::jsonb) as result`;
    return reply({success:true,result:rows[0].result});

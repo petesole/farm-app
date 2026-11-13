@@ -1,4 +1,5 @@
 import {stockMutation} from "@/utils/stock-workflow";
+import {StockSelect} from "@/components/jspl/StockWorkflowControls";
 import {StockRecovery} from "@/components/jspl/StockWorkflowControls";
 import {parseJsplDateInput,displayJsplDate} from "@/utils/jspl-input";
 import {StockV2Header} from "@/components/jspl/StockV2Header";
@@ -21,6 +22,7 @@ const shortDNote=(value:string,id:number)=>{const v=String(value??"").trim();ret
 const shortDate=(value:string|null|undefined)=>{if(!value)return "—";const v=String(value);if(/^\d{4}-\d{2}-\d{2}/.test(v))return v.slice(8,10)+"/"+v.slice(5,7)+"/"+v.slice(0,4);if(/^\d{2}\/\d{2}\/\d{4}/.test(v))return v.slice(0,10);return "—";};
 export default function GRVOutstanding(){
  const [dn,setDn]=useState<DLine[]>([]),[po,setPo]=useState<POLine[]>([]),[products,setProducts]=useState<Product[]>([]);
+ const [allSuppliers,setAllSuppliers]=useState<string[]>([]);
  const [noPO,setNoPO]=useState(false);
  const [owner,setOwner]=useState(""),[supplier,setSupplier]=useState(""),[type,setType]=useState<""|"dnote"|"grv">("");
  const [date,setDate]=useState(""),[number,setNumber]=useState("");
@@ -33,13 +35,14 @@ export default function GRVOutstanding(){
   const [a,b]=await Promise.all([fetch(endpoint+"?outstanding_dnotes=1",{headers}),fetch(endpoint,{headers})]);
   const [x,y]=await Promise.all([a.json(),b.json()]);
   if(!a.ok||!b.ok)throw Error(x.error||y.error||"Unable to load supplier lines");
+  const vendors=await (await fetch(endpoint+"?supplier_list=1",{headers})).json();setAllSuppliers((vendors.suppliers??[]).filter((v:any)=>v.active).map((v:any)=>v.supplier_name).sort());
   setDn(x.rows??[]);setPo(y.orders??[]);setProducts((y.items??[]).map((i:Product)=>({item_code:i.item_code,item_name:i.item_name,base_unit:i.base_unit})));
 
  }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
  useEffect(()=>{void load()},[]);
  const owners=["JS","AO"];
  const ownerCount=(code:string)=>new Set(po.filter(x=>x.owner_code===code&&x.status==="approved"&&Number(x.ordered_quantity)>Number(x.received_quantity)).map(x=>x.order_id)).size;
- const suppliers=useMemo(()=>[...new Set(po.filter(x=>x.owner_code===owner&&x.status==="approved"&&Number(x.ordered_quantity)>Number(x.received_quantity)).map(x=>x.supplier_name).filter(x=>typeof x==="string"&&x.trim()!==""))].sort(),[po,owner]);
+ const suppliers=allSuppliers;
  const outstandingDN=dn.filter(x=>x.owner_code===owner&&x.supplier_name===supplier);
  const supplierPO=po.filter(x=>x.owner_code===owner&&x.supplier_name===supplier&&x.status==="approved");
  const outstandingPO=supplierPO.filter(x=>x.ordered_quantity>x.received_quantity).sort((a,b)=>String(a.order_date).localeCompare(String(b.order_date))||a.order_id-b.order_id||a.order_line_id-b.order_line_id);
@@ -50,7 +53,7 @@ export default function GRVOutstanding(){
  const documentReady=!!dateISO(date)&&!!number.trim();
  const hasPO=outstandingPO.length>0;
  const includeRow=(row:Chosen)=>setChosen(prev=>({...prev,[row.key]:prev[row.key]??row}));
- const valid=!!owner&&!!supplier&&!!type&&!!dateISO(date)&&!!number.trim()&&lines.length>0&&lines.every(x=>(type==="dnote"?(x.price.trim()===""||(Number.isFinite(Number(x.price))&&Number(x.price)>0)):(x.price.trim()!==""&&Number.isFinite(Number(x.price))&&Number(x.price)>0))&&(x.kind==="DN"||(x.quantity.trim()!==""&&Number.isFinite(Number(x.quantity))&&Number(x.quantity)>0&&Number(x.quantity)<=x.max)))&&(type!=="dnote"||lines.every(x=>x.kind===(noPO?"DIRECT":"PO")));
+ const valid=!!owner&&!!supplier&&!!type&&!!dateISO(date)&&!!number.trim()&&lines.length>0&&lines.every(x=>(type==="dnote"?(x.price.trim()===""||(Number.isFinite(Number(x.price))&&Number(x.price)>0)):(x.price.trim()!==""&&Number.isFinite(Number(x.price))&&Number(x.price)>0))&&(x.quantity.trim()!==""&&Number.isFinite(Number(x.quantity))&&Number(x.quantity)>0&&Number(x.quantity)<=x.max))&&(type!=="dnote"||lines.every(x=>x.kind===(noPO?"DIRECT":"PO")));
  const submitCombined=async()=>{if(!valid||busy||type!=="grv")return;setBusy(true);setError("");setSuccess("");try{
   const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");
   const grouped=new Map<string,{item_code:string;invoice_quantity:number;unit_price:number}>();
@@ -64,8 +67,8 @@ export default function GRVOutstanding(){
    invoice_lines:[...grouped.values()],allocations:lines.filter(x=>x.kind==="DN").map(x=>({line_id:Number(x.key.slice(3)),quantity:Number(x.quantity)})),
    new_receipts:[...receipts.values()],
    po_allocations:lines.filter(x=>x.kind==="PO").map(x=>({order_line_id:x.orderLineId,item_code:x.item_code,quantity:Number(x.quantity)}))};
-  await stockMutation("receiving",{action:"combined_grv",payload});
-  setChosen({});setNumber("");setDate("");setSupplier("");setType("");setSuccess("Combined GRV saved and valued. Existing D-Note quantities were not posted again.");await load();
+  const posted=await stockMutation("receiving",{action:"combined_grv",payload});
+  setChosen({});setNumber("");setDate("");setSupplier("");setType("");setSuccess(posted.result.valuation_pending?"Partial invoice saved. Final receipt valuation awaits the remaining invoices.":"Combined GRV saved and valued. Existing D-Note quantities were not posted again.");await load();
  }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
  const submitDNote=async()=>{if(!valid||busy||type!=="dnote")return;
   const selected=lines.filter(x=>x.kind==="PO"),poIds=[...new Set(selected.map(x=>x.source))];
@@ -84,9 +87,10 @@ export default function GRVOutstanding(){
    <StockV2Header title="POs Outstanding — Receiving" onRefresh={()=>void load()}/>
 
   {busy?<ActivityIndicator/>:null}{error?<><ThemedText style={s.warning}>{error}</ThemedText><StockRecovery scope="receiving" onRecovered={()=>void load()}/></>:null}{success?<ThemedText>{success}</ThemedText>:null}
-  <View style={s.panel}><ThemedText style={s.label}>Stock Owner</ThemedText><View style={s.wrap}>{owners.map(x=>selection(x,x+" ("+ownerCount(x)+")",x===owner,()=>{setOwner(x);setSupplier("");setType("");setChosen({});setNoPO(false)}))}</View></View>
-  {!!owner?<View style={s.panel}><ThemedText style={s.label}>Supplier</ThemedText><View style={s.wrap}>{suppliers.map(x=>selection(x,x,x===supplier,()=>{setSupplier(x);setType("");setChosen({})}))}</View></View>:null}
-  {!!supplier?<View style={s.panel}><ThemedText style={s.label}>Document Type</ThemedText><View style={s.wrap}>{selection("dnote","Delivery Note",type==="dnote",()=>{setType("dnote");setChosen({});setNoPO(false)})}{selection("grv","Invoice GRV",type==="grv",()=>{setType("grv");setChosen({});setNoPO(false)})}</View></View>:null}
+  <StockSelect label="Stock owner" value={owner} options={owners.map(x=>({id:x,label:x+" ("+ownerCount(x)+")"}))} onChange={v=>{setOwner(String(v??''));setSupplier('');setType('');setChosen({});setNoPO(false)}}/>
+  {!!owner?<StockSelect label="Supplier" value={supplier} options={suppliers.map(x=>({id:x,label:x}))} onChange={v=>{setSupplier(String(v??''));setType('');setChosen({});setNoPO(false)}}/>:null}
+  {!!supplier?<StockSelect label="Document type" value={type} options={[{id:'dnote',label:'Delivery Note'},{id:'grv',label:'Invoice GRV'}]} onChange={v=>{setType(v as 'dnote'|'grv');setChosen({});setNoPO(false)}}/>:null}
+  {type==='dnote'?<StockSelect label="Receipt source" value={noPO?'unplanned':'po'} options={[{id:'po',label:'Against outstanding POs'},{id:'unplanned',label:'Unplanned delivery — no PO'}]} onChange={v=>{setNoPO(v==='unplanned');setChosen({})}}/>:null}
   {!!type?<View style={s.panel}><ThemedText style={s.label}>Date</ThemedText><TextInput style={[s.input,s.required]} value={date} onChangeText={setDate} onBlur={()=>{const parsed=parseJsplDateInput(date);if(parsed)setDate(displayJsplDate(parsed));}} placeholder="d/m (year optional)"/></View>:null}
   {!!type?<View style={s.panel}><ThemedText style={s.label}>{type==="grv"?"Invoice GRV Number":"Delivery Note Number"}</ThemedText><TextInput style={[s.input,s.required]} value={number} onChangeText={setNumber} placeholder="Enter document number"/></View>:null}
   {!!type&&documentReady?<View style={s.panel}>
@@ -97,10 +101,10 @@ export default function GRVOutstanding(){
      <Pressable style={s.tcell} onPress={()=>pick(r)}><ThemedText style={{fontSize:22,color:jsplColors.primary}}>{e?"☑":"☐"}</ThemedText></Pressable>
      <ThemedText style={s.tcell}>{shortDNote(x.delivery_note,x.document_id)}</ThemedText><ThemedText style={s.tcell}>{shortDate(x.delivery_note_date||x.document_date)}</ThemedText>
      <ThemedText style={[s.tcell,s.wide]}>{x.item_name}</ThemedText><ThemedText style={s.tcell}>{x.quantity}</ThemedText>
-     <ThemedText style={s.tcell}>{x.po_price==null?"—":money(Number(x.po_price))}</ThemedText><ThemedText style={s.tcell}>{x.quantity} locked</ThemedText>
+     <ThemedText style={s.tcell}>{x.po_price==null?"—":money(Number(x.po_price))}</ThemedText><TextInput style={s.tcell} keyboardType="decimal-pad" editable={!!e} value={e?.quantity??String(x.quantity)} onChangeText={v=>setRowField(r,"quantity",v)}/>
      <TextInput style={[s.tcell,e?s.required:null]} editable={!!e} keyboardType="decimal-pad" placeholder={e?"Required":"Select first"} value={e?.price??""} onChangeText={v=>setRowField(r,"price",v)}/>
     </View>}):null}
-   {outstandingPO.map(x=>{const key="PO:"+x.order_line_id,e=chosen[key],max=Math.max(0,x.ordered_quantity-x.received_quantity),r:Chosen={kind:"PO",key,item_code:x.item_code,quantity:"",price:"",source:x.order_id,max,orderLineId:x.order_line_id};return <View key={key} style={s.trow}>
+   {!noPO&&outstandingPO.map(x=>{const key="PO:"+x.order_line_id,e=chosen[key],max=Math.max(0,x.ordered_quantity-x.received_quantity),r:Chosen={kind:"PO",key,item_code:x.item_code,quantity:"",price:"",source:x.order_id,max,orderLineId:x.order_line_id};return <View key={key} style={s.trow}>
      <Pressable style={s.tcell} onPress={()=>pick(r)}><ThemedText style={{fontSize:22,color:jsplColors.primary}}>{e?"☑":"☐"}</ThemedText></Pressable>
      <ThemedText style={s.tcell}>{shortPO(x.order_id)}</ThemedText><ThemedText style={s.tcell}>{shortDate(x.order_date)}</ThemedText>
      <ThemedText style={[s.tcell,s.wide]}>{x.item_name}</ThemedText><ThemedText style={s.tcell}>{x.ordered_quantity} / {x.received_quantity}</ThemedText>
@@ -109,7 +113,9 @@ export default function GRVOutstanding(){
      <TextInput style={[s.tcell,e?(type==="grv"?s.required:s.optional):null]} editable={!!e} keyboardType="decimal-pad" placeholder={type==="grv"?"Required":"Optional"} value={e?.price??""} onChangeText={v=>setRowField(r,"price",v)}/>
     </View>})}
   </View></ScrollView>
-  <ThemedText style={s.muted}>{type==="grv"?"Delivery Note quantities are locked. Enter only price. For PO quantities, enter actual quantity and price.":"Enter actual quantities received from POs. Unit price is optional on Delivery Notes."}</ThemedText>
+  <ThemedText style={s.muted}>{type==="grv"?"Enter the quantity covered by this invoice, up to the uninvoiced balance. Physical receipt quantities stay unchanged. For PO quantities, enter actual quantity and price.":"Enter actual quantities received from POs. Unit price is optional on Delivery Notes."}</ThemedText>
+  {noPO?<StockSelect label="Add unplanned product" value={null} options={products.filter(p=>!chosen['DIRECT:'+p.item_code]).map(p=>({id:p.item_code,label:p.item_name+' · '+p.base_unit}))} onChange={v=>{if(v)pick({kind:'DIRECT',key:'DIRECT:'+v,item_code:String(v),quantity:'',price:'',source:0,max:100000})}}/>:null}
+  {noPO?lines.map(l=><View key={l.key} style={s.wrap}><ThemedText>{products.find(p=>p.item_code===l.item_code)?.item_name}</ThemedText><TextInput accessibilityLabel={'Receipt quantity '+l.item_code} style={s.input} keyboardType="decimal-pad" value={l.quantity} onChangeText={v=>edit(l.key,'quantity',v)}/><Pressable onPress={()=>pick(l)}><ThemedText>Remove</ThemedText></Pressable></View>):null}
   <ThemedText>{lines.length} line(s) to save — only checked rows will be saved.</ThemedText>
   {!hasPO&&!outstandingDN.length?<ThemedText>No outstanding documents for this supplier.</ThemedText>:null}
   <Pressable disabled={busy} onPress={()=>{setError("");if(!valid){setError(!dateISO(date)?"Enter a valid date.":!number.trim()?"Enter the document number.":!lines.length?"Tick at least one outstanding line.":"Complete all highlighted cells on the selected lines.");return;}if(type==="grv")void submitCombined();else void submitDNote()}} style={[s.submit,busy&&s.disabled]}>

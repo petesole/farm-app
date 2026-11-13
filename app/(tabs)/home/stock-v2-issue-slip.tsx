@@ -1,3 +1,4 @@
+import {stockMutation} from "@/utils/stock-workflow";
 import {StockV2Header} from "@/components/jspl/StockV2Header";
 import {useEffect,useMemo,useState} from "react";
 import {useLocalSearchParams,useRouter} from "expo-router";
@@ -9,11 +10,12 @@ import {jsplColors,jsplSpacing,jsplRadii,jsplSizes} from "@/constants/jspl-desig
 
 const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
 type Line={item_code:string;item_name:string;base_unit:string;quantity:number;rate_per_ha:number|null;mix_instruction:string|null};
-type Slip={already_printed?:boolean;header:{document_id:number;document_number:string;document_date:string;tracecode_name:string|null;job_id:string|null;water_rate:number|null;sprayer:string|null;spray_type:string|null};lines:Line[]};
+type Slip={can_reprint?:boolean;already_printed?:boolean;header:{document_id:number;document_number:string;document_date:string;tracecode_name:string|null;job_id:string|null;water_rate:number|null;sprayer:string|null;spray_type:string|null};lines:Line[]};
 const fmt=(v:number,dp=2)=>Number.isFinite(v)?v.toLocaleString("en-GB",{maximumFractionDigits:dp,minimumFractionDigits:dp}):"—";
 export default function IssueSlip(){
  const router=useRouter(),params=useLocalSearchParams<{documentId?:string}>();
  const docId=Number(params.documentId);
+ const [reprintReason,setReprintReason]=useState('');
  const [slip,setSlip]=useState<Slip|null>(null),[error,setError]=useState(""),[loading,setLoading]=useState(true),[tankSize,setTankSize]=useState("600");
  useEffect(()=>{let alive=true;(async()=>{try{
   if(!Number.isSafeInteger(docId)||docId<=0)throw Error("Valid issue number required");
@@ -24,17 +26,18 @@ export default function IssueSlip(){
  }catch(e){if(alive)setError(e instanceof Error?e.message:String(e))}finally{if(alive)setLoading(false)}})();return()=>{alive=false}},[docId]);
  const water=Number(slip?.header.water_rate||0),capacity=Number(tankSize);
  const displayDate=slip?.header.document_date?`${slip.header.document_date.slice(8,10)}/${slip.header.document_date.slice(5,7)}/${slip.header.document_date.slice(0,4)}`:"—";
- const issueNumber=slip?.header.document_id?String(slip.header.document_id):"—";
+ const issueNumber=slip?.header.document_number??"—";
  const rated=(slip?.lines??[]).filter(l=>Number(l.rate_per_ha)>0);
  const area=useMemo(()=>rated.length?Math.min(...rated.map(l=>Number(l.quantity)/Number(l.rate_per_ha))):0,[rated]);
  const ready=!!slip&&water>0&&capacity>0&&Number.isFinite(capacity)&&rated.length===slip.lines.length&&area>0;
  const totalWater=area*water,full=ready?Math.floor((totalWater+1e-7)/capacity):0,part=ready?Math.max(0,Number((totalWater-full*capacity).toFixed(6))):0;
  const fullHa=water>0?capacity/water:0,partHa=water>0?part/water:0;
  const esc=(value:unknown)=>String(value??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]||ch));
+ const allowReprint=async()=>{try{await stockMutation('issue-reprint',{action:'reset_issue_slip_print',document_id:docId,reason:reprintReason});setSlip(v=>v?{...v,already_printed:false}:v);setError('');setReprintReason('')}catch(e){setError((e as Error).message)}};
+ const confirmPrinted=async()=>{try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error('Sign in required');const response=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+session.access_token},body:JSON.stringify({action:'claim_issue_slip_print',document_id:docId})});const data=await response.json();if(!response.ok)throw Error(data.error||'Print confirmation failed');setSlip(v=>v?{...v,already_printed:true}:v);}catch(e){setError((e as Error).message)}};
  const print=async()=>{if(!slip||slip.already_printed||Platform.OS!=="web"||typeof window==="undefined")return;
   const popup=window.open("","_blank","width=460,height=780");
   if(!popup){setError("Please allow pop-ups to print the Epson issue slip.");return;}
-  try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");const claim=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.access_token},body:JSON.stringify({action:"claim_issue_slip_print",document_id:docId})});const result=await claim.json();if(!claim.ok)throw Error(result.error||"Issue slip already printed");setSlip(old=>old?{...old,already_printed:true}:old)}catch(e){popup.close();setError(e instanceof Error?e.message:String(e));return;}
   const h=slip.header;
   const date=h.document_date?.slice(8,10)+"/"+h.document_date?.slice(5,7)+"/"+h.document_date?.slice(0,4);
   const rows=slip.lines.map(l=>`<tr><td class="prod">${esc(l.item_name)}${l.mix_instruction?`<div class="mix">${esc(l.mix_instruction)}</div>`:""}</td><td>${fmt(Number(l.quantity),2)}</td><td>${l.rate_per_ha==null?"—":fmt(Number(l.rate_per_ha),2)}</td><td>${ready?fmt(fullHa*Number(l.rate_per_ha),2):"—"}</td><td>${ready&&part>0?fmt(partHa*Number(l.rate_per_ha),2):"—"}</td></tr>`).join("");
@@ -47,9 +50,9 @@ export default function IssueSlip(){
   th:first-child{text-align:left;width:36%}td{font-size:11px;padding:7px 2px;border-bottom:1px dotted #aaa;text-align:right;vertical-align:top;overflow-wrap:anywhere}
   td.prod{text-align:left;font-weight:700}.sign{margin-top:17px;line-height:2.4}.help{font-size:8px;margin-top:7px}.mix{font-size:8px;font-weight:700;margin-top:2px}
   .toolbar{padding:10px;background:#eee;display:flex;gap:8px}.toolbar button{padding:5px 12px} @media print{.toolbar{display:none!important}main{width:72mm}body{margin:0}}
-  </style></head><body><div class="toolbar"><button onclick="this.disabled=true;window.print()">Print Slip</button><button onclick="window.close()">Close</button></div><main>
+  </style></head><body><div class="toolbar"><button onclick="window.print()">Print Slip</button><button onclick="window.close()">Close</button></div><main>
   <div class="company">JOHN SOLE (PVT) LTD</div><div class="heading">STOCK ISSUE &amp; TANK MIX</div><div class="rule"></div>
-  <div class="meta"><div><b>Issue No:</b> ${esc(h.document_id)}</div><div><b>Date:</b> ${esc(date)}</div></div>
+  <div class="meta"><div><b>Issue No:</b> ${esc(h.document_number)}</div><div><b>Date:</b> ${esc(date)}</div></div>
   <div class="trace">${esc(h.tracecode_name||"NO TRACECODE")}</div>
   <div class="areaWater">Area: ${ready?fmt(area,2)+" ha":"—"} &nbsp; Water: ${water?fmt(water,0)+" L/ha":"—"}</div><div class="rule"></div>
   <table><colgroup><col style="width:36%"><col style="width:16%"><col style="width:16%"><col style="width:16%"><col style="width:16%"></colgroup><thead><tr class="tankHeader"><th colspan="3"></th><th>Qty: ${ready?full:"—"}</th><th>${ready?(part>0?1:0):"—"}</th></tr><tr class="tankHeader"><th colspan="3"></th><th>${fmt(capacity,0)} L</th><th>${ready?fmt(part,0)+" L":"—"}</th></tr><tr><th>Product</th><th>Issue</th><th>Rate/ha</th><th>Full</th><th>Part</th></tr></thead><tbody>${rows}</tbody></table>
@@ -61,7 +64,7 @@ export default function IssueSlip(){
   <StockV2Header title="Stock Issue Slip"/>
 
   <ThemedText style={styles.heading}>Epson TM-T20H · Stock Issue Slip</ThemedText>
-  {loading?<ActivityIndicator/>:error?<ThemedText style={styles.error}>{error}</ThemedText>:slip?<View style={styles.slipWrap}><View style={styles.sheet}>
+  {error?<ThemedText style={styles.error}>{error}</ThemedText>:null}{loading?<ActivityIndicator/>:slip?<View style={styles.slipWrap}><View style={styles.sheet}>
    <ThemedText style={styles.title}>JOHN SOLE (PVT) LTD</ThemedText>
    <ThemedText style={styles.title}>STOCK ISSUE & TANK MIX</ThemedText>
    <View style={styles.rule}/>
@@ -89,7 +92,7 @@ export default function IssueSlip(){
    <View style={styles.controls}>
     <ThemedText>Tank capacity (L)</ThemedText>
     <TextInput keyboardType="decimal-pad" style={styles.input} value={tankSize} onChangeText={setTankSize}/>
-    {!slip.already_printed?<Pressable style={styles.primary} onPress={()=>void print()}><ThemedText style={{color:"#fff",fontWeight:"700"}}>Print 80 mm Issue Slip</ThemedText></Pressable>:<ThemedText style={styles.warning}>Issue slip already printed. Reprints disabled.</ThemedText>}
+    {!slip.already_printed?<View><Pressable style={styles.primary} onPress={()=>void print()}><ThemedText style={{color:'#fff',fontWeight:'700'}}>Preview / Print 80 mm Issue Slip</ThemedText></Pressable><ThemedText>Confirm only after a legible slip has physically printed. Cancelled previews do not lock printing.</ThemedText><Pressable style={styles.button} onPress={()=>void confirmPrinted()}><ThemedText>Confirm Slip Printed</ThemedText></Pressable></View>:<View><ThemedText style={styles.warning}>Issue slip confirmed printed.</ThemedText>{slip.can_reprint?<><TextInput accessibilityLabel="Reprint reason" style={styles.input} value={reprintReason} onChangeText={setReprintReason} placeholder="Reason for replacement slip"/><Pressable disabled={reprintReason.trim().length<8} style={styles.button} onPress={()=>void allowReprint()}><ThemedText>Authorise Replacement Slip (Admin)</ThemedText></Pressable></>:null}</View>}
    </View></View>:null}
  </ScrollView></ThemedView>
 }

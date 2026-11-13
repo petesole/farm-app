@@ -1,3 +1,4 @@
+import {StockReport} from "@/components/jspl/StockReport";
 import {StockV2Header} from "@/components/jspl/StockV2Header";
 import {useEffect,useRef,useState} from "react";
 import {useLocalSearchParams,useRouter} from "expo-router";
@@ -30,24 +31,16 @@ export default function StockV2MovementReport(){
  return <ThemedView style={styles.root}>
   <StockV2Header title="Stock Movement Report"/>
   <View style={styles.header}><View style={styles.productHeading}><View style={{flex:1,minWidth:0}}><ThemedText style={styles.heading}>{result?.item?.item_name??itemCode}</ThemedText><ThemedText style={styles.sub}>{owner} · {result?.item?.base_unit??""}</ThemedText></View><View style={styles.stockBox}><ThemedText style={styles.stockLabel}>Current stock</ThemedText><ThemedText style={styles.stockValue}>{loading?"…":fmt(Number(result?.current_stock??0))} {result?.item?.base_unit??""}</ThemedText></View></View></View>
-  {loading?<ActivityIndicator/>:error?<ThemedText style={styles.error}>{error}</ThemedText>:<ScrollView horizontal contentContainerStyle={{flexGrow:1}}>
-   <ScrollView ref={scroll} style={styles.list} onContentSizeChange={()=>scroll.current?.scrollToEnd({animated:false})}>
-    <View style={styles.table}>
-     <View style={styles.rowHead}>
-      <ThemedText style={[styles.col,styles.date,styles.bold]}>Transaction Date</ThemedText><ThemedText style={[styles.col,styles.id,styles.bold]}>Trans ID</ThemedText><ThemedText style={[styles.col,styles.desc,styles.bold]}>Description</ThemedText><ThemedText style={[styles.col,styles.price,styles.bold]}>Unit Price (USD)</ThemedText><ThemedText style={[styles.col,styles.number,styles.bold]}>Stock In</ThemedText><ThemedText style={[styles.col,styles.number,styles.bold]}>Stock Out</ThemedText><ThemedText style={[styles.col,styles.number,styles.bold]}>Stock Pos</ThemedText>
-     </View>
-     {rows.length===0?<ThemedText style={styles.empty}>No posted movements for this product in the test warehouse.</ThemedText>:rows.map((m,i)=><View key={m.document_number+":"+m.trans_id+":"+i} style={[styles.row,i%2===1&&styles.alt]}>
-      <ThemedText style={[styles.col,styles.date]}>{m.transaction_date.slice(8,10)+"/"+m.transaction_date.slice(5,7)+"/"+m.transaction_date.slice(0,4)}</ThemedText>
-      <ThemedText style={[styles.col,styles.id]}>{m.trans_id}</ThemedText>
-      <ThemedText style={[styles.col,styles.desc]}>{m.description}</ThemedText>
-      <View style={[styles.col,styles.price]}><ThemedText style={styles.priceText}>{m.unit_price==null?"Pending":fmt(Number(m.unit_price))}</ThemedText><ThemedText style={styles.priceNote}>{m.stock_in>0?"GRV":m.stock_out>0?m.price_basis:"—"}</ThemedText></View>
-      <ThemedText style={[styles.col,styles.number]}>{m.stock_in?fmt(m.stock_in):""}</ThemedText>
-      <ThemedText style={[styles.col,styles.number]}>{m.stock_out?fmt(m.stock_out):""}</ThemedText>
-      <ThemedText style={[styles.col,styles.number,styles.bold]}>{fmt(m.stock_pos)}</ThemedText>
-     </View>)}
-    </View>
-   </ScrollView>
-  </ScrollView>}
+  {loading?<ActivityIndicator/>:error?<ThemedText style={styles.error}>{error}</ThemedText>:<StockReport title={(result?.item?.item_name??itemCode)+' — '+owner+' Stock Movements'} rows={rows} measures={['stock_in','stock_out']} columns={[
+   {key:'transaction_date',title:'Transaction Date',value:r=>r.transaction_date},
+   {key:'document',title:'Document',value:r=>r.document_number},
+   {key:'description',title:'Description',value:r=>r.description,width:260},
+   {key:'unit_price',title:'Unit Price (USD)',value:r=>r.unit_price??'Pending'},
+   {key:'stock_in',title:'Stock In',value:r=>Number(r.stock_in)},
+   {key:'stock_out',title:'Stock Out',value:r=>Number(r.stock_out)},
+   {key:'stock_pos',title:'Stock Position',value:r=>Number(r.stock_pos)}
+  ]}/>}
+
  </ThemedView>;
 }
 const styles=StyleSheet.create({

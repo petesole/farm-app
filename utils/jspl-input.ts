@@ -1,4 +1,8 @@
 /** Shared date and select helpers; framework-independent. */
+export function localISODate(date: Date): string {
+  if (!Number.isFinite(date.getTime())) throw Error('Invalid date');
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+}
 export function parseJsplDateInput(text: string, year = new Date().getFullYear()): string | null {
   const match = /^(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?$/.exec(text.trim());
   if (!match) return null;

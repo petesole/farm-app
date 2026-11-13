@@ -238,7 +238,11 @@ begin
    if d.kind='credit' and d.status='applied' then raise exception 'Approved and applied credit notes are locked';end if;
    if d.status='cancelled' then raise exception 'Document already cancelled';end if;
    if d.target_order_id is not null then
-    if exists(select 1 from stock_v2.order_line where order_id=d.target_order_id and received_quantity>0) then raise exception 'PO is locked after stock is received';end if;
+    if not exists(select 1 from stock_v2.order_line where order_id=d.target_order_id and ordered_quantity>received_quantity) then raise exception 'PO has no outstanding balance to cancel';end if;
+    insert into stock_v2.order_line_cancellation(order_line_id,quantity,original_ordered_quantity,reason,created_by)
+     select order_line_id,ordered_quantity-received_quantity,ordered_quantity,p_data->>'reason',p_actor
+     from stock_v2.order_line where order_id=d.target_order_id and ordered_quantity>received_quantity;
+    update stock_v2.order_line set ordered_quantity=received_quantity where order_id=d.target_order_id and ordered_quantity>received_quantity;
     update stock_v2.order_header set status='cancelled' where order_id=d.target_order_id;
    end if;
    if length(btrim(coalesce(p_data->>'reason','')))<5 then raise exception 'Cancellation reason required';end if;
@@ -499,7 +503,7 @@ begin
  if exists(select 1 from stock_v2.accounting_grv_line l where l.grv_id=gid
  and l.invoice_quantity<>coalesce((select sum(a.quantity) from stock_v2.accounting_grv_allocation a where a.grv_line_id=l.id),0))
  then raise exception 'Final GRV quantity must match selected physical receipt quantities';end if;
- -- Never reprice an existing receipt line and never permit partially priced source lines.
+ -- Record partial invoice allocations; finalise the receipt price only when fully invoiced.
  for v_cost in
   select a.receipt_line_id,dl.document_id,stock_v2.workflow_physical_quantity(dl.line_id) as quantity,al.item_id,al.invoice_unit_price
   from stock_v2.accounting_grv_allocation a
@@ -508,11 +512,12 @@ begin
   where al.grv_id=gid
  loop
   if (select coalesce(sum(quantity),0) from stock_v2.accounting_grv_allocation where receipt_line_id=v_cost.receipt_line_id)
-     <>v_cost.quantity then raise exception 'Final GRV requires full DNote line allocation';end if;
+     <v_cost.quantity then continue;end if;
   if exists(select 1 from stock_v2.price_confirmation where line_id=v_cost.receipt_line_id)
   then raise exception 'Receipt already has a final price';end if;
   insert into stock_v2.price_confirmation(line_id,confirmed_unit_cost,invoice_number)
-  values(v_cost.receipt_line_id,v_cost.invoice_unit_price,v_invoice);
+  select v_cost.receipt_line_id,sum(a.quantity*al.invoice_unit_price)/sum(a.quantity),v_invoice
+  from stock_v2.accounting_grv_allocation a join stock_v2.accounting_grv_line al on al.id=a.grv_line_id where a.receipt_line_id=v_cost.receipt_line_id;
   update stock_v2.grv_detail set invoice_number=v_invoice,invoice_date=(p_data->>'invoice_date')::date,price_status='confirmed'
   where document_id=v_cost.document_id
   and not exists(select 1 from stock_v2.document_line dl2 where dl2.document_id=v_cost.document_id
@@ -526,7 +531,7 @@ begin
   v_status:='disputed';
  end if;
  update stock_v2.accounting_grv set status=v_status where id=gid;
- result:=jsonb_build_object('kind','combined_grv','grv_id',gid,'status',v_status,'new_receipt_document_id',newdoc);
+ result:=jsonb_build_object('kind','combined_grv','grv_id',gid,'status',v_status,'new_receipt_document_id',newdoc,'valuation_pending',exists(select 1 from stock_v2.accounting_grv_allocation a join stock_v2.accounting_grv_line al on al.id=a.grv_line_id where al.grv_id=gid and not exists(select 1 from stock_v2.price_confirmation pc where pc.line_id=a.receipt_line_id)));
  insert into stock_v2.demo_workflow_requests(request_id,action,result) values(p_request,'combined_grv',result);
  return result;
 end $function$;

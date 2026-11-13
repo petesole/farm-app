@@ -1,7 +1,8 @@
+import {StockSelect} from "@/components/jspl/StockWorkflowControls";
 import {JsplSearchCombo} from "@/components/jspl/JsplSearchCombo";
 import {StockV2Header} from "@/components/jspl/StockV2Header";
 import {useCallback,useEffect,useMemo,useState} from "react";
-import {useRouter,useLocalSearchParams} from "expo-router";
+import {useFocusEffect,useRouter,useLocalSearchParams} from "expo-router";
 import {ActivityIndicator,Pressable,ScrollView,StyleSheet,TextInput,View} from "react-native";
 import {ThemedText} from "@/components/themed-text";
 import {ThemedView} from "@/components/themed-view";
@@ -42,7 +43,7 @@ export default function WeeklySprayPlanning(){
   if(tc.error||cr.error)throw Error(tc.error?.message||cr.error?.message);
   setSprays(data.sprays??[]);setProducts(data.items??[]);setIssueHistory(data.documents??[]);setTraces((tc.data??[]) as Trace[]);setCrops((cr.data??[]) as Crop[]);
  }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setLoading(false)}},[]);
- useEffect(()=>{void load()},[load]);
+ useFocusEffect(useCallback(()=>{void load()},[load]));
  useEffect(()=>{void(async()=>{try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)return;const res=await fetch(endpoint+"?spray_admin=1",{headers:{authorization:"Bearer "+session.access_token}});if(res.ok){const data=await res.json();setIsAdmin(!!data.is_admin)}}catch{}})()},[]);
  const jobs=useMemo(()=>{
   const map=new Map<number,Spray[]>();
@@ -56,8 +57,9 @@ export default function WeeklySprayPlanning(){
  },[sprays,traces,crops]);
  const due=jobs.filter(j=>j.status==="planned"&&j.remainingArea>0.0001);
  const filterJobs=jobs.filter(j=>showCompleted?j.status==="completed":(j.status==="planned"&&j.remainingArea>0.0001));
- const filterCrops=[...new Set(filterJobs.map(j=>j.crop))].sort();
+ const filterCrops=[...new Set(filterJobs.filter(j=>traceFilter==="all"||String(j.traceId)===traceFilter).map(j=>j.crop))].sort();
  const filterTraces=[...new Map(filterJobs.filter(j=>cropFilter==="all"||j.crop===cropFilter).map(j=>[j.traceId,{id:j.traceId,name:j.trace}])).values()].sort((a,b)=>String(a.name??"").localeCompare(String(b.name??"")));
+ useEffect(()=>{if(cropFilter!=='all'&&!filterJobs.some(j=>j.crop===cropFilter))setCropFilter('all');if(traceFilter!=='all'&&!filterJobs.some(j=>String(j.traceId)===traceFilter&&(cropFilter==='all'||j.crop===cropFilter)))setTraceFilter('all')},[showCompleted,sprays,cropFilter,traceFilter]);
  const visible=jobs.filter(j=>(showCompleted?j.status==="completed":(j.status==="planned"&&j.remainingArea>0.0001))&&(cropFilter==="all"||j.crop===cropFilter)&&(traceFilter==="all"||String(j.traceId)===traceFilter));
  const groups=useMemo(()=>{const m=new Map<string,Job[]>();for(const j of visible){const k=j.week+"|"+j.crop+"|"+j.trace;if(!m.has(k))m.set(k,[]);m.get(k)!.push(j)}return [...m.entries()].map(([key,rows])=>({key,rows,week:rows[0].week,crop:rows[0].crop,trace:rows[0].trace}))},[visible]);
  const deleteSpray=async(job:Job)=>{if(!isAdmin||job.status!=="planned"||job.lines.some(l=>l.issued_quantity>0)){setError("Only an admin can delete a spray without stock issues.");return}
@@ -68,9 +70,9 @@ export default function WeeklySprayPlanning(){
  <StockV2Header title="Weekly Spray Planning" onRefresh={()=>void load()}/>
  <View style={styles.actions}>
   <Pressable style={styles.primary} onPress={()=>router.push("/stock-v2-spray-entry")}><ThemedText style={styles.white}>+ New Spray</ThemedText></Pressable>
-  <Pressable style={styles.secondary} onPress={()=>setShowCompleted(v=>!v)}><ThemedText>{showCompleted?"Show outstanding":"Show completed only"}</ThemedText></Pressable>
+  <StockSelect label="Spray status" value={showCompleted?'completed':'planned'} options={[{id:'planned',label:'Outstanding'},{id:'completed',label:'Completed'}]} onChange={v=>{setShowCompleted(v==='completed');setCropFilter('all');setTraceFilter('all')}}/>
  </View>
- {latestSlip?<Pressable style={styles.primary} onPress={()=>router.push({pathname:"/stock-v2-issue-slip",params:{documentId:String(latestSlip)}})}><ThemedText style={styles.white}>Print Issue Slip #{latestSlip}</ThemedText></Pressable>:null}
+ {latestSlip?<Pressable style={styles.primary} onPress={()=>router.push({pathname:"/stock-v2-issue-slip",params:{documentId:String(latestSlip)}})}><ThemedText style={styles.white}>Print Latest Issue Slip</ThemedText></Pressable>:null}
  <View style={{flexDirection:"row",flexWrap:"wrap",gap:12,alignItems:"flex-start"}}>
   <View style={{minWidth:220,flex:1}}>
    <JsplSearchCombo label="Crop" selector="crop" options={[{id:"all",label:"All crops",active:true},...filterCrops.map(name=>({id:name,label:name,active:true}))]} value={cropFilter} onChange={value=>{setCropFilter(String(value??"all"));setTraceFilter("all");}} placeholder="Filter crop"/>

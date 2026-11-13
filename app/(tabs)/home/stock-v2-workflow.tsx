@@ -1,8 +1,11 @@
+import {stockMutation} from "@/utils/stock-workflow";
+import {StockRecovery,StockSelect} from "@/components/jspl/StockWorkflowControls";
 import {stockContext,WorkflowContext} from "@/utils/stock-workflow";
-import {useFocusEffect} from "expo-router";
+import {useLocalSearchParams,useFocusEffect} from "expo-router";
 import {useCallback} from "react";
 import {StockV2Header} from "@/components/jspl/StockV2Header";
 import { JsplDashboardButton } from "@/components/jspl/JsplDashboardButton";
+import {StockReport} from "@/components/jspl/StockReport";
 import { JsplTable } from "@/components/jspl/JsplTable";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -34,6 +37,8 @@ function Field({label,value,onChange,numeric=false,date=false}:{label:string;val
 }
 export default function StockV2Workflow(){
  const router=useRouter();
+ const routeParams=useLocalSearchParams<{operation?:string}>();
+ useEffect(()=>{if(routeParams.operation==="Direct Issue")setTab("Direct Issue")},[routeParams.operation]);
  const [workflow,setWorkflow]=useState<WorkflowContext|null>(null);
  useFocusEffect(useCallback(()=>{void stockContext().then(setWorkflow).catch(e=>setStatus(e.message));void refresh(false);},[]));
  const {width,height}=useWindowDimensions();
@@ -87,8 +92,8 @@ export default function StockV2Workflow(){
  const removeLine=(id:number)=>{setLines(old=>old.filter(l=>l.id!==id));resetEdit()};
  const switchTab=(v:Tab|null)=>{if(v==="Purchase Orders"||v==="PO Corrections"){router.push("/stock-v2-purchase-orders");return;}if(v==="POs Outstanding"){router.push("/stock-v2-po-receiving");return;}if(v==="GRV"){router.push("/stock-v2-grv-outstanding");return;}if(v==="Stock Transfer"){router.push("/stock-v2-owner-transactions");return;}if(v==="Corrections"){router.push("/(tabs)/home/stock-v2-corrections");return;}if(v==="Supplier Returns"){router.push("/(tabs)/home/stock-v2-supplier-returns");return;}if(v==="Stocktake & Adjustments"){router.push("/(tabs)/home/stock-v2-stocktake");return;}setTab(v);if(v==="Planned Issue")void refresh(false);setLines([emptyLine(nextLine)]);setNextLine(n=>n+1);setOrderId(null);setJobId(null);setDropdown(null);setStatus("");setReceiptMode("dnote");setInvoiceNumber("");setDeliveryNote("");resetEdit()};
  const products=snapshot?.items??[];
- const inputTypes=[...new Set(products.map(x=>x.input_type).filter((x):x is string=>!!x))].sort();
- const inputCategories=[...new Set(products.map(x=>x.input_category).filter((x):x is string=>!!x))].sort();
+ const inputTypes=[...new Set(products.filter(p=>(!categoryFilter||p.input_category===categoryFilter)&&(stockFilter==="all"||(stockFilter==="stock"?(p.quantity>0||p.ao_quantity>0):(p.quantity<=0&&p.ao_quantity<=0)))).map(x=>x.input_type).filter((x):x is string=>!!x))].sort();
+ const inputCategories=[...new Set(products.filter(p=>(!typeFilter||p.input_type===typeFilter)&&(stockFilter==="all"||(stockFilter==="stock"?(p.quantity>0||p.ao_quantity>0):(p.quantity<=0&&p.ao_quantity<=0)))).map(x=>x.input_category).filter((x):x is string=>!!x))].sort();
  const balanceRows=products.filter(p=>(!typeFilter||p.input_type===typeFilter)&&(!categoryFilter||p.input_category===categoryFilter)&&(stockFilter==="all"||(stockFilter==="stock"?(p.quantity>0||p.ao_quantity>0):(p.quantity<=0&&p.ao_quantity<=0))));
  const orders=useMemo(()=>{
   const map=new Map<number,OrderLine[]>();
@@ -151,16 +156,17 @@ export default function StockV2Workflow(){
   const req=request&&request.action===action&&JSON.stringify(request.payload)===JSON.stringify(payload)?request:{action,payload,id:uuid()};setRequest(req);
   try{
    if(!Array.isArray(req.payload.lines)||req.payload.lines.length===0)throw Error("Cannot post an order without products");
-   const r=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+await token()},body:JSON.stringify({action,request_id:req.id,payload:req.payload})});const d=await r.json();if(!r.ok)throw Error(d.error||("Posting failed (HTTP "+r.status+")"));if(action==="order"&&(!d.result?.order_id||!Array.isArray(d.result.lines)||d.result.lines.length!==req.payload.lines.length))throw Error("Order not confirmed with all product lines");
+   const d=await stockMutation('stock-issue',{action,payload:req.payload});
+   if(!d.result)throw Error('Save is not yet confirmed. Verify Previous Save before continuing.');
    if((action==="direct_issue"||action==="planned_issue")&&d.result?.document_id)setLatestIssueDocument(Number(d.result.document_id));
    const recostPending=Array.isArray(d.result?.cost_pending)?d.result.cost_pending:[];
     const recostDone=Array.isArray(d.result?.cost_runs)?d.result.cost_runs.length:0;
-    setStatus("Posted "+tab+" successfully. "+(d.result?.order_id?"PO #"+d.result.order_id:d.result?.document_id?"Document #"+d.result.document_id:d.result?.job_id?"Job #"+d.result.job_id:"")+
+    setStatus("Posted "+tab+" successfully. "+(d.result?.order_id?"PO #"+d.result.order_id:d.result?.document_id?"Document "+d.result.document_number:d.result?.job_id?"Job #"+d.result.job_id:"")+
       (action==="grv"||action==="direct_grv"?receiptMode==="dnote"?" — awaiting invoice and valuation.":recostPending.length?" — WA costing pending: "+recostPending.map((x:{reason:string})=>x.reason).join("; "):" — historical WA recalculated for "+recostDone+" product(s).":"")+
       " — returned to Stock Home.");setConfirmed(false);setRequest(null);await refresh(false);setTab(null);
    if(tab==="POs Outstanding")setOrderId(null);if(tab==="Planned Issue")setJobId(null);
    setLines([emptyLine(nextLine)]);setNextLine(n=>n+1);
-  }catch(e){setStatus("NOT POSTED: "+(e instanceof Error?e.message:String(e)))}finally{setBusy(false)}
+  }catch(e){setStatus("Save not confirmed: "+(e instanceof Error?e.message:String(e)))}finally{setBusy(false)}
  };
  const header=(title:string,details:string[])=><View style={styles.documentHead}><ThemedText style={styles.heading}>{title}</ThemedText><View style={styles.headerDetails}>{details.map((x,i)=><ThemedText key={i} style={styles.detail}>{x}</ThemedText>)}</View></View>;
  const currentTrace=traces.find(t=>t.tracecode_id===traceId);
@@ -193,17 +199,18 @@ export default function StockV2Workflow(){
 
   </View>
   {busy?<ActivityIndicator/>:null}
+  {status.startsWith("Save not confirmed")?<StockRecovery scope="stock-issue" onRecovered={()=>void refresh()}/>:null}
   {status?<View style={styles.notice}><ThemedText>{status}</ThemedText></View>:null}
-  {latestIssueDocument&&tab===null?<Pressable style={styles.submit} onPress={()=>router.push({pathname:"/stock-v2-issue-slip",params:{documentId:String(latestIssueDocument)}})}><ThemedText style={styles.submitText}>Print Issue Slip #{latestIssueDocument}</ThemedText></Pressable>:null}
+  {latestIssueDocument&&tab===null?<Pressable style={styles.submit} onPress={()=>router.push({pathname:"/stock-v2-issue-slip",params:{documentId:String(latestIssueDocument)}})}><ThemedText style={styles.submitText}>Print Latest Issue Slip</ThemedText></Pressable>:null}
   {tab===null?null:tab==="Stock Balances"?<View style={styles.sheet}>
    {header("STOCK BALANCES",["Stock Owners: JS / AO","Warehouse: TEST_WH"])}
    <View style={styles.filters}>
-    <View style={{flexDirection:"row",flexWrap:"wrap",gap:7}}>{([["stock","In Stock"],["none","No Stock"],["all","All"]] as const).map(([value,label])=><Pressable key={value} accessibilityRole="button" accessibilityState={{selected:stockFilter===value}} onPress={()=>setStockFilter(value)} style={{backgroundColor:stockFilter===value?"#177245":"#e5f1e9",borderColor:"#177245",borderWidth:1.5,borderRadius:22,paddingVertical:9,paddingHorizontal:15}}><ThemedText style={{fontWeight:"700",color:stockFilter===value?"#ffffff":"#175b38"}}>{label}</ThemedText></Pressable>)}</View>
-    {menu("balanceType",typeFilter||"All input types",[{label:"All input types",value:"all",onSelect:()=>setTypeFilter("")},...inputTypes.map(t=>({label:t,value:t,onSelect:()=>setTypeFilter(t)}))],true)}
-    {menu("balanceCategory",categoryFilter||"All input categories",[{label:"All input categories",value:"all",onSelect:()=>setCategoryFilter("")},...inputCategories.map(x=>({label:x,value:x,onSelect:()=>setCategoryFilter(x)}))],true)}
+    <StockSelect label="Stock status" value={stockFilter} options={[{id:'stock',label:'In Stock'},{id:'none',label:'No Stock'},{id:'all',label:'All'}]} onChange={v=>{setStockFilter(v as 'stock'|'none'|'all');setTypeFilter('');setCategoryFilter('')}}/>
+    {menu("balanceType",typeFilter||"All input types",[{label:"All input types",value:"all",onSelect:()=>setTypeFilter("")},...inputTypes.map(t=>({label:t,value:t,onSelect:()=>{setTypeFilter(t);setCategoryFilter("")}}))],true)}
+    {menu("balanceCategory",categoryFilter||"All input categories",[{label:"All input categories",value:"all",onSelect:()=>setCategoryFilter("")},...inputCategories.map(x=>({label:x,value:x,onSelect:()=>{setCategoryFilter(x);setTypeFilter("")}}))],true)}
    </View>
    <ThemedText style={styles.muted}>{balanceRows.length} products · Imported Access opening quantities are previews only (not posted). On Hand remains the live ledger balance.</ThemedText>
-   <JsplTable rows={balanceRows} rowKey={x=>x.item_code}
+   <StockReport title="Stock Balances" rows={balanceRows} measures={["js_qty","ao_qty"]} groupKey="unit"
     columns={[
       {key:"item",title:"Product",width:240,value:x=>x.item_name},
       {key:"ai",title:"Active Ingredient",width:210,value:x=>x.active_ingredient||"—"},
@@ -279,7 +286,7 @@ export default function StockV2Workflow(){
    {(directGrv||!["POs Outstanding","Planned Issue"].includes(tab ?? ""))?<Pressable style={styles.add} onPress={addLine}><ThemedText>＋ Add product line</ThemedText></Pressable>:null}
    {(tab==="Purchase Orders"||(tab==="POs Outstanding"&&receiptMode==="invoice"))?<ThemedText style={styles.total}>Document total: {currency(lines.reduce((s,l)=>s+number(l.quantity)*number(l.unit_price||"0"),0))}</ThemedText>:null}
    <ThemedText style={styles.label}>Products on this document: {lines.filter(l=>products.some(p=>p.item_code===l.item_code)&&Number(l.quantity)>0).length} / {lines.length}</ThemedText>
-   {status.startsWith("NOT POSTED")?<View style={styles.errorPanel}><ThemedText style={styles.errorText}>{status}</ThemedText></View>:null}
+   {status.startsWith("Save not confirmed")?<View style={styles.errorPanel}><ThemedText style={styles.errorText}>{status}</ThemedText></View>:null}
   <View style={styles.footer}><Pressable onPress={()=>setConfirmed(x=>!x)} style={styles.confirm}><ThemedText>{confirmed?"☑":"☐"} Confirm TEST transaction</ThemedText></Pressable><Pressable disabled={!valid||!confirmed||busy} onPress={submit} style={[styles.submit,(!valid||!confirmed||busy)&&styles.off]}><ThemedText style={styles.submitText}>{busy?"Posting…":tab==="POs Outstanding"?(receiptMode==="dnote"?"Post DNote":"Post Invoice GRV"):"Post "+tab}</ThemedText></Pressable></View>
    {!valid?<ThemedText style={styles.alert}>Complete the required fields, product and positive quantities before posting.</ThemedText>:null}</>:<ThemedText style={styles.muted}>Select Stock Owner and Contract first, then supplier or outstanding PO.</ThemedText>}
   </View>}

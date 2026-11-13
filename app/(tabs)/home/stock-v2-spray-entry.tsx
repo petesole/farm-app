@@ -1,3 +1,6 @@
+import {localISODate} from "@/utils/jspl-input";
+import {stockMutation} from "@/utils/stock-workflow";
+import {StockRecovery} from "@/components/jspl/StockWorkflowControls";
 import {StockV2Header} from "@/components/jspl/StockV2Header";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter,useLocalSearchParams } from "expo-router";
@@ -13,7 +16,6 @@ type Crop = { crop_id: number; crop_name: string; active: boolean | null };
 type CatalogInput = { input_id: number; inputs_name: string; item_code:string; quantity:number; base_unit:string };
 type InputLine = { key: number; input: string; rate: string };
 const workflowEndpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
-const newRequestId=()=> "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const r=Math.floor(Math.random()*16);return(c==="x"?r:(r&3)|8).toString(16)});
 type BudgetLine={budget_ref_id:number;days_after_planting:number;rate_per_ha:number;item_code:string;item_name:string;base_unit:string};
 type BudgetTemplate={crop_budget_id:number;crop_name:string;budget_name:string;irrigation_type:string|null};
 type SprayType={access_spray_type_id:number;spray_type_name:string;spray_tank_size:number;spray_rate_per_ha:number};
@@ -115,7 +117,7 @@ export default function StockV2SprayPlanningPreview() {
   useEffect(()=>{setArea(selected?.tracecode_size?.toString()??"");setBudgetOffset(0);if(!editing)setLines([])},[traceId,editing]);
   useEffect(()=>{let active=true;(async()=>{if(!traceId){setBudgetLines([]);return}try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)return;const response=await fetch(workflowEndpoint+"?budget_reference=1&tracecode_id="+traceId,{headers:{authorization:"Bearer "+session.access_token}});const data=await response.json();if(!response.ok)throw Error(data.error||"Budget reference unavailable");if(active){setBudgetLines(data.budget??[]);setSelectedBudgetId(data.crop_budget_id??null)}}catch(e){if(active)setError(e instanceof Error?e.message:String(e))}})();return()=>{active=false}},[traceId]);
   useEffect(()=>{let live=true;setHistory([]);setHistoryError("");if(!traceId)return;void(async()=>{try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");const res=await fetch(workflowEndpoint+"?spray_history=1&tracecode_id="+traceId,{headers:{authorization:"Bearer "+session.access_token}});const json=await res.json();if(!res.ok)throw Error(json.error||"History unavailable");if(live)setHistory(json.rows??[])}catch(e){if(live)setHistoryError(e instanceof Error?e.message:String(e))}})();return()=>{live=false}},[traceId]);
-  useEffect(()=>{let live=true;setAssigned({});void(async()=>{try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)return;const res=await fetch(workflowEndpoint+"?spray_assignments=1&through_week="+operationalWeek.toISOString().slice(0,10),{headers:{authorization:"Bearer "+session.access_token}});const data=await res.json();if(!res.ok)throw Error(data.error||"Assigned unavailable");if(live)setAssigned(Object.fromEntries((data.rows??[]).map((x:{item_code:string;assigned:number})=>[x.item_code,Number(x.assigned)])))}catch(e){if(live)setSaveError(e instanceof Error?e.message:String(e))}})();return()=>{live=false}},[operationalOffset]);
+  useEffect(()=>{let live=true;setAssigned({});void(async()=>{try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)return;const res=await fetch(workflowEndpoint+"?spray_assignments=1&through_week="+localISODate(operationalWeek),{headers:{authorization:"Bearer "+session.access_token}});const data=await res.json();if(!res.ok)throw Error(data.error||"Assigned unavailable");if(live)setAssigned(Object.fromEntries((data.rows??[]).map((x:{item_code:string;assigned:number})=>[x.item_code,Number(x.assigned)])))}catch(e){if(live)setSaveError(e instanceof Error?e.message:String(e))}})();return()=>{live=false}},[operationalOffset]);
   const linkBudget=async(id:number|null)=>{if(!traceId||!id)return;setBudgetSaving(true);setSaveError("");try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign-in required");const response=await fetch(workflowEndpoint,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.access_token},body:JSON.stringify({action:"link_crop_budget",tracecode_id:traceId,crop_budget_id:id})});const data=await response.json();if(!response.ok)throw Error(data.error||"Could not assign budget");setSelectedBudgetId(id);const rr=await fetch(workflowEndpoint+"?budget_reference=1&tracecode_id="+traceId,{headers:{authorization:"Bearer "+session.access_token}});const bb=await rr.json();if(!rr.ok)throw Error(bb.error||"Could not load budget lines");setBudgetLines(bb.budget??[])}catch(e){setSaveError(e instanceof Error?e.message:String(e))}finally{setBudgetSaving(false)}};
   const addLine=(input="")=>setLines(old=>[...old,{key:nextKey++,input,rate:""}]);
   const copyBudgetInput=(input:string,rate:number)=>setLines(old=>{
@@ -138,9 +140,8 @@ export default function StockV2SprayPlanningPreview() {
     try{
       const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Supabase sign-in required");
       if(!Number.isFinite(operationalWeek.getTime()))throw Error("Invalid spray week. Select a valid week before saving.");
-      const payload={...(editing?{job_id:editJobId}:{}),tracecode_id:traceId,area_ha:sprayArea,part_label:part.trim()?"Part "+part.trim()+" ha":"Whole field",spray_type:sprayType,water_rate:Number(waterRate),planned_week_start:operationalWeek.toISOString().slice(0,10),sprayer_asset_code:sprayer,job_tracking_code:jobCode,lines:lines.map(l=>({item_code:catalog.find(p=>p.inputs_name===l.input)!.item_code,rate_per_ha:Number(l.rate)}))};
-      const response=await fetch(workflowEndpoint,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+session.access_token},body:JSON.stringify({action:editing?"spray_edit":"spray",request_id:newRequestId(),payload})});
-      const data=await response.json();if(!response.ok)throw Error(data.error||"Unable to save spray plan");
+      const payload={...(editing?{job_id:editJobId}:{}),tracecode_id:traceId,area_ha:sprayArea,part_label:part.trim()?"Part "+part.trim()+" ha":"Whole field",spray_type:sprayType,water_rate:Number(waterRate),planned_week_start:localISODate(operationalWeek),sprayer_asset_code:sprayer,job_tracking_code:jobCode,lines:lines.map(l=>({item_code:catalog.find(p=>p.inputs_name===l.input)!.item_code,rate_per_ha:Number(l.rate)}))};
+      const data=await stockMutation("spray-plan",{action:editing?"spray_edit":"spray",payload});
       if(!data.result?.job_id||!Array.isArray(data.result?.lines)||data.result.lines.length!==lines.length)throw Error("Spray job was not fully confirmed by the server");
       router.replace("/stock-v2-spray-planning");
     }catch(e){setSaveError(e instanceof Error?e.message:String(e))}finally{setSaving(false)}
@@ -150,7 +151,8 @@ export default function StockV2SprayPlanningPreview() {
       <Image source={require("../../../assets/images/jspl_farm_watermark.png")} resizeMode="contain" style={[styles.watermark,{width:watermarkSize,height:watermarkSize}]}/>
     </View>
     <ScrollView style={styles.foreground} contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
-    <StockV2Header title={editing?"Edit Spray Mix":"New Spray Plan"}/>
+    <StockV2Header title={editing?"Edit Spray Mix":"New Spray Plan"} onStock={()=>router.replace("/stock-v2-spray-planning")}/>
+    {saveError?<StockRecovery scope="spray-plan" onRecovered={()=>router.replace("/stock-v2-spray-planning")}/>:null}
 
     {loading?<ActivityIndicator/>:error?<ThemedText style={styles.error}>{error}</ThemedText>:<View style={[styles.traces,wide&&{flexDirection:"row",alignItems:"flex-start",gap:12}]}>
       <View style={{width:wide?240:"100%",gap:7}}>
@@ -208,7 +210,7 @@ export default function StockV2SprayPlanningPreview() {
             <Pressable onPress={()=>setOpenLine(null)} style={styles.chip}><ThemedText>Close list</ThemedText></Pressable>
           </View>:null}</View><View style={{flex:1}}><ThemedText style={styles.label}>Rate/ha</ThemedText><TextInput style={styles.input} keyboardType="decimal-pad" value={x.rate} onChangeText={v=>changeLine(x.key,"rate",v)}/></View><View style={{width:75}}><ThemedText style={styles.label}>Required</ThemedText><ThemedText>{fmt(sprayArea*Number(x.rate))}</ThemedText></View><View style={{width:75}}><ThemedText style={styles.label}>Assigned</ThemedText><ThemedText>{fmt(assigned[catalog.find(p=>p.inputs_name===x.input)?.item_code??""]??0)}</ThemedText></View><View style={{width:95}}><ThemedText style={styles.label}>Stock</ThemedText><ThemedText style={(catalog.find(p=>p.inputs_name===x.input)?.quantity??Infinity)<sprayArea*Number(x.rate)?styles.error:undefined}>{catalog.find(p=>p.inputs_name===x.input)?`${fmt(catalog.find(p=>p.inputs_name===x.input)!.quantity)} ${catalog.find(p=>p.inputs_name===x.input)!.base_unit}`:"—"}</ThemedText></View><Pressable onPress={()=>setLines(v=>v.filter(y=>y.key!==x.key))}><ThemedText style={styles.error}>Remove</ThemedText></Pressable></View>)}
         <Pressable style={styles.action} onPress={()=>addLine()}><ThemedText>+ Add input</ThemedText></Pressable>
-        {saveError?<ThemedText style={styles.error}>NOT SAVED: {saveError}</ThemedText>:null}
+        {saveError?<ThemedText style={styles.error}>Save not confirmed: {saveError}</ThemedText>:null}
         <Pressable disabled={saving||loading||!!error} style={[styles.saveButton,(saving||loading||!!error)&&{opacity:0.5}]} onPress={savePlan}><ThemedText style={styles.saveText}>{saving?"Saving…":editing?"Save Mix Changes":"Save New Spray"}</ThemedText></Pressable>
         </>:null}
       </View>

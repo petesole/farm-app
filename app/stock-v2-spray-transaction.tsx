@@ -1,3 +1,5 @@
+import {stockMutation} from "@/utils/stock-workflow";
+import {StockRecovery} from "@/components/jspl/StockWorkflowControls";
 import { useEffect, useMemo, useState } from "react";
 import { useLocalSearchParams, router } from "expo-router";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
@@ -11,7 +13,6 @@ type SprayLine = {job_id:number;external_tracecode_id:number;tracecode_name:stri
 type Product = {item_code:string;item_name:string;quantity:number};
 type ReturnLine = {document_id:number;document_number:string;source_line_id:number;item_name:string;base_unit:string;available_to_return:number};
 const fmt=(n:number)=>Number.isFinite(n)?n.toLocaleString("en-GB",{maximumFractionDigits:3}):"—";
-const newRequestId=()=>"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const r=Math.floor(Math.random()*16);return(c==="x"?r:(r&3)|8).toString(16)});
 export default function SprayTransaction(){
  const params=useLocalSearchParams<{jobId?:string;mode?:string}>();
  const jobId=Number(params.jobId); const mode=params.mode==="return"?"return":"issue";
@@ -19,7 +20,6 @@ export default function SprayTransaction(){
  const [loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState("");
  const [hectares,setHectares]=useState(""),[documentId,setDocumentId]=useState<number|null>(null);
  const [amounts,setAmounts]=useState<Record<number,string>>({}),[complete,setComplete]=useState(false),[confirmed,setConfirmed]=useState(false);
- const [requestId,setRequestId]=useState(newRequestId);
  const selected=useMemo(()=>lines.filter(l=>l.job_id===jobId),[lines,jobId]);
  const area=selected.length?Math.min(...selected.map(l=>l.rate_per_ha>0?Math.max(0,(l.planned_quantity-l.issued_quantity)/l.rate_per_ha):0)):0;
  const chosenIssues=issues.filter(x=>x.document_id===documentId);
@@ -43,14 +43,14 @@ export default function SprayTransaction(){
   setError("");
   try{
    if(!selected.length)throw Error("Spray not loaded");
-   let payload:unknown, action:string,request_id:string|undefined;
+   let payload:unknown, action:string;
    if(mode==="issue"){
     const ha=Number(hectares);
     if(!Number.isFinite(ha)||ha<=0||ha>area+0.00001)throw Error("Enter hectares within the remaining spray area");
     const requested=selected.map(l=>({item_code:l.item_code,quantity:Number((ha*l.rate_per_ha).toFixed(4))}));
     const shortage=requested.find(l=>l.quantity>(products.find(p=>p.item_code===l.item_code)?.quantity??0)+0.00001);
     if(shortage)throw Error("Insufficient stock for "+(products.find(p=>p.item_code===shortage.item_code)?.item_name??shortage.item_code));
-    action="planned_issue";request_id=requestId;payload={job_id:jobId,tracecode_id:selected[0].external_tracecode_id,lines:requested};
+    action="planned_issue";payload={job_id:jobId,tracecode_id:selected[0].external_tracecode_id,lines:requested};
    }else{
     const chosen=chosenIssues.map(x=>({source_line_id:x.source_line_id,quantity:Number(amounts[x.source_line_id]||0)})).filter(x=>x.quantity>0);
     if(!documentId||!chosen.length)throw Error("Select an original issue and enter return quantities");
@@ -58,14 +58,14 @@ export default function SprayTransaction(){
     action="spray_return";payload={job_id:jobId,issue_document_id:documentId,spray_complete:complete,lines:chosen};
    }
    setBusy(true);
-   const access=await token();
-   const res=await fetch(endpoint,{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+access},body:JSON.stringify({action,request_id,payload})});
-   const data=await res.json();if(!res.ok||!data.result?.document_id)throw Error(data.error||"Transaction not confirmed by server");
+   const data=await stockMutation('spray-transaction',{action,payload});
+   if(!data.result?.document_id)throw Error('Transaction not confirmed by server');
    router.replace({pathname:"/stock-v2-spray-planning",params:{postedDocument:String(data.result.document_id)}});
   }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}
  };
  const docOptions=[...new Map(issues.map(x=>[x.document_id,x.document_number])).entries()].map(([id,label])=>({id,label,active:true}));
  return <ScrollView contentContainerStyle={s.page}>
+  {error?<StockRecovery scope="spray-transaction" onRecovered={()=>router.replace("/stock-v2-spray-planning")}/>:null}
   <StockV2Header title={mode==="return"?"Spray Stock Return":"Spray Transfer / Issue"} onStock={()=>router.replace("/stock-v2-spray-planning")}/>
   <Text style={s.title}>Spray #{jobId} {selected[0]?.tracecode_name??""}</Text>
   {loading?<ActivityIndicator/>:null}

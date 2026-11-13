@@ -64,7 +64,7 @@ export default function ApplicationSheet(){
  };
  const heading=useMemo(()=>first?isoWeek(first.planned_week_start):"",[first]);
  return <ThemedView style={styles.root}><ScrollView contentContainerStyle={styles.page}>
-  <StockV2Header title="Stock Application"/>
+  <StockV2Header title="Stock Application" onStock={()=>router.replace("/stock-v2-spray-planning")}/>
   <View testID="application-actions" style={styles.actions}>
 
    <Pressable style={[styles.button,styles.print,!canPrint&&{opacity:.5}]} disabled={!canPrint} onPress={print}><ThemedText style={{color:"#fff",fontWeight:"700"}}>Print Application</ThemedText></Pressable>

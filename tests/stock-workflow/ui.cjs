@@ -74,6 +74,12 @@ async function testUI(db,admin,stock){
  await click('Sign In');assert.equal(routing.at(-1),'/(tabs)/stock-test');console.log('PASS Stock-only account reaches Stock after sign-in');
  const Layout=require(root+'/app/(tabs)/_layout.tsx').default;await settle(()=>mount.render(React.createElement(Layout)));await until(()=>document.querySelector('[data-initial-route]'),'Stock tabs admitted');assert.equal(document.querySelector('[data-initial-route]').getAttribute('data-initial-route'),'stock-test');assert.equal(document.querySelector('[data-tab="fuel"]').getAttribute('data-href'),'');assert.equal(document.querySelector('[data-tab="main-dashboard"]').getAttribute('data-href'),'');console.log('PASS Stock-only tabs admission does not grant Fuel or Main');
  actor=admin;await settle(()=>mount.render(React.createElement('div')));await settle(()=>mount.render(React.createElement(Layout)));await until(()=>document.querySelector('[data-initial-route]'),'Admin tabs admitted');assert.equal(document.querySelector('[data-initial-route]').getAttribute('data-initial-route'),'main-dashboard');console.log('PASS Existing Admin landing remains unchanged');
- await settle(()=>mount.unmount());Module._load=oldLoad;dom.window.close();return 14;
+ const {StockReport}=require(root+'/components/jspl/StockReport.tsx');
+ const reportRows=[{name:'Alpha',unit:'kg',qty:2},{name:'Beta',unit:'L',qty:9}];const reportColumns=[{key:'name',title:'Product',value:r=>r.name},{key:'unit',title:'Unit',value:r=>r.unit},{key:'qty',title:'Quantity',value:r=>r.qty}];
+ await settle(()=>mount.render(React.createElement(StockReport,{title:'Test Stock Report',rows:reportRows,columns:reportColumns,measures:['qty'],groupKey:'unit'})));
+ await combo('Filter Product','Alpha');assert(document.body.textContent.includes('Quantity: 2'));assert(!document.body.textContent.includes('Quantity: 9'));
+ await click('Print');const reportHTML=document.querySelector('iframe[title="Test Stock Report preview"]').getAttribute('srcdoc');assert(reportHTML.includes('Alpha')&&!reportHTML.includes('Beta'));assert(reportHTML.includes('Quantity: 2'));
+ await click('Close Preview');assert.equal(document.querySelector('input[aria-label="Filter Product"]').value,'Alpha');console.log('PASS Report filters recalculate totals, print matching rows and preserve selections on Close');
+ await settle(()=>mount.unmount());Module._load=oldLoad;dom.window.close();return 15;
 }
 module.exports={testUI};
