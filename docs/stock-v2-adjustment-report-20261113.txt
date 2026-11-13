@@ -19,3 +19,15 @@ Implementation is confined to the existing private stock_v2 schema and developme
 Verification: 146 local regression checks passed against the real SQL functions and Edge handler in an isolated synthetic database, plus actual React screen interactions with mocked native/auth boundaries. Covered same-sign partial saves, missing/zero/untouched amounts, stale versions, retry protection, HS/AO separation, fixed stocktake dates, later movements, failed-batch rollback, historical valuation rejection, count corrections, manual explanations, role restrictions, dashboard badge, history navigation, filtered printing/XLSX, and prior PO/GRV/spray/stock-report regressions. Full TypeScript, shared ERP UI/date checks and a visual browser check passed. Actual signed-in operator/Admin/Clerk device acceptance, physical printer output and native mobile behavior remain unverified.
 
 Overlapping dated sheets are reconciled against stock adjustments already posted for that date. A second open sheet for the same item cannot apply the same discrepancy again. Fully settled sheets stay settled until Admin changes their physical counts. Two additional regression checks verify the overlap and duplicate-post rejection.
+
+Development release verification
+- Implementation commits: 5d2bcd3 and 5b5696f on development.
+- Applied migrations: 20261113145707_stock_adjustment_report and 20261113150434_dated_adjustment_reconciliation, using exact server-generated versions.
+- Workflow Edge handler version 83, JWT verification enabled; retrieved source matches implementation commit.
+- Frontend deployment: pxdfe5pntm, development alias.
+- Development and immutable Stock Adjustment URLs returned HTTP 200 with the expected entry-6ad10a77f89b09ef7eb6e07976290d77.js bundle.
+- Unauthenticated stock_adjustment_report request returned HTTP 401.
+- Existing 73 documents and 388 movements preserved; before/after movement digest 2656ffbe833a29c27f8c8f4b13b628cf. ST-1 through ST-5 remain unchanged. No operational count or adjustment posted during release verification.
+- New source table has RLS enabled. Authenticated browser roles have no direct SELECT on the source table/pending view and no EXECUTE on the posting command. Security advisor reviewed; private no-policy notices are intentional deny-by-default, unrelated pre-existing public-schema findings were not modified in this task.
+- Final local run against the applied base migration followed by the reconciliation migration: 146 checks passed. Full TypeScript, shared ERP UI/date checks and final Expo web export passed.
+- No production alias promotion, main branch update or user role reassignment.
