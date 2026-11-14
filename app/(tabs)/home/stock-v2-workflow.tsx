@@ -104,7 +104,7 @@ export default function StockV2Workflow(){
   if(!activeResponse.ok||!Array.isArray(activeResult.rows))throw Error(activeResult.error||"Unable to load chemical active data");
   const activeMap:Record<string,ChemicalActive[]>={};
   (activeResult.rows as ChemicalActiveRow[]).forEach(a=>(activeMap[a.item_code]??=[]).push({name:a.active_name,amount:String(a.concentration),unit:a.concentration_unit}));
-  setChemicalActives(activeMap);setActivesReady(true);
+  setChemicalActives(activeMap);setActivesReady(!activeResult.unavailable);
  }catch(e){setStatus(e instanceof Error?e.message:String(e))}finally{if(show)setBusy(false)}};
  useEffect(()=>{(async()=>{
   const [t,c]=await Promise.all([
@@ -249,6 +249,7 @@ export default function StockV2Workflow(){
     {menu("balanceType",typeFilter||"All input types",[{label:"All input types",value:"all",onSelect:()=>setTypeFilter("")},...inputTypes.map(t=>({label:t,value:t,onSelect:()=>{setTypeFilter(t);setCategoryFilter("")}}))],true)}
     {menu("balanceCategory",categoryFilter||"All input categories",[{label:"All input categories",value:"all",onSelect:()=>setCategoryFilter("")},...inputCategories.map(x=>({label:x,value:x,onSelect:()=>{setCategoryFilter(x);setTypeFilter("")}}))],true)}
    </View>
+   {!activesReady?<ThemedText style={{color:"#be2525",fontWeight:"700"}}>Active ingredient register is not installed yet; complete the database migration first.</ThemedText>:null}
    {missingActiveCount>0?<ThemedText style={{color:"#be2525",fontWeight:"700"}}>({missingActiveCount}) chemical products missing active details</ThemedText>:null}
    <StockReport compact title="Stock Balances" rows={balanceRows} highlightRow={activeMissing}
     columns={[
