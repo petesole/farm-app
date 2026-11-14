@@ -13,10 +13,12 @@ import { jsplColors, jsplDashboardTheme, jsplRadii, jsplSpacing, jsplSizes } fro
 import { parseJsplDateInput, displayJsplDate } from "@/utils/jspl-input";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from "react-native";
 import { supabase } from "../../../supabase";
 
 const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
+type ChemicalActive={name:string;amount:string;unit:"g/L"|"g/kg"};
+type ChemicalActiveRow={item_code:string;active_name:string;concentration:number;concentration_unit:"g/L"|"g/kg"};
 type Item={item_code:string;item_name:string;base_unit:string;active:boolean;opening_heyshott_quantity:number|null;opening_ao_quantity:number|null;historical_unit_cost:number|null;quantity:number;ao_quantity:number;input_type:string|null;input_category:string|null;active_ingredient:string|null;last_purchase_price:number|null;weighted_average_price:number|null;last_purchase_supplier:string|null};
 type OrderLine={owner_code:string;contract_id:number|null;order_id:number;order_number:string;supplier_name:string;item_code:string;item_name:string;base_unit:string;ordered_quantity:number;received_quantity:number;ordered_unit_price:number|null;status:string};
 type SprayLine={job_id:number;external_tracecode_id:number;tracecode_name:string;item_code:string;item_name:string;area_ha:number;rate_per_ha:number;planned_quantity:number;issued_quantity:number;status:string};
@@ -44,6 +46,31 @@ export default function StockV2Workflow(){
  const {width,height}=useWindowDimensions();
  const watermarkSize=Math.min(650,Math.max(240,width-48),Math.max(240,height-48));
  const [tab,setTab]=useState<Tab|null>(null),[snapshot,setSnapshot]=useState<Snapshot|null>(null);
+ const [chemicalActives,setChemicalActives]=useState<Record<string,ChemicalActive[]>>({});
+ const [activeItem,setActiveItem]=useState<Item|null>(null);
+ const [activeRows,setActiveRows]=useState<ChemicalActive[]>([]);
+ const [activeSaving,setActiveSaving]=useState(false),[activeError,setActiveError]=useState("");
+ const [activesReady,setActivesReady]=useState(false);
+ const isChemical=(p:Item)=>/chemic|herbicide|fungicide|insecticide|pesticide|spray chemical/i.test((p.input_type??"")+" "+(p.input_category??""));
+ const hasStock=(p:Item)=>p.quantity>0||p.ao_quantity>0;
+ const activeComplete=(p:Item)=>{const a=chemicalActives[p.item_code]??[];return a.length>0&&a.every(x=>x.name.trim()&&Number.isFinite(Number(x.amount))&&Number(x.amount)>0&&["g/L","g/kg"].includes(x.unit))};
+ const activeMissing=(p:Item)=>isChemical(p)&&hasStock(p)&&!activeComplete(p);
+ const openActive=(p:Item)=>{setActiveItem(p);setActiveRows(chemicalActives[p.item_code]?.map(x=>({...x}))??[{name:"",amount:"",unit:p.base_unit.toLowerCase().includes("kg")?"g/kg":"g/L"}]);setActiveError("")};
+ const saveActive=async()=>{
+  if(!activeItem||activeSaving)return;
+  if(!activeRows.length||activeRows.some(a=>!a.name.trim()||!Number.isFinite(Number(a.amount))||Number(a.amount)<=0)||new Set(activeRows.map(a=>a.name.trim().toLowerCase())).size!==activeRows.length){setActiveError("Enter a unique name and positive concentration for each active.");return}
+  setActiveSaving(true);setActiveError("");
+  try{
+   const response=await fetch(endpoint+"?chemical_actives=1",{method:"POST",headers:{authorization:"Bearer "+await token(),"content-type":"application/json"},body:JSON.stringify({item_code:activeItem.item_code,actives:activeRows})});
+   const result=await response.json();if(!response.ok||!result.saved)throw Error(result.error||"Save not confirmed");
+   const check=await fetch(endpoint+"?chemical_actives=1",{headers:{authorization:"Bearer "+await token()}});
+   const actual=await check.json();if(!check.ok||!Array.isArray(actual.rows))throw Error("Saved but refresh not confirmed. Reopen the balance screen.");
+   const mapped:Record<string,ChemicalActive[]>={};
+   (actual.rows as ChemicalActiveRow[]).forEach(a=>(mapped[a.item_code]??=[]).push({name:a.active_name,amount:String(a.concentration),unit:a.concentration_unit}));
+   setChemicalActives(mapped);setActiveItem(null);setActiveRows([]);
+  }catch(e){setActiveError(e instanceof Error?e.message:String(e))}finally{setActiveSaving(false)}
+ };
+
  const [traces,setTraces]=useState<Trace[]>([]),[crops,setCrops]=useState<Crop[]>([]);
  const [owners,setOwners]=useState<{owner_code:string;owner_name:string;active:boolean;po_requires_contract:boolean;allow_direct_grv:boolean;po_required_for_grv:boolean;default_contract_id:number|null}[]>([]);
  const [contracts,setContracts]=useState<{contract_id:number;contract_code:string;active:boolean}[]>([]);
@@ -72,6 +99,12 @@ export default function StockV2Workflow(){
   setOwners(config.owners??[]);setContracts(config.contracts??[]);
   const r=await fetch(endpoint,{headers:{authorization:"Bearer "+await token()}});
   const d=await r.json();if(!r.ok)throw Error(d.error||"Unable to read Stock V2");setSnapshot(d);
+  const activeResponse=await fetch(endpoint+"?chemical_actives=1",{headers:{authorization:"Bearer "+await token()}});
+  const activeResult=await activeResponse.json();
+  if(!activeResponse.ok||!Array.isArray(activeResult.rows))throw Error(activeResult.error||"Unable to load chemical active data");
+  const activeMap:Record<string,ChemicalActive[]>={};
+  (activeResult.rows as ChemicalActiveRow[]).forEach(a=>(activeMap[a.item_code]??=[]).push({name:a.active_name,amount:String(a.concentration),unit:a.concentration_unit}));
+  setChemicalActives(activeMap);setActivesReady(true);
  }catch(e){setStatus(e instanceof Error?e.message:String(e))}finally{if(show)setBusy(false)}};
  useEffect(()=>{(async()=>{
   const [t,c]=await Promise.all([
@@ -92,6 +125,8 @@ export default function StockV2Workflow(){
  const removeLine=(id:number)=>{setLines(old=>old.filter(l=>l.id!==id));resetEdit()};
  const switchTab=(v:Tab|null)=>{if(v==="Purchase Orders"||v==="PO Corrections"){router.push("/stock-v2-purchase-orders");return;}if(v==="POs Outstanding"){router.push("/stock-v2-po-receiving");return;}if(v==="GRV"){router.push("/stock-v2-grv-outstanding");return;}if(v==="Stock Transfer"){router.push("/stock-v2-owner-transactions");return;}if(v==="Corrections"){router.push("/(tabs)/home/stock-v2-corrections");return;}if(v==="Supplier Returns"){router.push("/(tabs)/home/stock-v2-supplier-returns");return;}if(v==="Stock Take"){router.push("/(tabs)/home/stock-v2-stocktake");return;}setTab(v);if(v==="Planned Issue")void refresh(false);setLines([emptyLine(nextLine)]);setNextLine(n=>n+1);setOrderId(null);setJobId(null);setDropdown(null);setStatus("");setReceiptMode("dnote");setInvoiceNumber("");setDeliveryNote("");resetEdit()};
  const products=snapshot?.items??[];
+ const missingActiveCount=activesReady?products.filter(activeMissing).length:0;
+ const activeDescription=(p:Item)=>chemicalActives[p.item_code]?.map(a=>a.name+" "+a.amount+" "+a.unit).join(" + ")||"—";
  const issueStock=(p?:Item)=>{const n=Number(ownerCode==="AO"?p?.ao_quantity:p?.quantity);return Number.isFinite(n)?Math.max(0,n):0};
  const stockLabel=(p:Item)=>issueStock(p).toLocaleString("en-GB",{maximumFractionDigits:6})+" "+p.base_unit;
  const inputTypes=[...new Set(products.filter(p=>(!categoryFilter||p.input_category===categoryFilter)&&(stockFilter==="all"||(stockFilter==="stock"?(p.quantity>0||p.ao_quantity>0):(p.quantity<=0&&p.ao_quantity<=0)))).map(x=>x.input_type).filter((x):x is string=>!!x))].sort();
@@ -196,7 +231,7 @@ export default function StockV2Workflow(){
      {workflow?.access.is_admin?<><View style={styles.dashboardCard}><JsplDashboardButton title="GRV Corrections" onPress={()=>router.push("/stock-v2-grv-corrections")}/></View><View style={styles.dashboardCard}><JsplDashboardButton title="Sprayer Completions" onPress={()=>router.push("/stock-v2-sprayer-completions")}/></View><View style={styles.dashboardCard}><JsplDashboardButton title="Stock Staff Access" onPress={()=>router.push("/stock-v2-staff")}/></View></>:null}
      {tabs.filter(x=>x!=="PO Corrections").map(x=><View key={x} style={styles.dashboardCard}>
       <JsplDashboardButton title={x} alertCount={x==="Spray Planning"?outstandingSprays:undefined}
-       description={x==="POs Outstanding"?String(new Set((snapshot?.orders??[]).filter(o=>o.ordered_quantity>o.received_quantity).map(o=>o.order_id)).size)+" outstanding orders":x==="GRV"?String(snapshot?.pending_invoice_count??0)+" pending invoices":undefined}
+       description={x==="Stock Balances"&&missingActiveCount>0?"🔴 ("+missingActiveCount+") missing actives":x==="POs Outstanding"?String(new Set((snapshot?.orders??[]).filter(o=>o.ordered_quantity>o.received_quantity).map(o=>o.order_id)).size)+" outstanding orders":x==="GRV"?String(snapshot?.pending_invoice_count??0)+" pending invoices":undefined}
        onPress={()=>x==="Spray Planning"?router.push("/stock-v2-spray-planning"):switchTab(x)}/>
      </View>)}</View>
    </View>:null}
@@ -214,15 +249,17 @@ export default function StockV2Workflow(){
     {menu("balanceType",typeFilter||"All input types",[{label:"All input types",value:"all",onSelect:()=>setTypeFilter("")},...inputTypes.map(t=>({label:t,value:t,onSelect:()=>{setTypeFilter(t);setCategoryFilter("")}}))],true)}
     {menu("balanceCategory",categoryFilter||"All input categories",[{label:"All input categories",value:"all",onSelect:()=>setCategoryFilter("")},...inputCategories.map(x=>({label:x,value:x,onSelect:()=>{setCategoryFilter(x);setTypeFilter("")}}))],true)}
    </View>
-   <StockReport compact title="Stock Balances" rows={balanceRows}
+   {missingActiveCount>0?<ThemedText style={{color:"#be2525",fontWeight:"700"}}>({missingActiveCount}) chemical products missing active details</ThemedText>:null}
+   <StockReport compact title="Stock Balances" rows={balanceRows} highlightRow={activeMissing}
     columns={[
       {key:"item",title:"Product",width:240,value:x=>x.item_name},
-      {key:"ai",title:"Active Ingredient",width:210,value:x=>x.active_ingredient||"—"},
+      {key:"ai",title:"Active Ingredient",width:250,value:x=>activeDescription(x)},
       {key:"js_qty",title:"JS On Hand",kind:"number",width:110,value:x=>x.quantity},
       {key:"js_mov",title:"JS Movements",width:116,value:()=>"Movements",onPress:x=>router.push({pathname:"/stock-v2-movements",params:{item_code:x.item_code,owner:"JS"}})},
       {key:"ao_qty",title:"AO On Hand",kind:"number",width:110,value:x=>x.ao_quantity},
       {key:"ao_mov",title:"AO Movements",width:116,value:()=>"Movements",onPress:x=>router.push({pathname:"/stock-v2-movements",params:{item_code:x.item_code,owner:"AO"}})},
       {key:"unit",title:"Unit",width:75,value:x=>x.base_unit},
+      {key:"active_action",title:"Active Details",width:120,filterable:false,value:x=>isChemical(x)?(chemicalActives[x.item_code]?.length?"Edit Active":"Add Active"):"—",onPress:x=>isChemical(x)&&openActive(x)},
       {key:"last",title:"JS Last Purchase Price",kind:"number",width:160,value:x=>x.last_purchase_price},
       {key:"supplier",title:"JS Last Purchase Supplier",width:210,value:x=>x.last_purchase_supplier||"—"},
       {key:"avg",title:"JS Weighted Avg Price*",kind:"number",width:170,value:x=>x.weighted_average_price}
@@ -292,6 +329,27 @@ export default function StockV2Workflow(){
   <View style={styles.footer}><Pressable onPress={()=>setConfirmed(x=>!x)} style={styles.confirm}><ThemedText>{confirmed?"☑":"☐"} Confirm TEST transaction</ThemedText></Pressable><Pressable disabled={!valid||!confirmed||busy} onPress={submit} style={[styles.submit,(!valid||!confirmed||busy)&&styles.off]}><ThemedText style={styles.submitText}>{busy?"Posting…":tab==="POs Outstanding"?(receiptMode==="dnote"?"Post DNote":"Post Invoice GRV"):"Post "+tab}</ThemedText></Pressable></View>
    {!valid?<ThemedText style={styles.alert}>Complete the required fields, product and positive quantities before posting.</ThemedText>:null}</>:<ThemedText style={styles.muted}>Select Stock Owner and Contract first, then supplier or outstanding PO.</ThemedText>}
   </View>}
+ <Modal visible={!!activeItem} transparent animationType="fade" onRequestClose={()=>!activeSaving&&setActiveItem(null)}>
+   <View style={{flex:1,backgroundColor:"rgba(0,0,0,0.5)",justifyContent:"center",padding:20}}>
+    <View style={{backgroundColor:"#fff",borderRadius:10,padding:18,maxWidth:660,width:"100%",alignSelf:"center",maxHeight:"85%"}}>
+     <ThemedText style={{fontSize:19,fontWeight:"700",marginBottom:12}}>Active Ingredients — {activeItem?.item_name}</ThemedText>
+     <ScrollView keyboardShouldPersistTaps="handled">
+      {activeRows.map((a,i)=><View key={i} style={{flexDirection:"row",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+       <TextInput accessibilityLabel={"Active ingredient "+(i+1)} placeholder="Active ingredient" value={a.name} onChangeText={name=>setActiveRows(old=>old.map((x,j)=>j===i?{...x,name}:x))} style={{borderWidth:1,borderColor:"#bbb",padding:10,minWidth:180,flex:2}}/>
+       <TextInput accessibilityLabel={"Concentration "+(i+1)} placeholder="Amount" keyboardType="decimal-pad" value={a.amount} onChangeText={amount=>setActiveRows(old=>old.map((x,j)=>j===i?{...x,amount}:x))} style={{borderWidth:1,borderColor:"#bbb",padding:10,minWidth:95,flex:1}}/>
+       <Pressable accessibilityRole="button" onPress={()=>setActiveRows(old=>old.map((x,j)=>j===i?{...x,unit:x.unit==="g/L"?"g/kg":"g/L"}:x))} style={{padding:12,backgroundColor:"#edf2ee"}}><ThemedText>{a.unit} ▾</ThemedText></Pressable>
+       <Pressable accessibilityLabel={"Remove active "+(i+1)} onPress={()=>setActiveRows(old=>old.filter((_,j)=>j!==i))}><ThemedText style={{color:"#b31b1b"}}>Remove</ThemedText></Pressable>
+      </View>)}
+      <Pressable onPress={()=>setActiveRows(old=>[...old,{name:"",amount:"",unit:activeItem?.base_unit.toLowerCase().includes("kg")?"g/kg":"g/L"}])} style={{padding:11,alignSelf:"flex-start",backgroundColor:"#e5eee7",borderRadius:5}}><ThemedText>+ Add Another Active</ThemedText></Pressable>
+      {activeError?<ThemedText style={{color:"#be2525",marginTop:12}}>{activeError}</ThemedText>:null}
+     </ScrollView>
+     <View style={{flexDirection:"row",justifyContent:"flex-end",gap:12,marginTop:16}}>
+      <Pressable disabled={activeSaving} onPress={()=>setActiveItem(null)} style={{padding:12}}><ThemedText>Cancel</ThemedText></Pressable>
+      <Pressable disabled={activeSaving} onPress={()=>void saveActive()} style={{padding:12,backgroundColor:"#145b35",borderRadius:5,opacity:activeSaving?0.5:1}}><ThemedText style={{color:"#fff",fontWeight:"700"}}>{activeSaving?"Saving…":"Save Active Details"}</ThemedText></Pressable>
+     </View>
+    </View>
+   </View>
+  </Modal>
  </ScrollView></ThemedView>
 }
 const styles=StyleSheet.create({
