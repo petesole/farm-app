@@ -17,10 +17,15 @@ Deno.serve(async(req)=>{
   const access=(await db`select stock_v2.workflow_access(${user.id}::uuid) as value`)[0].value;
   if(req.method==="GET" && new URL(req.url).searchParams.has("stock_access"))return reply({access});
   if(req.method==="GET" && new URL(req.url).searchParams.has("chemical_actives")){
-    const rows=await db`select i.item_code,a.active_name,a.concentration::float8 as concentration,a.concentration_unit
-      from stock_v2.item_active_ingredient a join stock_v2.item i using(item_id)
-      order by i.item_code,a.id`;
-    return reply({rows});
+    try{
+      const rows=await db`select i.item_code,a.active_name,a.concentration::float8 as concentration,a.concentration_unit
+        from stock_v2.item_active_ingredient a join stock_v2.item i using(item_id)
+        order by i.item_code,a.id`;
+      return reply({rows});
+    }catch(e){
+      if((e as any)?.code==="42P01")return reply({rows:[],unavailable:true});
+      throw e;
+    }
   }
   if(req.method==="POST" && new URL(req.url).searchParams.has("chemical_actives")){
     if(!access.is_admin)return reply({error:"Admin access required to edit chemical master data"},403);
