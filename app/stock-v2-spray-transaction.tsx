@@ -9,8 +9,8 @@ import { StockV2Header } from "@/components/jspl/StockV2Header";
 import { jsplColors as C } from "@/constants/jspl-design";
 
 const endpoint = "https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
-type SprayLine = {job_id:number;external_tracecode_id:number;tracecode_name:string;area_ha:number;status:string;item_code:string;item_name:string;base_unit:string;rate_per_ha:number;planned_quantity:number;issued_quantity:number};
-type Product = {item_code:string;item_name:string;quantity:number};
+type SprayLine = {owner_code:string;job_id:number;external_tracecode_id:number;tracecode_name:string;area_ha:number;status:string;item_code:string;item_name:string;base_unit:string;rate_per_ha:number;planned_quantity:number;issued_quantity:number};
+type Product = {item_code:string;item_name:string;quantity:number;ao_quantity:number};
 type ReturnLine = {document_id:number;document_number:string;source_line_id:number;item_name:string;base_unit:string;available_to_return:number};
 const fmt=(n:number)=>Number.isFinite(n)?n.toLocaleString("en-GB",{maximumFractionDigits:3}):"—";
 export default function SprayTransaction(){
@@ -21,6 +21,8 @@ export default function SprayTransaction(){
  const [hectares,setHectares]=useState(""),[documentId,setDocumentId]=useState<number|null>(null);
  const [amounts,setAmounts]=useState<Record<number,string>>({}),[complete,setComplete]=useState(false),[confirmed,setConfirmed]=useState(false);
  const selected=useMemo(()=>lines.filter(l=>Number(l.job_id)===jobId),[lines,jobId]);
+ const owner=selected[0]?.owner_code??'JS';
+ const stock=(code:string)=>{const p=products.find(p=>p.item_code===code);return Number(owner==='AO'?p?.ao_quantity:p?.quantity)||0};
  const area=selected.length?Math.min(...selected.map(l=>l.rate_per_ha>0?Math.max(0,(l.planned_quantity-l.issued_quantity)/l.rate_per_ha):0)):0;
  const chosenIssues=issues.filter(x=>Number(x.document_id)===documentId);
  const token=async()=>{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");return session.access_token};
@@ -47,10 +49,10 @@ export default function SprayTransaction(){
    if(mode==="issue"){
     const ha=Number(hectares);
     if(!Number.isFinite(ha)||ha<=0||ha>area+0.00001)throw Error("Enter hectares within the remaining spray area");
-    const requested=selected.map(l=>({item_code:l.item_code,quantity:Number((ha*l.rate_per_ha).toFixed(4))}));
-    const shortage=requested.find(l=>l.quantity>(products.find(p=>p.item_code===l.item_code)?.quantity??0)+0.00001);
+    const requested=selected.map(l=>({item_code:l.item_code,quantity:Number((ha*l.rate_per_ha).toFixed(6))}));
+    const shortage=requested.find(l=>l.quantity>stock(l.item_code)+0.00001);
     if(shortage)throw Error("Insufficient stock for "+(products.find(p=>p.item_code===shortage.item_code)?.item_name??shortage.item_code));
-    action="planned_issue";payload={job_id:jobId,tracecode_id:selected[0].external_tracecode_id,lines:requested};
+    action="planned_issue";payload={owner_code:owner,job_id:jobId,tracecode_id:selected[0].external_tracecode_id,lines:requested};
    }else{
     const chosen=chosenIssues.map(x=>({source_line_id:x.source_line_id,quantity:Number(amounts[x.source_line_id]||0)})).filter(x=>x.quantity>0);
     if(!documentId||!chosen.length)throw Error("Select an original issue and enter return quantities");
@@ -73,11 +75,11 @@ export default function SprayTransaction(){
   {!loading&&!error&&!selected.length?<Text style={s.error}>Spray details could not be displayed. Return to Spray Planning and reopen the issue.</Text>:null}
   {!loading&&selected.length>0&&<View style={s.panel}>
    {mode==="issue"?<>
-    <Text>Remaining: {fmt(area)} ha</Text>
+    <Text>Stock owner: {owner==='AO'?'AO':'HS'}</Text><Text>Remaining: {fmt(area)} ha</Text>
     <Text>Hectares to issue</Text>
     <TextInput accessibilityLabel="Hectares to issue" style={s.input} value={hectares} onChangeText={x=>{setHectares(x);setConfirmed(false)}} keyboardType="decimal-pad"/>
     <View style={s.row}><Text style={s.name}>Product</Text><Text style={s.value}>Required</Text><Text style={s.value}>Available</Text></View>
-    {selected.map(l=><View key={l.item_code} style={s.row}><Text style={s.name}>{l.item_name}</Text><Text style={s.value}>{fmt(Number(hectares)*l.rate_per_ha)} {l.base_unit}</Text><Text style={s.value}>{fmt(products.find(p=>p.item_code===l.item_code)?.quantity??0)}</Text></View>)}
+    {selected.map(l=><View key={l.item_code} style={s.row}><Text style={s.name}>{l.item_name}</Text><Text style={s.value}>{fmt(Number(hectares)*l.rate_per_ha)} {l.base_unit}</Text><Text style={s.value}>{fmt(stock(l.item_code))}</Text></View>)}
    </>:<>
     <JsplSearchCombo label="Original issue" selector="product" options={docOptions} value={documentId} onChange={v=>{setDocumentId(typeof v==="number"?v:null);setAmounts({});setConfirmed(false)}} placeholder="Select issue document"/>
     <View style={s.row}><Text style={s.name}>Product</Text><Text style={s.value}>Maximum return</Text><Text style={s.value}>Return quantity</Text></View>

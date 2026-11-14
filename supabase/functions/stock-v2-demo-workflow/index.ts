@@ -1,3 +1,4 @@
+import {allocateSpray} from "../_shared/spray-allocation.ts";
 import {createClient} from "npm:@supabase/supabase-js@2";
 import postgres from "npm:postgres@3";
 const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, apikey, content-type","Access-Control-Allow-Methods":"GET, POST, OPTIONS"};
@@ -251,15 +252,18 @@ Deno.serve(async(req)=>{
    if(!Number.isSafeInteger(jobId)||jobId<=0)return reply({error:"Valid spray required"},400);
    const rows=await db`select d.document_id,stock_v2.business_number(d.document_id) as document_number,d.document_date::text as document_date,dl.line_id as source_line_id,i.item_code,i.item_name,i.base_unit,(dl.quantity-coalesce((select sum(rl.quantity) from stock_v2.document_line rl join stock_v2.document rd on rd.document_id=rl.document_id where rl.source_line_id=dl.line_id and rd.status='posted' and rd.document_type='return'),0))::float8 as available_to_return
    from stock_v2.document d join stock_v2.document_line dl on dl.document_id=d.document_id join stock_v2.spray_job_input ji on ji.requirement_id=dl.requirement_id join stock_v2.spray_job j on j.job_id=ji.job_id join stock_v2.item i on i.item_id=dl.item_id
-   where j.job_id=${jobId} and j.owner_id=(select owner_id from stock_v2.owner where owner_code='TEST_JS') and d.document_type='issue' and d.status='posted' order by d.document_id desc,dl.line_id`;
+   where j.job_id=${jobId} and j.owner_id in (select owner_id from stock_v2.owner where owner_code in ('TEST_JS','TEST_AO')) and d.document_type='issue' and d.status='posted' order by d.document_id desc,dl.line_id`;
    return reply({rows:rows.filter((x:any)=>x.available_to_return>0)});
   }
   if(req.method==="GET" && new URL(req.url).searchParams.has("spray_assignments")){
    const week=new URL(req.url).searchParams.get("through_week")||"";
+   const assignmentOwner=new URL(req.url).searchParams.get("owner")||"JS";
+   const excludeJob=Number(new URL(req.url).searchParams.get("exclude_job")||0);
+   if(!["JS","AO"].includes(assignmentOwner)||!Number.isSafeInteger(excludeJob)||excludeJob<0)return reply({error:"Valid owner and job required"},400);
    if(!/^\d{4}-\d{2}-\d{2}$/.test(week))return reply({error:"Valid week required"},400);
    const rows=await db`select i.item_code,coalesce(sum(greatest(0,ji.rate_per_ha*j.area_ha-coalesce((select sum(case when d.document_type='issue' then dl.quantity when d.document_type='return' then -dl.quantity else 0 end) from stock_v2.document_line dl join stock_v2.document d on d.document_id=dl.document_id where dl.requirement_id=ji.requirement_id and d.document_type in ('issue','return') and d.status='posted'),0))),0)::float8 assigned
    from stock_v2.spray_job j join stock_v2.spray_job_input ji on ji.job_id=j.job_id join stock_v2.item i on i.item_id=ji.item_id
-   where j.status='planned' and j.planned_week_start<=${week}::date and j.owner_id=(select owner_id from stock_v2.owner where owner_code='TEST_JS')
+   where j.status='planned' and j.planned_week_start<=${week}::date and j.job_id<>${excludeJob} and j.owner_id=(select owner_id from stock_v2.owner where owner_code=${'TEST_'+assignmentOwner})
    group by i.item_code`;
    return reply({rows});
   }
@@ -268,7 +272,7 @@ Deno.serve(async(req)=>{
    if(!Number.isSafeInteger(traceId)||traceId<=0)return reply({error:"Valid tracecode required"},400);
    const rows=await db`select j.job_id,j.planned_week_start::text as spray_date,j.status,i.item_name as product,ji.rate_per_ha::float8 as rate_per_ha,i.base_unit
      from stock_v2.spray_job j join stock_v2.spray_job_input ji on ji.job_id=j.job_id join stock_v2.item i on i.item_id=ji.item_id
-     where j.external_tracecode_id=${traceId} and j.owner_id=(select owner_id from stock_v2.owner where owner_code='TEST_JS')
+     where j.external_tracecode_id=${traceId} and j.owner_id in (select owner_id from stock_v2.owner where owner_code in ('TEST_JS','TEST_AO'))
      order by j.planned_week_start,j.job_id,ji.job_input_id limit 1500`;
    return reply({rows});
   }
@@ -322,7 +326,7 @@ Deno.serve(async(req)=>{
      left join stock_v2.spray_job_input ji on ji.requirement_id=dl.requirement_id
      left join stock_v2.spray_job j on j.job_id=ji.job_id
      where d.document_id=${id} and d.document_type='issue' and d.status='posted'
-       and o.owner_code='TEST_JS' and loc.location_code='TEST_WH'
+       and o.owner_code in ('TEST_JS','TEST_AO') and loc.location_code='TEST_WH'
      group by d.document_id,d.document_number,d.document_date,d.status`;
    if(header.length===0)return reply({error:"Posted test stock issue not found"},404);
    const lines=await db`select i.item_name,i.base_unit,i.item_code,
@@ -333,7 +337,7 @@ Deno.serve(async(req)=>{
       join stock_v2.owner o on o.owner_id=m.owner_id
       join stock_v2.location loc on loc.location_id=m.location_id
       left join stock_v2.spray_job_input ji on ji.requirement_id=dl.requirement_id
-      where dl.document_id=${id} and o.owner_code='TEST_JS' and loc.location_code='TEST_WH'
+      where dl.document_id=${id} and o.owner_code in ('TEST_JS','TEST_AO') and loc.location_code='TEST_WH'
       group by i.item_id,i.item_name,i.base_unit,i.item_code
       order by i.item_name`;
    const printStatus=await db`select 1 from stock_v2.issue_slip_print_lock where document_id=${id} limit 1`;
@@ -418,7 +422,7 @@ Deno.serve(async(req)=>{
    return reply({item:item[0]??null,movements,current_stock:balance[0]?.current_stock??0});
   }
   if(req.method==="GET"){
-   const items=await db`select i.item_code,i.item_name,i.base_unit,i.active,st.heyshott_quantity::float8 as opening_heyshott_quantity,st.ao_quantity::float8 as opening_ao_quantity,st.historical_unit_cost::float8 as historical_unit_cost,i.input_type,coalesce(i.input_category,i.category) input_category,i.active_ingredient,coalesce(b.quantity,0)::float8 quantity,coalesce(abo.quantity,0)::float8 ao_quantity,p.last_purchase_price::float8 last_purchase_price,s.last_purchase_supplier,wa.unit_cost::float8 weighted_average_price from stock_v2.item i cross join (select owner_id from stock_v2.owner where owner_code='TEST_JS') ow cross join (select location_id from stock_v2.location where location_code='TEST_WH') loc left join stock_v2.quantity_balance b on b.item_id=i.item_id and b.owner_id=ow.owner_id and b.location_id=loc.location_id left join stock_v2.quantity_balance abo on abo.item_id=i.item_id and abo.owner_id=(select owner_id from stock_v2.owner where owner_code='TEST_AO') and abo.location_id=loc.location_id left join lateral (
+   const items=await db`select i.item_code,i.item_name,i.base_unit,i.active,st.heyshott_quantity::float8 as opening_heyshott_quantity,st.ao_quantity::float8 as opening_ao_quantity,st.historical_unit_cost::float8 as historical_unit_cost,i.input_type,coalesce(i.input_category,i.category) input_category,i.active_ingredient,i.formulation_type,coalesce(b.quantity,0)::float8 quantity,coalesce(abo.quantity,0)::float8 ao_quantity,p.last_purchase_price::float8 last_purchase_price,s.last_purchase_supplier,wa.unit_cost::float8 weighted_average_price from stock_v2.item i cross join (select owner_id from stock_v2.owner where owner_code='TEST_JS') ow cross join (select location_id from stock_v2.location where location_code='TEST_WH') loc left join stock_v2.quantity_balance b on b.item_id=i.item_id and b.owner_id=ow.owner_id and b.location_id=loc.location_id left join stock_v2.quantity_balance abo on abo.item_id=i.item_id and abo.owner_id=(select owner_id from stock_v2.owner where owner_code='TEST_AO') and abo.location_id=loc.location_id left join lateral (
  select (array_agg(z.unit_price order by z.posted_at desc,z.document_id desc))[1] last_purchase_price,
         sum(z.qty*z.unit_price)/nullif(sum(z.qty),0) weighted_receipt_price,sum(z.qty) priced_receipt_quantity
  from (select stock_v2.workflow_physical_quantity(dl.line_id) as qty,coalesce(pc.confirmed_unit_cost,gp.actual_unit_cost,gp.provisional_unit_cost,x.received_unit_price) as unit_price,d.posted_at,d.document_id
@@ -459,7 +463,7 @@ left join lateral (
  ) z order by z.posted_at desc,z.document_id desc limit 1
 ) s on true left join stock_v2.access_stock_levels_hsq st on st.access_input_id=i.access_input_id order by i.item_name`;
    const orders=await db`select h.order_id,h.order_number,h.order_date,h.supplier_name,h.contract_id,replace(ow.owner_code,'TEST_','') as owner_code,h.status,i.item_code,i.item_name,i.base_unit,ol.order_line_id,ol.ordered_quantity::float8 as ordered_quantity,ol.received_quantity::float8 as received_quantity,ol.ordered_unit_price::float8 as ordered_unit_price from stock_v2.order_header h join stock_v2.owner ow on ow.owner_id=h.owner_id join stock_v2.order_line ol on ol.order_id=h.order_id join stock_v2.item i on i.item_id=ol.item_id where ow.owner_code like 'TEST_%' and h.status='approved' order by h.order_id desc,ol.order_line_id limit 200`;
-   const sprays=await db`select j.job_id,j.external_tracecode_id,t.tracecode_name,c.crop_name,j.area_ha::float8 as area_ha,j.planned_week_start::text as planned_week_start,(select max(d.document_date)::text from stock_v2.document d join stock_v2.document_line dl on dl.document_id=d.document_id join stock_v2.spray_job_input si on si.requirement_id=dl.requirement_id where si.job_id=j.job_id and d.document_type='issue' and d.status='posted') as completed_date,j.spray_type,j.part_label,j.water_litres_per_ha::float8 as water_litres_per_ha,j.sprayer_asset_code,j.job_tracking_code,j.status,sc.completed_date::text as sprayed_date,i.base_unit,i.item_code,i.item_name,ji.rate_per_ha::float8 as rate_per_ha,(ji.rate_per_ha*j.area_ha)::float8 as planned_quantity,coalesce((select sum(case when d.document_type='issue' then dl.quantity when d.document_type='return' then -dl.quantity else 0 end) from stock_v2.document_line dl join stock_v2.document d on d.document_id=dl.document_id where dl.requirement_id=ji.requirement_id and d.document_type in ('issue','return') and d.status='posted'),0)::float8 as issued_quantity from stock_v2.spray_job j join stock_v2.spray_job_input ji on ji.job_id=j.job_id join stock_v2.item i on i.item_id=ji.item_id left join stock_v2.sprayer_completion sc on sc.job_id=j.job_id left join public.tracecode t on t.tracecode_id=j.external_tracecode_id left join public.crop c on c.crop_id=t.crop_id where j.owner_id=(select owner_id from stock_v2.owner where owner_code='TEST_JS') order by j.job_id desc,ji.job_input_id limit 200`;
+   const sprays=await db`select j.job_id,j.external_tracecode_id,replace((select owner_code from stock_v2.owner where owner_id=j.owner_id),'TEST_','') as owner_code,j.allocation_groups,t.tracecode_name,c.crop_name,j.area_ha::float8 as area_ha,j.planned_week_start::text as planned_week_start,(select max(d.document_date)::text from stock_v2.document d join stock_v2.document_line dl on dl.document_id=d.document_id join stock_v2.spray_job_input si on si.requirement_id=dl.requirement_id where si.job_id=j.job_id and d.document_type='issue' and d.status='posted') as completed_date,j.spray_type,j.part_label,j.water_litres_per_ha::float8 as water_litres_per_ha,j.sprayer_asset_code,j.job_tracking_code,j.status,sc.completed_date::text as sprayed_date,i.base_unit,i.item_code,i.item_name,ji.rate_per_ha::float8 as rate_per_ha,(ji.rate_per_ha*j.area_ha)::float8 as planned_quantity,coalesce((select sum(case when d.document_type='issue' then dl.quantity when d.document_type='return' then -dl.quantity else 0 end) from stock_v2.document_line dl join stock_v2.document d on d.document_id=dl.document_id where dl.requirement_id=ji.requirement_id and d.document_type in ('issue','return') and d.status='posted'),0)::float8 as issued_quantity from stock_v2.spray_job j join stock_v2.spray_job_input ji on ji.job_id=j.job_id join stock_v2.item i on i.item_id=ji.item_id left join stock_v2.sprayer_completion sc on sc.job_id=j.job_id left join public.tracecode t on t.tracecode_id=j.external_tracecode_id left join public.crop c on c.crop_id=t.crop_id where j.owner_id in (select owner_id from stock_v2.owner where owner_code in ('TEST_JS','TEST_AO')) order by j.job_id desc,ji.job_input_id limit 200`;
    const documents=await db`select d.document_id,d.document_type,d.document_number,d.document_date,i.item_name,dl.quantity::float8 as quantity,t.tracecode_name from stock_v2.document d join stock_v2.document_line dl on dl.document_id=d.document_id join stock_v2.item i on i.item_id=dl.item_id left join stock_v2.movement m on m.document_line_id=dl.line_id left join public.tracecode t on t.tracecode_id=m.external_tracecode_id where d.document_number like 'DEMO-GRV-%' or d.document_number like 'DEMO-ISS-%' or d.document_number like 'DEMO-DIR-%' order by d.document_id desc limit 100`;
    const sprayers=await db`select setup_name,water_litres_per_ha::float8 as water_litres_per_ha from stock_v2.sprayer_setup where active=true order by setup_name`;
    const pendingInvoiceCount=await db`select count(distinct d.document_id)::integer as n
@@ -473,7 +477,7 @@ left join lateral (
     select j.job_id from stock_v2.spray_job j join stock_v2.spray_job_input ji using(job_id)
     left join lateral(select coalesce(sum(case when d.document_type='issue' then dl.quantity when d.document_type='return' then -dl.quantity else 0 end),0) as issued
      from stock_v2.document_line dl join stock_v2.document d using(document_id) where dl.requirement_id=ji.requirement_id and d.status='posted' and d.document_type in ('issue','return')) x on true
-    where j.owner_id=(select owner_id from stock_v2.owner where owner_code='TEST_JS') and j.status='planned'
+    where j.owner_id in (select owner_id from stock_v2.owner where owner_code in ('TEST_JS','TEST_AO')) and j.status='planned'
     group by j.job_id having min(case when ji.rate_per_ha>0 then greatest((ji.rate_per_ha*j.area_ha-x.issued)/ji.rate_per_ha,0) else 0 end)>0.0001
    ) due`;
    return reply({items,orders,sprays,documents,sprayers,pending_invoice_count:pendingInvoiceCount[0]?.n??0,outstanding_spray_count:outstandingSprayCount[0]?.n??0});
@@ -521,6 +525,25 @@ left join lateral (
   if(['spray','spray_edit','spray_return','planned_issue','direct_issue'].includes(body?.action)&&body.operation_id){
    if(!body.payload||!Array.isArray(body.payload.lines)||!body.payload.lines.length||body.payload.lines.length>30)return reply({error:'Provide 1–30 product lines'},400);
    const result=await transaction(async tx=>{
+    if(['spray','spray_edit'].includes(body.action)){
+     const payload=body.payload;
+     if(!payload||!['JS','AO'].includes(payload.owner_code??'JS'))throw Error('Choose HS or AO stock owner');
+     const products=await tx`select i.item_code,i.item_name as inputs_name,i.base_unit,i.formulation_type,
+       coalesce(q.quantity,0)::float8 as quantity,coalesce(aq.quantity,0)::float8 as ao_quantity,
+       coalesce((select jsonb_agg(jsonb_build_object('name',a.active_name,'amount',a.concentration::float8,'unit',a.concentration_unit)) from stock_v2.item_active_ingredient a where a.item_id=i.item_id),'[]'::jsonb) as actives
+       from stock_v2.item i
+       left join stock_v2.quantity_balance q on q.item_id=i.item_id and q.owner_id=(select owner_id from stock_v2.owner where owner_code='TEST_JS') and q.location_id=(select location_id from stock_v2.location where location_code='TEST_WH')
+       left join stock_v2.quantity_balance aq on aq.item_id=i.item_id and aq.owner_id=(select owner_id from stock_v2.owner where owner_code='TEST_AO') and aq.location_id=(select location_id from stock_v2.location where location_code='TEST_WH') where i.active`;
+     const groups=payload.allocation_groups;
+     if(groups){
+      const expected=allocateSpray(groups,products,Number(payload.area_ha),payload.owner_code??'JS');
+      if(!Array.isArray(payload.lines)||expected.length!==payload.lines.length||expected.some(r=>{const l=payload.lines.find((l:any)=>l.item_code===r.item_code);return !l||!Number.isFinite(Number(l.rate_per_ha))||Math.abs(Number(l.rate_per_ha)-r.rate_per_ha)>1e-10}))throw Error('Stock or allocations changed. Refresh owner balances and review the spray before saving.');
+     }else{
+      // Older callers may retain ordinary single-brand plans, but cannot bypass duplicate-active checks.
+      const legacy=(payload.lines??[]).map((l:any)=>({input:products.find((p:any)=>p.item_code===l.item_code)?.inputs_name,rate:String(l.rate_per_ha)}));
+      allocateSpray(legacy,products,Number(payload.area_ha),payload.owner_code??'JS');
+     }
+    }
     if(body.action==='spray_return')return (await tx`select stock_v2.demo_return_spray(${tx.json(body.payload)}::jsonb) as result`)[0].result;
     if(body.action==='spray_edit')return (await tx`select stock_v2.demo_edit_spray(${Number(body.payload.job_id)}::bigint,${tx.json(body.payload)}::jsonb) as result`)[0].result;
     return (await tx`select stock_v2.demo_multi(${body.action}::text,${body.operation_id}::uuid,${tx.json(body.payload)}::jsonb) as result`)[0].result;
@@ -596,7 +619,7 @@ left join lateral (
    const jobId=Number(body.job_id);if(!Number.isSafeInteger(jobId)||jobId<=0)return reply({error:"Invalid spray"},400);
    const result=await transaction(async tx=>{
     await tx`select pg_advisory_xact_lock(hashtext('stock_v2_inventory_posting'))`;
-    const jobs=await tx`select job_id from stock_v2.spray_job where job_id=${jobId} and status='planned' and owner_id=(select owner_id from stock_v2.owner where owner_code='TEST_JS') for update`;
+    const jobs=await tx`select job_id from stock_v2.spray_job where job_id=${jobId} and status='planned' and owner_id in (select owner_id from stock_v2.owner where owner_code in ('TEST_JS','TEST_AO')) for update`;
     if(!jobs.length)throw Error("Only incomplete sprays may be deleted");
     const moved=await tx`select 1 from stock_v2.document_line dl join stock_v2.document d on d.document_id=dl.document_id join stock_v2.spray_job_input ji on ji.requirement_id=dl.requirement_id where ji.job_id=${jobId} and d.status='posted' and d.document_type in ('issue','return') limit 1`;
     if(moved.length)throw Error("Spray has stock movements. Reverse/correct its issues before deletion.");
