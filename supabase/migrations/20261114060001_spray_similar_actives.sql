@@ -278,7 +278,22 @@ end $function$
 ;
 
 -- Follow the PR #18 migration in dependency order.
-create or replace function stock_v2.sprayer_payload(p_job bigint,p_include_closed boolean default false) returns jsonb
+-- Stock browser testing does not require installing the separate Sprayer phone feature.
+create or replace function stock_v2.spray_physical_completed_date(p_job bigint) returns date
+language plpgsql stable security invoker set search_path='' as $completed$
+declare result date;
+begin
+ if to_regclass('stock_v2.sprayer_completion') is null then return null;end if;
+ execute 'select completed_date from stock_v2.sprayer_completion where job_id=$1' into result using p_job;
+ return result;
+end $completed$;
+revoke all on function stock_v2.spray_physical_completed_date(bigint) from public,anon,authenticated;
+
+do $optional_phone$
+begin
+ if to_regclass('stock_v2.sprayer_completion') is not null
+ and to_regprocedure('stock_v2.sprayer_payload(bigint,boolean)') is not null then
+ execute $phone_definition$create or replace function stock_v2.sprayer_payload(p_job bigint,p_include_closed boolean default false) returns jsonb
 language sql stable security invoker set search_path='' as $$
  select jsonb_build_object('id',j.job_id::text,'trace_id',t.tracecode_id::text,'trace',t.tracecode_name,
  'week',j.planned_week_start::text,'area',j.area_ha,'spray_type',j.spray_type,'water_rate',coalesce(j.water_litres_per_ha,s.water_litres_per_ha),
@@ -299,4 +314,6 @@ language sql stable security invoker set search_path='' as $$
   where ji.job_id=j.job_id
  ) a on true
  where j.job_id=p_job and o.owner_code in ('TEST_JS','TEST_AO') and j.status in ('planned','completed') and (p_include_closed or t.end_date is null)
-$$;
+$$;$phone_definition$;
+ end if;
+end $optional_phone$;
