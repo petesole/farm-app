@@ -1,0 +1,9 @@
+Supplier Return fix — 14/11/2026
+
+Reproduced the empty product list after selecting a specific GRV: hosted bigint references arrived as strings, but the selected reference was a number and the screen compared them with strict equality. Normalized receipt/document references and numeric receipt fields when loading the feed. No posting, credit approval, permissions or schema changes.
+
+Added a UI test against the actual Edge handler and isolated SQL database using string references. The test failed on the original screen at product display; with the fix it displays the original products, rejects a quantity above the original receipt balance, saves a valid physical return, clears successful entry, and verifies a negative stock movement linked to the original receipt. Existing regression coverage verifies supplier-credit approval separately.
+
+An unrelated date-sensitive Sprayer test used yesterday's fixed trace closing date with today's issue/completion date; corrected its fixture to close the trace on the current Harare date. This changes only test setup, not the Sprayer workflow.
+
+No operational stock records were changed. This frontend fix requires a new website release before users will see it. The existing test-site bundle was not redeployed during this check. No Sprayer database/security migration or EAS APK build was attempted.
