@@ -1,0 +1,10 @@
+Supplier Return test website release — 14/11/2026
+
+User explicitly requested deployment to the test website.
+Deployment: zxtrey2no3
+Alias: https://jspl-farmingmain--development.expo.app
+Bundle: entry-14c1bc4f10e63ef6520f048063592848.js
+
+Release source: existing pre-phone development snapshot 5636b62 plus the Supplier Return screen fix from f9c1ea0. Includes the pending red outstanding-spray dashboard count. Excludes unfinished Sprayer phone routes, roles and completion functionality. No database, Edge Function, production alias or APK changes.
+
+Local web export passed. Expo Hosting deployment completed and assigned development alias. Read-back checks returned HTTP 200 for /stock-v2-supplier-returns, /stock-test and the entry bundle. Published bundle matches the local release exactly and contains receipt-reference normalization. Prior isolated workflow tests: 211 passed, TypeScript and ERP UI checks passed. No real supplier return was posted as a deployment test; authenticated user acceptance remains.
