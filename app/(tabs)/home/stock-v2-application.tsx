@@ -1,7 +1,8 @@
+import {StockDecimalInput} from "@/components/jspl/StockDecimalInput";
 import {StockV2Header} from "@/components/jspl/StockV2Header";
 import {useEffect,useMemo,useState} from "react";
 import {useLocalSearchParams,useRouter} from "expo-router";
-import {ActivityIndicator,Platform,Pressable,ScrollView,StyleSheet,TextInput,View} from "react-native";
+import {ActivityIndicator,Platform,Pressable,ScrollView,StyleSheet,View} from "react-native";
 import {ThemedText} from "@/components/themed-text";
 import {ThemedView} from "@/components/themed-view";
 import {supabase} from "../../../supabase";
@@ -9,8 +10,8 @@ import {jsplColors,jsplSpacing,jsplRadii,jsplSizes} from "@/constants/jspl-desig
 
 const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
 type Spray={job_id:number|string;tracecode_name:string;planned_week_start:string;area_ha:number;part_label:string|null;spray_type:string;water_litres_per_ha:number|null;sprayer_asset_code:string|null;item_code:string;item_name:string;base_unit:string;rate_per_ha:number};
-const fmt=(v:number,dp=2)=>Number.isFinite(v)?v.toLocaleString("en-GB",{minimumFractionDigits:dp,maximumFractionDigits:dp}):"—";
-const isoWeek=(date:string)=>{const d=new Date(date+"T12:00:00Z");d.setUTCDate(d.getUTCDate()+3-((d.getUTCDay()+6)%7));const year=d.getUTCFullYear();const fourth=new Date(Date.UTC(year,0,4));fourth.setUTCDate(fourth.getUTCDate()-((fourth.getUTCDay()+6)%7));return year+"/"+String(1+Math.round((d.getTime()-fourth.getTime())/604800000)).padStart(2,"0")};
+const fmt=(v:number,dp=3)=>Number.isFinite(v)?v.toLocaleString("en-GB",{minimumFractionDigits:dp,maximumFractionDigits:dp}):"—";
+const isoWeek=(date:string)=>{const d=new Date(date+"T12:00:00Z");d.setUTCDate(d.getUTCDate()+3-((d.getUTCDay()+6)%7));const year=d.getUTCFullYear();const fourth=new Date(Date.UTC(year,0,3));fourth.setUTCDate(fourth.getUTCDate()-((fourth.getUTCDay()+6)%7));return year+"/"+String(1+Math.round((d.getTime()-fourth.getTime())/604800000)).padStart(2,"0")};
 export default function ApplicationSheet(){
  const router=useRouter(),params=useLocalSearchParams<{jobId?:string}>();
  const id=Number(params.jobId);
@@ -42,7 +43,7 @@ export default function ApplicationSheet(){
   const popup=window.open("","_blank","width=1100,height=800");
   if(!popup){setError("Allow pop-ups for this site to print the application sheet.");return;}
   const esc=(value:unknown)=>String(value??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]||ch));
-  const lineHtml=rows.map(line=>`<tr><td>${esc(line.item_name)}</td><td class="num">${fmt(Number(line.rate_per_ha),3)}</td><td class="num">${fmt(area*Number(line.rate_per_ha),3)} ${esc(line.base_unit)}</td><td class="num">${fmt(fullHa*Number(line.rate_per_ha),4)} ${esc(line.base_unit)}</td><td class="num">${fmt(partHa*Number(line.rate_per_ha),4)} ${esc(line.base_unit)}</td></tr>`).join("");
+  const lineHtml=rows.map(line=>`<tr><td>${esc(line.item_name)}</td><td class="num">${fmt(Number(line.rate_per_ha),3)}</td><td class="num">${fmt(area*Number(line.rate_per_ha),3)} ${esc(line.base_unit)}</td><td class="num">${fmt(fullHa*Number(line.rate_per_ha),3)} ${esc(line.base_unit)}</td><td class="num">${fmt(partHa*Number(line.rate_per_ha),3)} ${esc(line.base_unit)}</td></tr>`).join("");
   const html=`<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Application - Spray ${id}</title><style>
    @page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}html,body{margin:0;padding:0;background:#fff;color:#111;font-family:Arial,sans-serif;font-size:10pt}
    main{width:100%;padding:5mm}.heading{background:#dce4ec;padding:8px 10px;margin-bottom:8px}h1{font-size:19pt;margin:0 0 9px}
@@ -55,9 +56,9 @@ export default function ApplicationSheet(){
    </style></head><body><div class="toolbar"><button onclick="window.print()">Print</button><button onclick="window.close()">Close</button></div><main>
    <div class="heading"><h1>APPLICATION · Spray #${id}</h1>
    <div class="meta"><div><b>Week:</b> ${esc(heading)}</div><div><b>Trace Code:</b> ${esc(first.tracecode_name)}</div><div><b>Spray Type:</b> ${esc(first.spray_type)}</div><div><b>Sprayer:</b> ${esc(first.sprayer_asset_code||"—")}</div>
-   <div><b>Application Ha:</b> ${fmt(area)}</div><div><b>Water Rate:</b> ${fmt(water,0)} L/ha</div><div><b>Total Water:</b> ${fmt(totalWater,0)} L</div><div><b>Tank capacity:</b> ${fmt(capacity,0)} L</div></div>
+   <div><b>Application Ha:</b> ${fmt(area)}</div><div><b>Water Rate:</b> ${fmt(water,3)} L/ha</div><div><b>Total Water:</b> ${fmt(totalWater,3)} L</div><div><b>Tank capacity:</b> ${fmt(capacity,3)} L</div></div>
    </div>
-   <table><colgroup><col style="width:28%"/><col style="width:18%"/><col style="width:18%"/><col style="width:18%"/><col style="width:18%"/></colgroup><thead><tr><th colspan="3"></th><th class="num">${full}</th><th class="num">${rest.toLocaleString("en-GB",{maximumFractionDigits:1})} L</th></tr><tr><th>Input Name</th><th class="num">Rate/Ha</th><th class="num">Required</th><th class="num">Full Tank Mix</th><th class="num">Part Tank Mix</th></tr></thead><tbody>${lineHtml}</tbody></table>
+   <table><colgroup><col style="width:28%"/><col style="width:18%"/><col style="width:18%"/><col style="width:18%"/><col style="width:18%"/></colgroup><thead><tr><th colspan="3"></th><th class="num">${full}</th><th class="num">${fmt(rest)} L</th></tr><tr><th>Input Name</th><th class="num">Rate/Ha</th><th class="num">Required</th><th class="num">Full Tank Mix</th><th class="num">Part Tank Mix</th></tr></thead><tbody>${lineHtml}</tbody></table>
    <p class="foot">Full Tank Mix amounts are per full tank. Part Tank Mix amounts are for the remaining water. Confirm tank capacity and sprayer calibration before applying.</p></main></body></html>`;
   popup.document.open();popup.document.write(html);popup.document.close();popup.focus();
  };
@@ -71,13 +72,13 @@ export default function ApplicationSheet(){
   {loading?<ActivityIndicator/>:error?<ThemedText style={styles.error}>{error}</ThemedText>:first?<View testID="application-print-sheet" style={styles.sheet}>
    <View style={styles.top}>
     <ThemedText testID="application-print-title" style={styles.title}>APPLICATION · Spray #{id}</ThemedText>
-    <View style={styles.meta}><ThemedText>Week: {heading}</ThemedText><ThemedText>Trace Code: {first.tracecode_name}</ThemedText><ThemedText>Spray Type: {first.spray_type}</ThemedText><ThemedText>Sprayer: {first.sprayer_asset_code||"—"}</ThemedText><ThemedText>Application Ha: {fmt(area)}</ThemedText><ThemedText>Water Rate: {fmt(water,0)} L/ha</ThemedText><ThemedText>Total Water: {fmt(totalWater,0)} L</ThemedText></View>
-    <View style={styles.tankRow}><View><ThemedText style={styles.label}>Tank capacity (L) — confirm before printing</ThemedText><TextInput style={styles.input} value={tankSize} onChangeText={setTankSize} keyboardType="decimal-pad"/></View></View>
+    <View style={styles.meta}><ThemedText>Week: {heading}</ThemedText><ThemedText>Trace Code: {first.tracecode_name}</ThemedText><ThemedText>Spray Type: {first.spray_type}</ThemedText><ThemedText>Sprayer: {first.sprayer_asset_code||"—"}</ThemedText><ThemedText>Application Ha: {fmt(area)}</ThemedText><ThemedText>Water Rate: {fmt(water,3)} L/ha</ThemedText><ThemedText>Total Water: {fmt(totalWater,3)} L</ThemedText></View>
+    <View style={styles.tankRow}><View><ThemedText style={styles.label}>Tank capacity (L) — confirm before printing</ThemedText><StockDecimalInput style={styles.input} value={tankSize} onChangeText={setTankSize} keyboardType="decimal-pad"/></View></View>
     {!validTank?<ThemedText style={styles.error}>Enter valid tank capacity and spray water rate.</ThemedText>:null}
    </View>
-   <View style={styles.header}><View style={styles.product}/><View style={styles.n}/><View style={styles.n}/><ThemedText style={[styles.n,styles.bold]}>{validTank?String(full):"—"}</ThemedText><ThemedText style={[styles.n,styles.bold]}>{validTank?rest.toLocaleString("en-GB",{maximumFractionDigits:1})+" L":"—"}</ThemedText></View>
+   <View style={styles.header}><View style={styles.product}/><View style={styles.n}/><View style={styles.n}/><ThemedText style={[styles.n,styles.bold]}>{validTank?String(full):"—"}</ThemedText><ThemedText style={[styles.n,styles.bold]}>{validTank?fmt(rest)+" L":"—"}</ThemedText></View>
    <View style={styles.header}><ThemedText style={[styles.product,styles.bold]}>Input Name</ThemedText><ThemedText style={[styles.n,styles.bold]}>Rate/Ha</ThemedText><ThemedText style={[styles.n,styles.bold]}>Required</ThemedText><ThemedText style={[styles.n,styles.bold]}>Full Tank Mix</ThemedText><ThemedText style={[styles.n,styles.bold]}>Part Tank Mix</ThemedText></View>
-   {rows.map((line,i)=><View testID="application-print-row" key={line.item_code+":"+i} style={[styles.line,i%2===1&&styles.alt]}><ThemedText style={styles.product}>{line.item_name}</ThemedText><ThemedText style={styles.n}>{fmt(Number(line.rate_per_ha),3)}</ThemedText><ThemedText style={styles.n}>{fmt(area*Number(line.rate_per_ha),3)} {line.base_unit}</ThemedText><ThemedText style={styles.n}>{validTank?fmt(fullHa*Number(line.rate_per_ha),4):"—"} {line.base_unit}</ThemedText><ThemedText style={styles.n}>{validTank?fmt(partHa*Number(line.rate_per_ha),4):"—"} {line.base_unit}</ThemedText></View>)}
+   {rows.map((line,i)=><View testID="application-print-row" key={line.item_code+":"+i} style={[styles.line,i%2===1&&styles.alt]}><ThemedText style={styles.product}>{line.item_name}</ThemedText><ThemedText style={styles.n}>{fmt(Number(line.rate_per_ha),3)}</ThemedText><ThemedText style={styles.n}>{fmt(area*Number(line.rate_per_ha),3)} {line.base_unit}</ThemedText><ThemedText style={styles.n}>{validTank?fmt(fullHa*Number(line.rate_per_ha),3):"—"} {line.base_unit}</ThemedText><ThemedText style={styles.n}>{validTank?fmt(partHa*Number(line.rate_per_ha),3):"—"} {line.base_unit}</ThemedText></View>)}
    <ThemedText style={styles.note}>Full Tank Mix quantities are per full tank, not the combined quantity for all full tanks. Part Tank Mix quantities are for the remaining water volume. Confirm tank capacity and sprayer calibration before application.</ThemedText>
   </View>:null}
  </ScrollView></ThemedView>;

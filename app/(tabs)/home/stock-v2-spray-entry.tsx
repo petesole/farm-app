@@ -1,3 +1,4 @@
+import {StockDecimalInput} from "@/components/jspl/StockDecimalInput";
 import {localISODate} from "@/utils/jspl-input";
 import {allocateSpray, SprayProduct, StockChoice} from "@/utils/spray-allocation";
 import {SprayStockChoices} from "@/components/jspl/SprayStockChoices";
@@ -25,7 +26,7 @@ type SprayType={access_spray_type_id:number;spray_type_name:string;spray_tank_si
 const monday = (d: Date) => { const x = new Date(d.getFullYear(),d.getMonth(),d.getDate()); x.setDate(x.getDate() - ((x.getDay()+6)%7)); return x; };
 const addWeeks = (d: Date, count: number) => { const x=new Date(d); x.setDate(x.getDate()+count*7); return x; };
 const weekLabel = (d: Date) => `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
-const fmt = (n: number) => Number.isFinite(n)?n.toLocaleString("en-GB",{maximumFractionDigits:2}):"—";
+const fmt = (n: number) => Number.isFinite(n)?n.toLocaleString("en-GB",{minimumFractionDigits:3,maximumFractionDigits:3}):"—";
 let nextKey=1;
 export default function StockV2SprayPlanningPreview() {
   const router=useRouter();
@@ -176,7 +177,7 @@ export default function StockV2SprayPlanningPreview() {
         value={traceId} onChange={value=>{setTraceId(typeof value==="number"?value:null);setWeekChosen(false);}}
         placeholder="Select Trace Code"/>:null}
       {selected?<ThemedText style={styles.muted}>Size: {fmt(Number(selected.tracecode_size??0))} ha · Growing days: {selected.actual_planting_date?Math.max(0,Math.floor((Date.now()-new Date(selected.actual_planting_date.slice(0,10)+"T12:00:00").getTime())/86400000)):"— (not planted)"}</ThemedText>:null}
-      {selected?<View style={styles.partField}><ThemedText style={styles.label}>Part spray (ha) — blank = whole field</ThemedText><TextInput accessibilityLabel="Part spray (ha)" style={styles.input} keyboardType="decimal-pad" value={part} onChangeText={setPart} placeholder="Whole field"/></View>:null}
+      {selected?<View style={styles.partField}><ThemedText style={styles.label}>Part spray (ha) — blank = whole field</ThemedText><StockDecimalInput accessibilityLabel="Part spray (ha)" style={styles.input} keyboardType="decimal-pad" value={part} onChangeText={setPart} placeholder="Whole field"/></View>:null}
       {cropId!=null&&visibleTraces.length===0?<ThemedText style={styles.muted}>No current tracecodes for this crop.</ThemedText>:null}
       </View>
       {selected?<View style={{flex:1,minWidth:0,flexDirection:wide?"row":"column",gap:8}}>
@@ -211,7 +212,7 @@ export default function StockV2SprayPlanningPreview() {
           value={sprayTypes.find(setup=>setup.spray_type_name===sprayType)?.access_spray_type_id??null}
           onChange={id=>{const choice=sprayTypes.find(setup=>setup.access_spray_type_id===id);setSprayType(choice?.spray_type_name??"");setWaterRate(choice?String(choice.spray_rate_per_ha):"");}}
           placeholder="Select spray type"/></View>:null}
-        {weekChosen&&sprayType?<View style={styles.waterRateField}><ThemedText style={styles.controlLabel}>Water rate (L/ha)</ThemedText><TextInput accessibilityLabel="Water rate (L/ha)" style={styles.input} keyboardType="decimal-pad" value={waterRate} onChangeText={setWaterRate} placeholder="Enter water rate"/></View>:null}
+        {weekChosen&&sprayType?<View style={styles.waterRateField}><ThemedText style={styles.controlLabel}>Water rate (L/ha)</ThemedText><StockDecimalInput accessibilityLabel="Water rate (L/ha)" style={styles.input} keyboardType="decimal-pad" value={waterRate} onChangeText={setWaterRate} placeholder="Enter water rate"/></View>:null}
         {weekChosen&&sprayType&&Number(waterRate)>0?<ThemedText style={styles.waterSummary}>Water required: {fmt(totalWater)} L</ThemedText>:null}
         </View>
         {weekChosen&&sprayType&&Number(waterRate)>0?<>
@@ -227,7 +228,7 @@ export default function StockV2SprayPlanningPreview() {
               {matches(x.input).length===0?<ThemedText style={styles.muted}>No matching input in the current master.</ThemedText>:null}
             </ScrollView>
             <Pressable onPress={()=>setOpenLine(null)} style={styles.chip}><ThemedText>Close list</ThemedText></Pressable>
-          </View>:null}</View><View style={{flex:1}}><ThemedText style={styles.label}>Intended rate/ha</ThemedText><TextInput accessibilityLabel={"Intended rate "+x.key} style={styles.input} keyboardType="decimal-pad" value={x.rate} onChangeText={v=>changeLine(x.key,"rate",v)}/></View><View style={{width:75}}><ThemedText style={styles.label}>Intended qty</ThemedText><ThemedText>{fmt(sprayArea*Number(x.rate))}</ThemedText></View><View style={{width:75}}><ThemedText style={styles.label}>Assigned</ThemedText><ThemedText>{fmt(assigned[catalog.find(p=>p.inputs_name===x.input)?.item_code??""]??0)}</ThemedText></View><View style={{width:95}}><ThemedText style={styles.label}>Stock</ThemedText><ThemedText >{catalog.find(p=>p.inputs_name===x.input)?`${fmt(catalog.find(p=>p.inputs_name===x.input)![owner==="AO"?"ao_quantity":"quantity"])} ${catalog.find(p=>p.inputs_name===x.input)!.base_unit}`:"—"}</ThemedText></View><Pressable onPress={()=>setLines(v=>v.filter(y=>y.key!==x.key))}><ThemedText style={styles.error}>Remove</ThemedText></Pressable></View><SprayStockChoices treatment={x} products={catalog} area={sprayArea} owner={owner} disabled={saving} onBusy={setTransferBusy} onChange={t=>setLines(ls=>ls.map(l=>l.key===x.key?{...l,...t}:l))} onBalances={items=>setCatalog(ps=>ps.map(p=>{const a=items.find(a=>a.item_code===p.item_code);return a?{...p,quantity:Number(a.quantity),ao_quantity:Number(a.ao_quantity)}:p}))}/></View>)}
+          </View>:null}</View><View style={{flex:1}}><ThemedText style={styles.label}>Intended rate/ha</ThemedText><StockDecimalInput accessibilityLabel={"Intended rate "+x.key} style={styles.input} keyboardType="decimal-pad" value={x.rate} onChangeText={v=>changeLine(x.key,"rate",v)}/></View><View style={{width:75}}><ThemedText style={styles.label}>Intended qty</ThemedText><ThemedText>{fmt(sprayArea*Number(x.rate))}</ThemedText></View><View style={{width:75}}><ThemedText style={styles.label}>Assigned</ThemedText><ThemedText>{fmt(assigned[catalog.find(p=>p.inputs_name===x.input)?.item_code??""]??0)}</ThemedText></View><View style={{width:95}}><ThemedText style={styles.label}>Stock</ThemedText><ThemedText >{catalog.find(p=>p.inputs_name===x.input)?`${fmt(catalog.find(p=>p.inputs_name===x.input)![owner==="AO"?"ao_quantity":"quantity"])} ${catalog.find(p=>p.inputs_name===x.input)!.base_unit}`:"—"}</ThemedText></View><Pressable onPress={()=>setLines(v=>v.filter(y=>y.key!==x.key))}><ThemedText style={styles.error}>Remove</ThemedText></Pressable></View><SprayStockChoices treatment={x} products={catalog} area={sprayArea} owner={owner} disabled={saving} onBusy={setTransferBusy} onChange={t=>setLines(ls=>ls.map(l=>l.key===x.key?{...l,...t}:l))} onBalances={items=>setCatalog(ps=>ps.map(p=>{const a=items.find(a=>a.item_code===p.item_code);return a?{...p,quantity:Number(a.quantity),ao_quantity:Number(a.ao_quantity)}:p}))}/></View>)}
         <Pressable style={styles.action} onPress={()=>addLine()}><ThemedText>+ Add input</ThemedText></Pressable>
         {saveError?<ThemedText style={styles.error}>Save not confirmed: {saveError}</ThemedText>:null}
         <Pressable disabled={saving||transferBusy||loading||!!error} style={[styles.saveButton,(saving||transferBusy||loading||!!error)&&{opacity:0.5}]} onPress={savePlan}><ThemedText style={styles.saveText}>{saving?"Saving…":editing?"Save Mix Changes":"Save New Spray"}</ThemedText></Pressable>
@@ -244,7 +245,7 @@ export default function StockV2SprayPlanningPreview() {
           {!budgetPlantingDate&&budgetLines.length>0?<ThemedText style={styles.warning}>Planting date unavailable: showing all budget lines without week filtering.</ThemedText>:null}
           {selectedBudgetRows.map(row=><Pressable key={row.budget_ref_id} style={styles.budgetRow} onPress={()=>{const product=catalog.find(p=>p.item_code===row.item_code);if(product)copyBudgetInput(product.inputs_name,row.rate_per_ha);else setSaveError("Budget product not matched to Stock V2: "+row.item_name)}}>
             <View style={{flex:2}}><ThemedText style={styles.label}>DAP {row.days_after_planting}</ThemedText><ThemedText>{row.item_name}</ThemedText></View>
-            <ThemedText style={{flex:1}}>{row.rate_per_ha} {row.base_unit}/ha</ThemedText>
+            <ThemedText style={{flex:1}}>{fmt(row.rate_per_ha)} {row.base_unit}/ha</ThemedText>
             <ThemedText style={styles.copy}>{row.item_code?"+ Copy":"Unmatched"}</ThemedText>
           </Pressable>)}
           {budgetLines.length>0&&selectedBudgetRows.length===0?<ThemedText style={styles.muted}>No budget applications for this week.</ThemedText>:null}

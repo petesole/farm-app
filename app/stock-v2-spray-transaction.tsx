@@ -1,8 +1,9 @@
+import {StockDecimalInput} from "@/components/jspl/StockDecimalInput";
 import {stockMutation} from "@/utils/stock-workflow";
 import {StockRecovery} from "@/components/jspl/StockWorkflowControls";
 import { useEffect, useMemo, useState } from "react";
 import { useLocalSearchParams, router } from "expo-router";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { supabase } from "@/supabase";
 import { JsplSearchCombo } from "@/components/jspl/JsplSearchCombo";
 import { StockV2Header } from "@/components/jspl/StockV2Header";
@@ -12,7 +13,7 @@ const endpoint = "https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2
 type SprayLine = {owner_code:string;job_id:number;external_tracecode_id:number;tracecode_name:string;area_ha:number;status:string;item_code:string;item_name:string;base_unit:string;rate_per_ha:number;planned_quantity:number;issued_quantity:number};
 type Product = {item_code:string;item_name:string;quantity:number;ao_quantity:number};
 type ReturnLine = {document_id:number;document_number:string;source_line_id:number;item_name:string;base_unit:string;available_to_return:number};
-const fmt=(n:number)=>Number.isFinite(n)?n.toLocaleString("en-GB",{maximumFractionDigits:3}):"—";
+const fmt=(n:number)=>Number.isFinite(n)?n.toLocaleString("en-GB",{minimumFractionDigits:3,maximumFractionDigits:3}):"—";
 export default function SprayTransaction(){
  const params=useLocalSearchParams<{jobId?:string;mode?:string}>();
  const jobId=Number(params.jobId); const mode=params.mode==="return"?"return":"issue";
@@ -77,13 +78,13 @@ export default function SprayTransaction(){
    {mode==="issue"?<>
     <Text>Stock owner: {owner==='AO'?'AO':'HS'}</Text><Text>Remaining: {fmt(area)} ha</Text>
     <Text>Hectares to issue</Text>
-    <TextInput accessibilityLabel="Hectares to issue" style={s.input} value={hectares} onChangeText={x=>{setHectares(x);setConfirmed(false)}} keyboardType="decimal-pad"/>
+    <StockDecimalInput accessibilityLabel="Hectares to issue" style={s.input} value={hectares} onChangeText={x=>{setHectares(x);setConfirmed(false)}} keyboardType="decimal-pad"/>
     <View style={s.row}><Text style={s.name}>Product</Text><Text style={s.value}>Required</Text><Text style={s.value}>Available</Text></View>
     {selected.map(l=><View key={l.item_code} style={s.row}><Text style={s.name}>{l.item_name}</Text><Text style={s.value}>{fmt(Number(hectares)*l.rate_per_ha)} {l.base_unit}</Text><Text style={s.value}>{fmt(stock(l.item_code))}</Text></View>)}
    </>:<>
     <JsplSearchCombo label="Original issue" selector="product" options={docOptions} value={documentId} onChange={v=>{setDocumentId(typeof v==="number"?v:null);setAmounts({});setConfirmed(false)}} placeholder="Select issue document"/>
     <View style={s.row}><Text style={s.name}>Product</Text><Text style={s.value}>Maximum return</Text><Text style={s.value}>Return quantity</Text></View>
-    {chosenIssues.map(x=><View key={x.source_line_id} style={s.row}><Text style={s.name}>{x.item_name}</Text><Text style={s.value}>{fmt(x.available_to_return)} {x.base_unit}</Text><TextInput accessibilityLabel={"Return quantity "+x.source_line_id} style={[s.input,s.value]} keyboardType="decimal-pad" value={amounts[x.source_line_id]??""} onChangeText={v=>{setAmounts(a=>({...a,[x.source_line_id]:v}));setConfirmed(false)}}/></View>)}
+    {chosenIssues.map(x=><View key={x.source_line_id} style={s.row}><Text style={s.name}>{x.item_name}</Text><Text style={s.value}>{fmt(x.available_to_return)} {x.base_unit}</Text><StockDecimalInput accessibilityLabel={"Return quantity "+x.source_line_id} style={[s.input,s.value]} keyboardType="decimal-pad" value={amounts[x.source_line_id]??""} onChangeText={v=>{setAmounts(a=>({...a,[x.source_line_id]:v}));setConfirmed(false)}}/></View>)}
     <JsplSearchCombo label="Spray status" selector="product" options={[{id:"incomplete",label:"Incomplete — keep outstanding",active:true},{id:"complete",label:"Complete — close spray",active:true}]} value={complete?"complete":"incomplete"} onChange={v=>{setComplete(v==="complete");setConfirmed(false)}}/>
    </>}
    <Pressable accessibilityRole="checkbox" accessibilityState={{checked:confirmed}} onPress={()=>setConfirmed(c=>!c)}><Text style={s.check}>{confirmed?"☑":"☐"} Confirm {mode==="issue"?"stock issue":"stock return"}</Text></Pressable>

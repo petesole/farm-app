@@ -15,7 +15,7 @@ type Spray={owner_code:string;job_id:number;external_tracecode_id:number;traceco
 type Crop={crop_id:number;crop_name:string};
 type Trace={tracecode_id:number;crop_id:number|null;end_date:string|null;start_date:string|null};
 type Job={id:number;traceId:number;week:string;completedDate:string;trace:string;crop:string;area:number;status:string;sprayType:string;part:string;sprayer:string;water:number;lines:Spray[];remainingArea:number};
-const fmt=(n:number)=>Number.isFinite(n)?n.toLocaleString("en-GB",{maximumFractionDigits:3}):"—";
+const fmt=(n:number)=>Number.isFinite(n)?n.toLocaleString("en-GB",{minimumFractionDigits:3,maximumFractionDigits:3}):"—";
 const dateLabel=(v:string|null|undefined)=>{const s=String(v??"").slice(0,10);return /^\d{4}-\d{2}-\d{2}$/.test(s)?s.slice(8,10)+"/"+s.slice(5,7)+"/"+s.slice(0,4):"—"};
 const weekLabel=(v:string)=>dateLabel(v);
 const uuid=()=>"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const r=Math.floor(Math.random()*16);return(c==="x"?r:(r&3)|8).toString(16)});
