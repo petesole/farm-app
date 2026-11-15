@@ -1,0 +1,9 @@
+Stock Return check — 13/11/2026
+
+Spray Stock Return: verified selection with hosted string IDs, original issue/product loading, maximum return validation, confirmed save, positive stock movement linked to the source issue, completed-spray status, and lost-response recovery without duplicate posting. Two additional UI/SQL regression checks were added; the full suite passes 210 checks.
+
+Read-only inspection of the published development site confirmed its Spray Stock Return screen contains the numeric-ID fix already present in source. Supabase workflow version 84 contains the return issue feed and return transaction handler. Live database contains issued completed sprays and prior posted spray returns. No operational stock records were changed during this check; saves were exercised only in the isolated test database. An authenticated live browser/handset return has not been performed.
+
+Supplier Returns is a separate screen. Its backend specific-GRV source query and physical return save pass existing regression coverage. Its UI retains raw document_id values from the feed while converting the selected GRV to Number and using strict equality to find selected lines. If the hosted feed supplies bigint IDs as strings, selecting a GRV can therefore show no products. This is a code-review finding; that separate UI path was not exercised with hosted string IDs in this check. User clarification on which screen failed is pending.
+
+No production application code, live database schema, permissions or deployed services were changed. The transfer approval discussion and pending Sprayer deployment approval remain separate.

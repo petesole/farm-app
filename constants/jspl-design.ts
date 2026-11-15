@@ -49,3 +49,30 @@ export function formatJsplDate(iso: string | null | undefined): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
 }
+
+/**
+ * Shared dashboard appearance. Change these tokens to restyle module home screens
+ * without touching stock, fuel or other transaction logic.
+ */
+export const jsplDashboardTheme = {
+  background: jsplColors.background,
+  heading: jsplColors.primaryDark,
+  cardBackground: jsplColors.surface,
+  cardBorder: jsplColors.border,
+  cardTitle: jsplColors.primaryDark,
+  cardDescription: jsplColors.textSecondary,
+  cardPressed: jsplColors.successTint,
+  cardPressedBorder: jsplColors.primary,
+  pagePadding: jsplSpacing.xl,
+  sectionGap: jsplSpacing.xl,
+  cardGap: jsplSpacing.lg,
+  cardPaddingHorizontal: jsplSpacing.lg,
+  cardPaddingVertical: jsplSpacing.md,
+  cardRadius: jsplRadii.md,
+  cardMinHeight: 96,
+  cardMinWidth: 220,
+  cardPreferredWidth: 260,
+  headingSize: jsplType.sectionTitle,
+  cardTitleSize: jsplType.cardTitle,
+  descriptionSize: jsplType.body,
+} as const;

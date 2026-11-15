@@ -1,8 +1,12 @@
 /** Shared date and select helpers; framework-independent. */
+export function localISODate(date: Date): string {
+  if (!Number.isFinite(date.getTime())) throw Error('Invalid date');
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+}
 export function parseJsplDateInput(text: string, year = new Date().getFullYear()): string | null {
-  const match = /^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?$/.exec(text.trim());
+  const match = /^(\d{1,2})\/(\d{1,2})(?:\/(\d{2}|\d{4}))?$/.exec(text.trim());
   if (!match) return null;
-  const day = Number(match[1]), month = Number(match[2]), fullYear = match[3] ? Number(match[3]) : year;
+  const day = Number(match[1]), month = Number(match[2]), fullYear = match[3] ? (match[3].length === 2 ? 2000 + Number(match[3]) : Number(match[3])) : year;
   if (fullYear < 1 || fullYear > 9999 || month < 1 || month > 12 || day < 1 || day > 31) return null;
   const test = new Date(0);
   test.setFullYear(fullYear, month - 1, day);
@@ -14,14 +18,14 @@ export function displayJsplDate(iso: string): string {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
 }
 export type JsplOption = { id: string | number; label: string; active?: boolean };
-export type JsplSelector = 'crop' | 'trace' | 'product';
+export type JsplSelector = 'crop' | 'trace' | 'product' | 'spray-type' | 'crop-budget';
 export function filterJsplOptions(
   options: readonly JsplOption[], selector: JsplSelector, search: string,
   includeInactive = false,
 ): JsplOption[] {
   const prefix = search.trim().toLocaleLowerCase();
   return options.filter(o =>
-    (includeInactive || selector === 'product' || o.active === true) &&
+    (includeInactive || selector === 'product' || selector === 'spray-type' || selector === 'crop-budget' || o.active === true) &&
     o.label.toLocaleLowerCase().startsWith(prefix)
   );
 }

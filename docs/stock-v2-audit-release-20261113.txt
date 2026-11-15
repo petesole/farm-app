@@ -1,0 +1,27 @@
+Stock V2 audit rectification — development release, 13/11/2026
+
+Source: cea9433ca3cd7f97dc1fa6093c40135776bac3d1 on development.
+Database: FarmingMain azxaymxnicrsezeoxiau, private stock_v2 test schema.
+Applied migration: 20261113040634_stock_audit_rectification.
+Deployed Edge handler: stock-v2-demo-workflow version 80, JWT verification enabled.
+Deployed frontend: kehqd92qqd.
+Development URL: https://jspl-farmingmain--development.expo.app/stock-test
+Immutable deployment URL: https://jspl-farmingmain--kehqd92qqd.expo.app
+No production alias promotion or Main branch change.
+
+Verification
+- Deployed handler source matches reviewed commit cea9433 exactly (normalised line endings).
+- 72 source documents and 386 stock movements preserved.
+- Movement checksum before and after: 7100bbe89cfb80e3a8491d27d7eda90e.
+- All 72 source documents have persisted business-number mappings.
+- Zero negative quantity balances after release.
+- New mapping table has RLS enabled. Browser roles lack schema/table/function access.
+- Existing Admin retains access; unassigned identity has no Stock access.
+- Development Stock dashboard, purchase orders, spray planning and issue-slip routes returned HTTP 200.
+- Unauthenticated workflow endpoint returned HTTP 401.
+- Security advisor reviewed: no-policy notices on private Stock tables are intentional deny-by-default; browser access remains revoked.
+- Pre-release: 93 local regression checks, shared UI/date checks, full TypeScript check and Expo web export passed.
+
+The first migration request lost its transport response. Database inspection confirmed no migration or mapping table existed before retry; the second request completed and its migration history was verified. No blind duplicate application occurred.
+
+Operational acceptance remains: real Stock/Admin browser sign-ins, device/offline behavior and physical printer output. Existing saved spray-week dates were not automatically changed. No operational transaction was posted during release verification.

@@ -1,0 +1,90 @@
+Stock development approval workflow — release notes, 12 November 2026
+
+RELEASED TO DEVELOPMENT
+Site: https://jspl-farmingmain--development.expo.app/stock-test
+Hosting deployment: pay9fs48w0 (development alias only; no production promotion).
+PR15 merged into development: 8043485f7a63780a94101feec3e81cd4647ebd39.
+Reviewed source: 84bb43e619e764de9cfe5db3373f2e4eba89ec45.
+Applied migration history: 20261112051320_stock_approval_workflow.
+Edge versions: stock-v2-demo-workflow78, stock-v2-credits10, stock-v2-demo-issue2.
+The migration filename matches the version actually recorded by Supabase.
+
+Independent Codex review found and verified fixes for increased D-Note invoice
+allocation, receipt-source costing and negative asset value safeguards, mandatory
+PO contract retention, supplier-return source loading, and Stock-only admission.
+75 local checks and Stock CI passed; revised Expo web export passed.
+Post-release checks: six site routes and reviewed bundle markers verified;
+all three services returned401 without authentication; existing Admin permissions
+and unassigned-user denial verified. A real Admin PO submit/approve/finalise
+database probe passed and was rolled back. Private tables have RLS and no browser
+read grants; direct browser execution of workflow_command is denied.
+Data unchanged:22 existing orders,69 documents,381 movements; movement digest
+cec0dd43c98e446cf45182d840539df1 before and after the migration.
+Actual staff browser sign-ins and operational acceptance remain to be checked.
+The repository-wide legacy Labour navigation and Playwright checks still fail.
+
+Scope
+This branch targets development. It does not change or deploy Main, Weighbridge,
+Fuel or Labour. The FarmingMain backend is shared: stock_v2 is a private test
+schema, not a separate Supabase project. Test owners remain TEST_JS / TEST_AO.
+
+Changes
+- Dashboard: Admin Awaiting Approval count and queue for POs, supplier credit
+  notes and submitted stocktakes; Credit Notes, GRV Corrections and Staff Access.
+- PO lifecycle: Stock/Admin enters or edits before approval, Admin approves,
+  Stock/Admin finalises for receiving. Admin can change/cancel approved orders
+  before receipt with a reason. Any received quantity locks the entire PO.
+  Cancellation is audited; originals and subsequent receipts are preserved.
+- Existing POs acquire review metadata without recreating orders or stock.
+- Supplier credit entry is available to Stock/Admin. Submission has no inventory
+  or credit-allocation effect. Admin approval applies atomically and locks the
+  credit header and its allocations. Overcrediting is checked again at approval.
+- A new GRV can reference an applied supplier credit for the same owner/supplier,
+  with a reason; the applied credit itself remains intact.
+- Uninvoiced D-Note reference/date and physical quantities can be corrected by
+  Stock/Admin, with audit/linked adjustments. Once invoiced, Stock cannot change
+  the receipt. Admin uses the separate linked GRV correction screen.
+- Invoice quantity corrections record a discrepancy, not physical stock.
+  Example: received100/invoiced110 keeps100 physical and records10 variance.
+  Unit-price corrections recalculate costs and preserve original invoice lines.
+- Physical corrections check issued/transferred stock, quantities already
+  returned, and historical negative stock; failures roll back the transaction.
+  Corrected physical quantities flow into subsequent invoice matching/returns.
+- Counts, supplier returns and adjustments recalculate costs atomically.
+  Stock balances use the latest complete cost run and purchase-price corrections.
+- Stock access is checked by verified sign-in and database-managed roles. Stock
+  Admin/global Admin can assign existing users without changing other roles.
+  No ordinary user receives Stock access merely by being signed in. Owner and
+  contract-policy changes require Admin. Direct browser execution of private
+  Stock routines is revoked; new private tables have RLS and no browser grants.
+- New saves, receiving, corrections, counts and supplier returns retain an
+  operation reference and verify retries. A response lost after commit does not
+  create a second posting. Inputs remain on failed/uncertain saves.
+
+Verification
+Run tests/stock-workflow/run.cjs after installing its locked dependencies.
+The local checks execute captured Stock PostgreSQL schema/routines with synthetic
+data in PGlite, the checked-in Edge handlers with a SQL adapter, and the actual
+PO/approval screens with React/jsdom and mocked native controls. JWT validation,
+Deno, Supabase service connections and real staff sign-ins are not tested there.
+See the delivered test log for the final count/results and web-build result.
+Full repository TypeScript checking currently reports four existing errors from
+the missing @playwright/test dependency and its Labour test parameter types.
+No changed Stock screen errors were reported. Deno sources are excluded from
+Expo's TypeScript project and exercised through the local handler harness.
+
+Release boundary
+The coordinated development release above was authorised and performed.
+stock_approval_workflow.sql is retained as the local regression-test input;
+do not reapply it or edit an applied migration. Future database changes require
+a new reviewed migration. Backend and frontend must remain coordinated. Old
+clients are told to reload for the new PO/credit/correction flows.
+
+After release, an existing global Admin must assign the actual Stock operators
+and test their real sign-ins. The stock_v2.staff_role table was empty at review.
+Confirm create/edit/save/list, approve/finalise/receive, corrections, credits,
+count approval, costs and printed/exported existing reports with those users
+before operational acceptance. Mobile devices/offline behaviour and a complete
+regression of every existing Stock report have not been commissioned here.
+Pastel/accounting integration has not been added. No production publish is
+authorised or performed by these notes.
