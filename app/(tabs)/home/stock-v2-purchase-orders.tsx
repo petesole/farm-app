@@ -9,21 +9,35 @@ import {parseJsplDateInput,displayJsplDate} from '@/utils/jspl-input';
 type Line={item_code:string;quantity:string;unit_price:string};
 const blank=():Line=>({item_code:'',quantity:'',unit_price:''});
 export default function PurchaseOrders(){
- const router=useRouter(),params=useLocalSearchParams<{edit?:string;status?:string;from?:string}>(),openedEdit=useRef('');
+ const router=useRouter(),params=useLocalSearchParams<{edit?:string;status?:string;from?:string;fromSpray?:string}>(),openedEdit=useRef('');
+ const [sourceSpray,setSourceSpray]=useState<number|null>(null);
  const [context,setContext]=useState<WorkflowContext|null>(null),[setup,setSetup]=useState<any>({}),[items,setItems]=useState<any[]>([]),[suppliers,setSuppliers]=useState<any[]>([]);
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[filter,setFilter]=useState<string>(params.status??'all');
  const [editing,setEditing]=useState<ApprovalDocument|null>(null),[editor,setEditor]=useState(false),[id,setId]=useState(''),[owner,setOwner]=useState(''),[supplier,setSupplier]=useState(''),[date,setDate]=useState(''),[contract,setContract]=useState<number|null>(null),[lines,setLines]=useState<Line[]>([blank()]),[reason,setReason]=useState(''),[cancelling,setCancelling]=useState<ApprovalDocument|null>(null);
  const load=useCallback(async()=>{setBusy(true);try{const [c,s,p,v]=await Promise.all([stockContext(),stockRequest('?stock_setup=1'),stockRequest(),stockRequest('?supplier_list=1')]);setContext(c);setSetup(s);setItems(p.items??[]);setSuppliers(v.suppliers??[]);}catch(e){setError(String((e as Error).message))}finally{setBusy(false)}},[]);
  useFocusEffect(useCallback(()=>{void load()},[load]));
- const open=(d:ApprovalDocument|null)=>{setEditing(d);setId(d?.id??stockUUID());setOwner(d?.payload.owner_code??'');setSupplier(d?.payload.supplier??'');setDate(d?displayJsplDate(d.payload.order_date):new Date().toLocaleDateString('en-GB'));setContract(d?.payload.contract_id??null);setLines(d?d.payload.lines.map((l:any)=>({item_code:l.item_code,quantity:String(l.quantity),unit_price:l.unit_price==null?'':String(l.unit_price)})):[blank()]);setReason('');setError('');setEditor(true)};
+ const open=(d:ApprovalDocument|null)=>{setSourceSpray(d?.payload.source_spray_job_id??null);setEditing(d);setId(d?.id??stockUUID());setOwner(d?.payload.owner_code??'');setSupplier(d?.payload.supplier??'');setDate(d?displayJsplDate(d.payload.order_date):new Date().toLocaleDateString('en-GB'));setContract(d?.payload.contract_id??null);setLines(d?d.payload.lines.map((l:any)=>({item_code:l.item_code,quantity:String(l.quantity),unit_price:l.unit_price==null?'':String(l.unit_price)})):[blank()]);setReason('');setError('');setEditor(true)};
  useEffect(()=>{if(params.status)setFilter(params.status)},[params.status]);
  useEffect(()=>{if(!params.edit||!context||openedEdit.current===params.edit)return;const d=context.documents.find(x=>x.id===params.edit&&x.kind==='po');if(d&&!d.received&&d.status!=='cancelled'&&(!['approved','applied'].includes(d.status)||context.access.is_admin)){openedEdit.current=params.edit;open(d)}},[params.edit,context]);
- const closeEditor=()=>{if(busy)return;if(params.from==='approval')router.replace('/stock-v2-approvals');else setEditor(false)};
+ useEffect(()=>{
+  const jobId=Number(params.fromSpray);if(!Number.isSafeInteger(jobId)||jobId<=0||!context||!items.length||openedEdit.current==='spray:'+jobId)return;
+  openedEdit.current='spray:'+jobId;
+  const existing=context.documents.find(d=>d.kind==='po'&&Number(d.payload.source_spray_job_id)===jobId&&d.status!=='cancelled'&&d.status!=='rejected');
+  if(existing){if(existing.received||existing.status==='applied'||(existing.status==='approved'&&!context.access.is_admin)){setNotice('A purchase order already exists for this spray. Review the existing order before raising another.');return;}open(existing);setSourceSpray(jobId);return;}
+  void stockRequest().then(data=>{
+   const rows=(data.sprays??[]).filter((j:any)=>Number(j.job_id)===jobId);if(!rows.length)throw Error('Saved spray could not be loaded for its shortage PO.');
+   const ownerCode=rows[0].owner_code??'JS';
+   const shortages=rows.map((j:any)=>{const p=data.items.find((p:any)=>p.item_code===j.item_code);return {item_code:j.item_code,quantity:String(Math.max(0,Number(j.planned_quantity)-Number(j.issued_quantity)-Number(ownerCode==='AO'?p?.ao_quantity??0:p?.quantity??0))),unit_price:''}}).filter((l:Line)=>Number(l.quantity)>0.000001);
+   if(!shortages.length){setNotice('This spray now has sufficient owner stock.');return;}
+   open(null);setSourceSpray(jobId);setOwner(ownerCode);setLines(shortages);
+  }).catch(e=>setError(e.message));
+ },[params.fromSpray,context,items]);
+ const closeEditor=()=>{if(busy)return;if(params.from==='approval')router.replace('/stock-v2-approvals');else if(params.fromSpray)router.replace('/stock-v2-spray-planning');else setEditor(false)};
  const command=async(cmd:string,d:ApprovalDocument,data:any={})=>{setBusy(true);setError('');try{await stockMutation('po',{action:'workflow_command',command:cmd,data:{id:d.id,version:d.version,...data}});setEditor(false);setCancelling(null);await load();setNotice('PO '+(cmd==='finalise'?'finalised':cmd==='cancel'?'cancelled':'saved'));}catch(e){setError((e as Error).message)}finally{setBusy(false)}};
  const save=async(cmd:'save'|'submit')=>{const iso=parseJsplDateInput(date);if(!iso){setError('Enter a valid date, dd/mm/yyyy');return;}setBusy(true);setError('');try{
-  const payload={owner_code:owner,supplier,order_date:iso,contract_id:contract,lines:lines.map(l=>({item_code:l.item_code,item_name:items.find(i=>i.item_code===l.item_code)?.item_name,quantity:Number(l.quantity),unit_price:l.unit_price.trim()===''?null:Number(l.unit_price)}))};
+  const payload={...(sourceSpray?{source_spray_job_id:sourceSpray}:{}),owner_code:owner,supplier,order_date:iso,contract_id:contract,lines:lines.map(l=>({item_code:l.item_code,item_name:items.find(i=>i.item_code===l.item_code)?.item_name,quantity:Number(l.quantity),unit_price:l.unit_price.trim()===''?null:Number(l.unit_price)}))};
   await stockMutation('po',{action:'workflow_command',command:cmd==='save'&&editing?.status==='pending'?'submit':cmd,data:{id,version:editing?.version,kind:'po',payload,reason}});
-  setEditor(false);await load();setNotice(cmd==='submit'?'PO submitted for Admin approval':'PO saved');if(params.from==='approval')router.replace('/stock-v2-approvals');
+  setEditor(false);await load();setNotice(cmd==='submit'?'PO submitted for Admin approval':'PO saved');if(params.fromSpray)router.replace('/stock-v2-spray-planning');else if(params.from==='approval')router.replace('/stock-v2-approvals');
  }catch(e){setError((e as Error).message)}finally{setBusy(false)}};
  const selectedOwner=setup.owners?.find((o:any)=>o.owner_code===owner);
  const change=(n:number,key:keyof Line,v:string)=>setLines(ls=>ls.map((l,i)=>i===n?{...l,[key]:v}:l));

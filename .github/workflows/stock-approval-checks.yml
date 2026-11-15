@@ -16,3 +16,5 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm ci --prefix tests/stock-workflow --no-audit --no-fund
       - run: node tests/stock-workflow/run.cjs
+      - name: Browser release without Sprayer phone schema
+        run: node tests/stock-workflow/browser-deployment.cjs

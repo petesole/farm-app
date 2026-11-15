@@ -1,0 +1,26 @@
+Similar Active Products — development browser release, 15/11/2026
+
+User explicitly approved the shared FarmingMain database for the active-register and spray-allocation backend changes, followed by publication to the development website. No stock test transactions were authorised or posted by this release.
+
+Development URL: https://jspl-farmingmain--development.expo.app/stock-test
+Deployment: pfq0u0coks
+Immutable URL: https://jspl-farmingmain--pfq0u0coks.expo.app
+Bundle: entry-b903a58a60ac0716619092b7a67f346f.js
+SHA256: 735fec45a11d50c24685e2c009b69c1e88a17fccd185728c2212a564c48b5a91
+Draft PR: https://github.com/petesole/farm-app/pull/19
+
+Applied only the item_active_ingredients and spray_similar_actives migrations to project azxaymxnicrsezeoxiau. Active metadata and audit tables have RLS enabled and no direct client policies. Metadata reads use the existing Stock role gate. The separately staged Sprayer phone schema was not installed.
+
+Automatic approval review rejected replacement of the existing shared stock-v2-demo-workflow Edge Function because production also uses that service. The safer release uses a NEW service, stock-v2-spray-test-workflow version 1, with JWT verification enabled. The existing stock-v2-demo-workflow remains at version 84 and its downloaded source is unchanged. The test function entrypoint reuses the same reviewed implementation; deployment does not require installing the phone feature.
+
+Build configuration: set EXPO_PUBLIC_STOCK_V2_ENDPOINT to https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-spray-test-workflow when exporting this development test build. The default source setting continues to use the existing service. The published Stock dashboard, New Spray, planning, application, issue/return and stockRequest/stockMutation paths use the separate test service. Deploy only with the development alias, never --prod.
+
+Validation: TypeScript passed; 241 isolated stock/edge/UI checks passed; the no-phone-schema deployment compatibility test passed, including RLS and unassigned-user rejection; web export passed. Hosted read-only checks successfully ran all seven Stock snapshot queries. Development /stock-test, /stock-v2-spray-entry and /stock-v2-application return HTTP 200 and load the exact local test bundle. An unauthenticated call to the new service returns 401. Security advisor notices remained at the pre-existing nine notices, with no new notices.
+
+The production website remains on entry-07a757944a6a0f379aaa487913786b07.js. No production alias or original Edge Function was replaced. Existing database functions were updated as explicitly approved for shared-backend testing; this shared-database effect is separate from website publication.
+
+Before release: 73 stock documents and 388 movements. Concurrent operational activity posted documents 127 and 128 (one GRV and one planned issue), producing three new movements. The original 388 movements have the exact same fingerprint before and after: 2656ffbe833a29c27f8c8f4b13b628cf. No stock transaction was posted by the release or used as a hosted test. Aggregate balance fingerprints changed with that concurrent activity, so an unchanged total balance is not claimed.
+
+For user acceptance: sign in on the development website; use Stock Balances → Add/Edit Active to supply any missing full active/concentration details, then New Spray. Equivalent-brand substitution requires complete matching formulation and active data. This is a new register; concentrations have not been invented or imported from product names. Test the three-decimal displays, individual Use Up Stock choices, owner separation, explicit transfers and shortage PO handoff with the intended Stock/Admin roles. Authenticated user acceptance is still required.
+
+Known separate CI issue: the unchanged Labour return-label source contract fails in the JSPL development workflow. Stock workflow regression and Stock V2 typecheck/web-export CI passed for the earlier pushed feature revision. Labour files and its contract were not changed for this release.
