@@ -1,3 +1,4 @@
+import {stockV2Endpoint} from "@/utils/stock-v2-endpoint";
 import {StockDecimalInput} from "@/components/jspl/StockDecimalInput";
 import {localISODate} from "@/utils/jspl-input";
 import {allocateSpray, SprayProduct, StockChoice} from "@/utils/spray-allocation";
@@ -19,7 +20,7 @@ type Trace = { tracecode_id: number; tracecode_name: string; tracecode_size: num
 type Crop = { crop_id: number; crop_name: string; active: boolean | null };
 type CatalogInput = SprayProduct & {input_id:number};
 type InputLine = { key: number; input: string; rate: string; choices?:Record<string,StockChoice>;compatibilityConfirmed?:boolean };
-const workflowEndpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
+const workflowEndpoint=stockV2Endpoint;
 type BudgetLine={budget_ref_id:number;days_after_planting:number;rate_per_ha:number;item_code:string;item_name:string;base_unit:string};
 type BudgetTemplate={crop_budget_id:number;crop_name:string;budget_name:string;irrigation_type:string|null};
 type SprayType={access_spray_type_id:number;spray_type_name:string;spray_tank_size:number;spray_rate_per_ha:number};

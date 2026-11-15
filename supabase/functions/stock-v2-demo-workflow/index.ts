@@ -18,6 +18,7 @@ Deno.serve(async(req)=>{
   const access=(await db`select stock_v2.workflow_access(${user.id}::uuid) as value`)[0].value;
   if(req.method==="GET" && new URL(req.url).searchParams.has("stock_access"))return reply({access});
   if(req.method==="GET" && new URL(req.url).searchParams.has("chemical_actives")){
+    await db`select stock_v2.workflow_require(${user.id}::uuid)`;
     try{
       const rows=await db`select i.item_code,a.active_name,a.concentration::float8 as concentration,a.concentration_unit
         from stock_v2.item_active_ingredient a join stock_v2.item i using(item_id)

@@ -1,3 +1,4 @@
+import {stockV2Endpoint} from "@/utils/stock-v2-endpoint";
 import {StockSelect} from "@/components/jspl/StockWorkflowControls";
 import {JsplSearchCombo} from "@/components/jspl/JsplSearchCombo";
 import {StockV2Header} from "@/components/jspl/StockV2Header";
@@ -9,7 +10,7 @@ import {ThemedView} from "@/components/themed-view";
 import {supabase} from "../../../supabase";
 import {jsplColors,jsplSpacing,jsplRadii,jsplSizes} from "@/constants/jspl-design";
 
-const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
+const endpoint=stockV2Endpoint;
 type Product={ao_quantity:number;item_code:string;item_name:string;base_unit:string;quantity:number};
 type Spray={owner_code:string;job_id:number;external_tracecode_id:number;tracecode_name:string;planned_week_start:string;completed_date?:string|null;sprayed_date?:string|null;crop_name?:string|null;area_ha:number;spray_type:string;part_label:string|null;sprayer_asset_code:string|null;water_litres_per_ha:number|null;status:string;item_code:string;item_name:string;base_unit:string;rate_per_ha:number;planned_quantity:number;issued_quantity:number};
 type Crop={crop_id:number;crop_name:string};

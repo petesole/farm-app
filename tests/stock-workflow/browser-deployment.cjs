@@ -10,6 +10,8 @@ const root=path.resolve(__dirname,'../..');
   const api=edge(db,'stock-v2-demo-workflow',actor);
   const result=await api();assert.equal(result.status,200,JSON.stringify(result));assert(Array.isArray(result.body.sprays));
   assert.equal((await api('?chemical_actives=1')).status,200);
+  const outsider=randomUUID();await db.query("insert into auth.users(id,email) values($1,'outside@test')",[outsider]);assert.notEqual((await edge(db,'stock-v2-demo-workflow',outsider)('?chemical_actives=1')).status,200);
+  assert.equal((await db.query("select bool_and(relrowsecurity) as protected from pg_class where oid in ('stock_v2.item_active_ingredient'::regclass,'stock_v2.item_active_ingredient_audit'::regclass)")).rows[0].protected,true);
   assert.equal((await db.query("select to_regclass('stock_v2.sprayer_completion') as phone")).rows[0].phone,null);
   console.log('PASS Browser Stock snapshot and active register work without installing the staged Sprayer phone schema');
  }finally{await db.close()}

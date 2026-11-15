@@ -21,3 +21,7 @@ create table if not exists stock_v2.item_active_ingredient_audit (
 );
 -- The API uses the existing verified stock_v2.workflow_require gate;
 -- no direct client table grants or writes are added.
+
+-- Keep metadata inaccessible through direct client table access.
+alter table stock_v2.item_active_ingredient enable row level security;
+alter table stock_v2.item_active_ingredient_audit enable row level security;

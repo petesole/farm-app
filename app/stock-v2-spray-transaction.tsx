@@ -1,3 +1,4 @@
+import {stockV2Endpoint} from "@/utils/stock-v2-endpoint";
 import {StockDecimalInput} from "@/components/jspl/StockDecimalInput";
 import {stockMutation} from "@/utils/stock-workflow";
 import {StockRecovery} from "@/components/jspl/StockWorkflowControls";
@@ -9,7 +10,7 @@ import { JsplSearchCombo } from "@/components/jspl/JsplSearchCombo";
 import { StockV2Header } from "@/components/jspl/StockV2Header";
 import { jsplColors as C } from "@/constants/jspl-design";
 
-const endpoint = "https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
+const endpoint = stockV2Endpoint;
 type SprayLine = {owner_code:string;job_id:number;external_tracecode_id:number;tracecode_name:string;area_ha:number;status:string;item_code:string;item_name:string;base_unit:string;rate_per_ha:number;planned_quantity:number;issued_quantity:number};
 type Product = {item_code:string;item_name:string;quantity:number;ao_quantity:number};
 type ReturnLine = {document_id:number;document_number:string;source_line_id:number;item_name:string;base_unit:string;available_to_return:number};

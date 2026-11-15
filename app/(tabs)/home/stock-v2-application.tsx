@@ -1,3 +1,4 @@
+import {stockV2Endpoint} from "@/utils/stock-v2-endpoint";
 import {StockDecimalInput} from "@/components/jspl/StockDecimalInput";
 import {StockV2Header} from "@/components/jspl/StockV2Header";
 import {useEffect,useMemo,useState} from "react";
@@ -8,7 +9,7 @@ import {ThemedView} from "@/components/themed-view";
 import {supabase} from "../../../supabase";
 import {jsplColors,jsplSpacing,jsplRadii,jsplSizes} from "@/constants/jspl-design";
 
-const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
+const endpoint=stockV2Endpoint;
 type Spray={job_id:number|string;tracecode_name:string;planned_week_start:string;area_ha:number;part_label:string|null;spray_type:string;water_litres_per_ha:number|null;sprayer_asset_code:string|null;item_code:string;item_name:string;base_unit:string;rate_per_ha:number};
 const fmt=(v:number,dp=3)=>Number.isFinite(v)?v.toLocaleString("en-GB",{minimumFractionDigits:dp,maximumFractionDigits:dp}):"—";
 const isoWeek=(date:string)=>{const d=new Date(date+"T12:00:00Z");d.setUTCDate(d.getUTCDate()+3-((d.getUTCDay()+6)%7));const year=d.getUTCFullYear();const fourth=new Date(Date.UTC(year,0,3));fourth.setUTCDate(fourth.getUTCDate()-((fourth.getUTCDay()+6)%7));return year+"/"+String(1+Math.round((d.getTime()-fourth.getTime())/604800000)).padStart(2,"0")};

@@ -1,3 +1,4 @@
+import {stockV2Endpoint} from "@/utils/stock-v2-endpoint";
 import {stockMutation} from "@/utils/stock-workflow";
 import {StockRecovery,StockSelect} from "@/components/jspl/StockWorkflowControls";
 import {stockContext,WorkflowContext} from "@/utils/stock-workflow";
@@ -16,7 +17,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from "react-native";
 import { supabase } from "../../../supabase";
 
-const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
+const endpoint=stockV2Endpoint;
 type ChemicalActive={name:string;amount:string;unit:"g/L"|"g/kg"};
 type ChemicalActiveRow={item_code:string;active_name:string;concentration:number;concentration_unit:"g/L"|"g/kg"};
 type Item={item_code:string;item_name:string;base_unit:string;active:boolean;opening_heyshott_quantity:number|null;opening_ao_quantity:number|null;historical_unit_cost:number|null;quantity:number;ao_quantity:number;input_type:string|null;input_category:string|null;active_ingredient:string|null;last_purchase_price:number|null;weighted_average_price:number|null;last_purchase_supplier:string|null};
