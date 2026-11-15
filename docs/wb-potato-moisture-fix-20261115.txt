@@ -1,0 +1,9 @@
+WB potato sync correction — 15/11/2026
+
+The user reported 17 pending WB Computer uploads and confirmed the loads are potatoes, which do not require moisture readings. Server logs at 09:10 Harare confirmed P0001 from wb_require_completed_moisture, rejecting a completed own ticket with no moisture percentage.
+
+Applied wb_potato_moisture_exemption to FarmingMain project azxaymxnicrsezeoxiau. The existing validation function now exempts a crop identified as Potatoes from the missing-moisture requirement. All other own crops retain the existing requirement. Supplied moisture values must still be between 0 and 100. No placeholder moisture values were inserted, and no ticket, weight, allocation or local queue record was changed by the correction.
+
+Eleven isolated PostgreSQL-compatible trigger checks passed: completed own potatoes without moisture; wheat/maize missing moisture rejection; missing crop rejection; valid grain moisture; third-party and incomplete-weighing behaviour; supplied out-of-range potato values; potato updates; and rejection of clearing grain moisture. Hosted function read-back confirms the exemption, other-crop requirement and range validation are installed.
+
+No WB Computer reinstall is needed for this server correction. The operator should click Sync Now to retry existing pending uploads. Recovery of all 17 queued uploads remains to be confirmed on the WB Computer; the release does not mark records synced or remove them from the queue.

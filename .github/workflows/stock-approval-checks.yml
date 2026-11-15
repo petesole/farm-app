@@ -16,3 +16,6 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm ci --prefix tests/stock-workflow --no-audit --no-fund
       - run: node tests/stock-workflow/run.cjs
+
+      - name: WB potato moisture regression
+        run: node tests/stock-workflow/wb-potato-moisture.cjs
