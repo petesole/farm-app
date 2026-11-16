@@ -9,6 +9,7 @@ async function equipmentSchema(db){
  insert into public.vehicle(vehicle_id,vehicle_name) values(50,'Other'),(1,'Tractor A');`);
  await db.exec(fs.readFileSync(root+'/supabase/'+migration,'utf8'));
  await db.exec('begin;'+fs.readFileSync(root+'/supabase/migrations/20261116134234_petrol_equipment_register.sql','utf8')+'commit;');
+ await db.exec(fs.readFileSync(root+'/supabase/migrations/20261116141338_oil_equipment_only.sql','utf8'));
 }
 module.exports={equipmentSchema};
 if(require.main===module)(async()=>{const db=await fixture();let passed=0;
@@ -49,14 +50,16 @@ if(require.main===module)(async()=>{const db=await fixture();let passed=0;
  await reject(()=>issue([{item_code:'PETROL',quantity:2,equipment_id:5}]),/fuel type/,'Discontinued equipment rejected');
  await reject(()=>issue([{item_code:'PETROL',quantity:2,equipment_id:2,equipment_other:'test'}]),/specific equipment/,'Cannot supply machine and Other together');
  await reject(()=>issue([{item_code:'PETROL',quantity:1,equipment_id:2}],{tracecode_id:null}),/tracecode/,'Petrol cannot post without a field or workshop');
- await reject(()=>issue([{item_code:'OIL',quantity:1,equipment_other:'Workshop use'}],{tracecode_id:null}),/tracecode/,'Other machinery oil cannot bypass required trace');
+ await reject(()=>issue([{item_code:'OIL',quantity:1}],{tracecode_id:null}),/specific equipment/,'Oil still requires equipment or described Other without a trace');
+ await reject(()=>issue([{item_code:'OIL',quantity:1,equipment_id:1},{item_code:'PETROL',quantity:1,equipment_id:2}],{tracecode_id:null}),/tracecode/,'Mixed petrol and oil still require a field for petrol');
  let op=uuid();let posted=await issue([{item_code:'PETROL',quantity:2,equipment_id:2}],{},op);
  check(!!posted.document_id,'Petrol posts against motorbike with the chosen field');
  check((await issue([{item_code:'PETROL',quantity:2,equipment_id:2}],{},op)).replayed,'Retried stock issue does not double deduct');
  let row=(await q('select * from stock_v2.document_line where document_id=$1',[posted.document_id])).rows[0];check(row.equipment_id===2&&row.equipment_name==='Motorbike A','Machine ID and historical name retained on issue line');
  await q("update public.vehicle set vehicle_name='Renamed bike' where vehicle_id=2");check(await scalar('select equipment_name from stock_v2.document_line where line_id=$1',[row.line_id])==='Motorbike A','Machine rename does not rewrite issued history');
  await issue([{item_code:'OIL',quantity:1,equipment_id:1},{item_code:'PETROL',quantity:3,equipment_id:3}],{tracecode_id:1});check(true,'Mixed oil and petrol lines retain their own destinations and shared field');
- await issue([{item_code:'OIL',quantity:1,equipment_id:2}]);await issue([{item_code:'OIL',quantity:1,equipment_id:4}]);check(true,'Oil accepts petrol equipment and non-powered implements');
+ const oil=await issue([{item_code:'OIL',quantity:1,equipment_id:2}],{tracecode_id:null});check(Number(await scalar('select count(*) from stock_v2.movement m join stock_v2.document_line l on l.line_id=m.document_line_id where l.document_id=$1 and m.external_tracecode_id is null',[oil.document_id]))===1,'Oil posts against a vehicle without a field');await issue([{item_code:'OIL',quantity:1,equipment_id:4}]);check(true,'Oil accepts petrol equipment and non-powered implements');
+ check(Number(await scalar("select count(*) from stock_v2.movement m join stock_v2.document_line l on l.line_id=m.document_line_id join stock_v2.item i using(item_id) where i.item_code='OIL' and m.quantity_delta<0 and m.external_tracecode_id is not null"))===0,'Oil lines never inherit a petrol field allocation');
  await issue([{item_code:'PETROL',quantity:1,equipment_other:'Mistblower for border work'}]);check(true,'Other petrol with description posts');
  await reject(()=>issue([{item_code:'MINERAL',quantity:1}],{tracecode_id:null}),/tracecode/,'Chemical mineral oil remains a field issue');
  await reject(()=>issue([{item_code:'MINERAL',quantity:1,equipment_id:2}],{tracecode_id:1}),/only available/,'Chemical products cannot be charged as equipment oil');

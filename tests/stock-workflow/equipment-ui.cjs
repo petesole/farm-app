@@ -83,7 +83,8 @@ async function testEquipmentUI(db,admin,stock){
  await click('Direct Issue');await until(()=>button('Select product ▾'),'New issue ready');await click('Select product ▾');await click('Petrol (L) · Available: 93.000 L');await combo('Petrol — Equipment','Renamed bike');
  await settle(()=>{const input=document.querySelector('input[aria-label="Petrol — Equipment"]');input.blur();input.focus()});check(!button('Tractor A'),'Petrol selector excludes diesel equipment');await click('Close');
  await click('Petrol ▾');await click('Gear Oil (L) · Available: 97.000 L');check(document.querySelector('input[aria-label="Gear Oil — Equipment"]').value==='','Changing product clears equipment destination');
- await combo('Gear Oil — Equipment','Tractor A');await fill('Quantity to issue OIL','1');await click('☐ Confirm transaction');check(!button('Post Direct Issue').disabled,'Oil retains selected field when changing equipment product');
+ await combo('Gear Oil — Equipment','Tractor A');await fill('Quantity to issue OIL','1');await click('☐ Confirm transaction');check(!button('Post Direct Issue').disabled,'Oil needs only equipment and quantity');check(!button('HS Workshop  ▾')&&!button('Choose active tracecode  ▾'),'Oil-only issue hides field selection');
+ await click('Post Direct Issue');await until(()=>document.body.textContent.includes('Posted Direct Issue successfully'),'Oil-only issue posted');check((await db.query('select external_tracecode_id from stock_v2.movement order by movement_id desc limit 1')).rows[0].external_tracecode_id===null,'Oil-only screen posts no field allocation');
  }finally{await settle(()=>mount.unmount());Module._load=oldLoad;dom.window.close();}
  return passed;
 }
