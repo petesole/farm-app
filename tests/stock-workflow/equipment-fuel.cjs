@@ -8,6 +8,7 @@ async function equipmentSchema(db){
  create function public.my_farm_app_roles() returns text[] language sql stable security definer set search_path=pg_catalog,public as $$select coalesce(array_agg(role_name),array[]::text[]) from public.app_user_role where user_id=auth.uid()$$;
  insert into public.vehicle(vehicle_id,vehicle_name) values(50,'Other'),(1,'Tractor A');`);
  await db.exec(fs.readFileSync(root+'/supabase/'+migration,'utf8'));
+ await db.exec('begin;'+fs.readFileSync(root+'/supabase/migrations/20261116134234_petrol_equipment_register.sql','utf8')+'commit;');
 }
 module.exports={equipmentSchema};
 if(require.main===module)(async()=>{const db=await fixture();let passed=0;
@@ -18,6 +19,12 @@ if(require.main===module)(async()=>{const db=await fixture();let passed=0;
  for(const f of ['drafts/stock_approval_workflow.sql','drafts/stock_audit_rectification.sql','drafts/combined_stocktake.sql','drafts/stocktake_print_permissions.sql','drafts/stock_operator_role.sql','migrations/20261113145707_stock_adjustment_report.sql','drafts/dated_adjustment_reconciliation.sql','drafts/sprayer_phone.sql','migrations/20261114060000_item_active_ingredients.sql','migrations/20261114060001_spray_similar_actives.sql'])await db.exec(fs.readFileSync(root+'/supabase/'+f,'utf8'));
  await equipmentSchema(db);
  check(await scalar("select fuel_type='DIESEL' and is_other from public.vehicle where vehicle_id=50"),'Existing Other and diesel classifications preserved');
+ const named=await q("select v.vehicle_name,v.fuel_type,t.type_code from public.vehicle v join public.vehicle_type t using(vehicle_type_id) where v.fuel_type='PETROL' order by v.vehicle_name");
+ check(JSON.stringify(named.rows.map(v=>v.vehicle_name))===JSON.stringify(['2 Wheel Mower','J Sole Mower','Mist Blower','Motorbike-Tich']),'All four requested petrol machines created with exact names');
+ check(named.rows.every(v=>v.fuel_type==='PETROL')&&named.rows.find(v=>v.vehicle_name==='Mist Blower').type_code==='MIST_BLOWER','Named petrol machines have the correct fuel and equipment types');
+ const registerBefore=JSON.stringify((await q('select * from public.vehicle order by vehicle_id')).rows);
+ await db.exec('begin;'+fs.readFileSync(root+'/supabase/migrations/20261116134234_petrol_equipment_register.sql','utf8')+'commit;');
+ check(JSON.stringify((await q('select * from public.vehicle order by vehicle_id')).rows)===registerBefore,'Reapplying named equipment does not duplicate or change machines');
  await db.exec(`insert into public.vehicle(vehicle_id,vehicle_name,fuel_type) values(2,'Motorbike A','PETROL'),(3,'Lawnmower A','PETROL'),(4,'Trailer','NONE'),(5,'Retired bike','PETROL');update public.vehicle set vehicle_discontinued=true where vehicle_id=5;`);
  await reject(()=>q("insert into public.vehicle(vehicle_name) values('Missing fuel')"),/fuel_type/,'New equipment requires an explicit fuel type');
  await reject(()=>q("insert into public.vehicle(vehicle_name,fuel_type) values('Bad','GAS')"),/vehicle_fuel_type_check/,'Unsupported fuel types rejected');
