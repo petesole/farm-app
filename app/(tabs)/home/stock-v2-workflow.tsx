@@ -151,7 +151,9 @@ export default function StockV2Workflow(){
  },[snapshot]);
  const outstandingSprays=snapshot?.outstanding_spray_count??jobs.filter(j=>j.lines.length>0&&Math.min(...j.lines.map(l=>l.rate_per_ha>0?Math.max(0,(l.planned_quantity-l.issued_quantity)/l.rate_per_ha):0))>0.0001).length;
  const selectedJob=jobs.find(x=>x.id===jobId);
- const activeTraces=traces.filter(t=>(cropId===null||(cropId===-1?t.crop_id==null:t.crop_id===cropId))&&(t.crop_id==null||crops.some(c=>c.crop_id===t.crop_id)));
+ const isWorkshop=(t:Trace)=>["WORKSHOPHS","HSWORKSHOP"].includes(t.tracecode_name.replace(/[^a-z0-9]/gi,"").toUpperCase());
+ const traceLabel=(t:Trace)=>isWorkshop(t)?"HS Workshop":t.tracecode_name;
+ const activeTraces=traces.filter(t=>isWorkshop(t)?(cropId===null||cropId===-1):(cropId===null||(cropId===-1?t.crop_id==null:t.crop_id===cropId))&&(t.crop_id==null||crops.some(c=>c.crop_id===t.crop_id)));
  const choosePO=(po:typeof orders[number])=>{setCheckedPOItems([]);setOrderId(po.id);setContractId(po.contract_id);setSupplier(po.supplier);setLines(po.lines.filter(x=>x.received_quantity<x.ordered_quantity).map((x,i)=>({...emptyLine(nextLine+i,x.item_code),quantity:"",unit_price:""})));setNextLine(n=>n+po.lines.length);setDropdown(null);resetEdit()};
  const chooseJob=(job:typeof jobs[number])=>{setJobId(job.id);setTraceId(job.lines[0].external_tracecode_id);setLines(job.lines.filter(x=>x.planned_quantity>x.issued_quantity).map((x,i)=>({...emptyLine(nextLine+i,x.item_code),quantity:String(Number((x.planned_quantity-x.issued_quantity).toFixed(4))),rate_per_ha:String(x.rate_per_ha)})));setNextLine(n=>n+job.lines.length);setDropdown(null);resetEdit()};
  const menu=(id:string,title:string,choices:{label:string;value:string;onSelect:()=>void}[],searchable=false)=> <View style={styles.dropdown}>
@@ -199,7 +201,7 @@ export default function StockV2Workflow(){
   if(tab==="POs Outstanding"&&!directGrv&&(!ref||n>(ref as OrderLine).ordered_quantity-(ref as OrderLine).received_quantity))return false;
   if(tab==="Planned Issue"&&(!ref||n>(ref as SprayLine).planned_quantity-(ref as SprayLine).issued_quantity))return false;
   return true;
- })&&(tab!=="POs Outstanding"||directGrv||!!selectedPO)&&(tab!=="Planned Issue"||!!selectedJob)&&(tab!=="Direct Issue"||ownerReady)&&(tab!=="Direct Issue"||!!traceId||selectedLines.every(l=>equipmentIssueKind(products.find(p=>p.item_code===l.item_code))));
+ })&&(tab!=="POs Outstanding"||directGrv||!!selectedPO)&&(tab!=="Planned Issue"||!!selectedJob)&&(tab!=="Direct Issue"||ownerReady)&&(tab!=="Direct Issue"||!!traceId);
  const submit=async()=>{if(!valid||!confirmed||busy)return;setBusy(true);setStatus("");
   const req=request&&request.action===action&&JSON.stringify(request.payload)===JSON.stringify(payload)?request:{action,payload,id:uuid()};setRequest(req);
   try{
@@ -316,9 +318,9 @@ export default function StockV2Workflow(){
    {tab==="Direct Issue"?<View style={styles.filters}>
     <StockSelect label="Stock owner" value={ownerCode} onChange={v=>selectOwner(String(v??""))} options={owners.filter(o=>o.active).map(o=>({id:o.owner_code,label:o.owner_name}))}/>
     {menu("crops",cropId===-1?"No Crop":crops.find(c=>c.crop_id===cropId)?.crop_name??"All crops",[{label:"All crops / No Crop",value:"all",onSelect:()=>{setCropId(null);setTraceId(null)}},{label:"No Crop",value:"no-crop",onSelect:()=>{setCropId(-1);setTraceId(null)}},...crops.map(c=>({label:c.crop_name,value:String(c.crop_id),onSelect:()=>{setCropId(c.crop_id);setTraceId(null)}}))])}
-    {menu("traces",currentTrace?.tracecode_name??"Choose active tracecode",activeTraces.map(t=>({label:t.tracecode_name,value:String(t.tracecode_id),onSelect:()=>{setTraceId(t.tracecode_id);setArea(String(t.tracecode_size??""));setPart("");}})),true)}
+    {menu("traces",currentTrace?traceLabel(currentTrace):"Choose active tracecode",activeTraces.map(t=>({label:traceLabel(t),value:String(t.tracecode_id),onSelect:()=>{setTraceId(t.tracecode_id);setArea(String(t.tracecode_size??""));setPart("");}})),true)}
    </View>:null}
-   {tab==="Direct Issue"&&lines.some(l=>equipmentIssueKind(products.find(p=>p.item_code===l.item_code)))?<ThemedText>Equipment fuel and oil require a machine or Other description on each line. Field/trace is optional for these products.</ThemedText>:null}
+   {tab==="Direct Issue"&&lines.some(l=>equipmentIssueKind(products.find(p=>p.item_code===l.item_code)))?<ThemedText>Equipment fuel and oil require a machine or Other description on each line. A field/trace is required. Choose HS Workshop for general use.</ThemedText>:null}
    {((tab!=="Purchase Orders"&&tab!=="POs Outstanding")||(ownerReady&&(tab==="Purchase Orders"?contractReady:directGrv?contractReady:documentReady&&!!selectedPO)))?<><View style={styles.productSectionHeading}><ThemedText style={styles.section}>Product lines</ThemedText></View>
    <ScrollView horizontal nestedScrollEnabled contentContainerStyle={{minWidth:tab==="POs Outstanding"&&!directGrv?1130:tab==="Purchase Orders"?790:tab==="Planned Issue"?710:650}}>
     <View style={{flex:1}}>

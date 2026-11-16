@@ -87,11 +87,7 @@ begin
    job:=(p_data->>'job_id')::bigint;
    select external_tracecode_id into tr from stock_v2.spray_job where job_id=job and owner_id=own and status='planned';
   end if;
-  if tr is not null and not exists(select 1 from public.tracecode where tracecode_id=tr) then raise exception 'Valid tracecode required';end if;
-  if tr is null and (p_action<>'direct_issue' or exists(
-   select 1 from jsonb_array_elements(p_data->'lines') x
-   left join stock_v2.item i on i.item_code=x->>'item_code'
-   where stock_v2.equipment_issue_kind(i.item_id) is null)) then raise exception 'Valid tracecode required';end if;
+  if tr is null or not exists(select 1 from public.tracecode where tracecode_id=tr) then raise exception 'Valid tracecode required';end if;
  end if;
  if p_action='order' then
   insert into stock_v2.order_header(order_number,owner_id,supplier_name,status,order_date)
@@ -211,7 +207,7 @@ begin
    end if;
    insert into stock_v2.document_line(document_id,item_id,quantity,requirement_id,note,equipment_id,equipment_other,equipment_name)
    values(doc,it,qty,req,case when p_action='direct_issue' then
-    concat_ws(' · ',equipment_label,nullif(el->>'mix_instruction','')) else 'DEMO issue' end,equipment,other_description,equipment_label) returning line_id into ln;
+    concat_ws(' Â· ',equipment_label,nullif(el->>'mix_instruction','')) else 'DEMO issue' end,equipment,other_description,equipment_label) returning line_id into ln;
    insert into stock_v2.movement(document_line_id,owner_id,location_id,quantity_delta,external_tracecode_id) values(ln,own,loc,-qty,tr);
   end if;
   arr:=arr||jsonb_build_array(jsonb_build_object('item_code',code,'quantity',qty));ct:=ct+1;
