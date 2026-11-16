@@ -9,6 +9,8 @@ export function JsplReturnNavigation(){
   const path=pathname.toLowerCase();
   if(!path || path==="/" || path.startsWith("/login") || path.startsWith("/pending-access") || path.startsWith("/modal"))return null;
   if(path.includes("/rainfall/") || path==="/rainfall-entry")return null;
+  // Stock screens supply their own single return control.
+  if(path==="/stock" || path.endsWith("/stock-test") || path.includes("stock-v2-"))return null;
   const isMain=path.endsWith("/main-dashboard") || path.endsWith("/field-dashboard") || path==="/fuel" || path.endsWith("/fuel") || path==="/weighbridge" || path.endsWith("/wb-admin");
   if(isMain)return null;
   let label="Main";

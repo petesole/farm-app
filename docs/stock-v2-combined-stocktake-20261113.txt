@@ -1,0 +1,35 @@
+Combined HS/AO stocktake — development change, 13/11/2026
+
+Print Stock Take: choose stock groups only; Print Stock Sheet saves a dated snapshot and opens preview. Products are those with recorded positive HS or AO warehouse stock in the chosen groups, preserving the existing stock-sheet eligibility rule. Category, Pastel Code, Product, HS, AO are the only printed columns; count cells are blank. Category is narrower. Print and genuine XLSX use the same saved row positions. No stock-owner selector or product listing on the selection screen.
+
+Input Stock Take: oldest pending sheet first, identified by date, groups and business sheet number. Enter both HS and AO quantities, including explicit zero. Save requires all counts, saves atomically, closes the editor and removes the sheet from pending input. Saves do not directly post stock movements; the established Admin approval step remains.
+
+Admin History: all dated sheets oldest first. Reopen and correct completed sheets with a reason. Earlier owner-specific stock sheets remain accessible separately; existing records were not converted. Stock adjustments have a separate Admin dashboard entry.
+
+Admin approval: separate HS/AO inventory movements under one adjustment document; valuation uses existing posting routines. First approval blocks if stock moved since the print snapshot, preserving the existing reconciliation safeguard. Historical correction applies only the change from the last approved count, preserving subsequent movements. Version checks prevent overwriting another edit; operation references prevent duplicate submissions; count and correction audit records preserve prior values and reasons.
+
+New tables and command function are confined to the private stock_v2 test schema, with RLS and no direct browser access. Other schemas, older stocktakes and existing movement rows are unchanged.
+
+Verification: 116 local checks passed, including actual SQL/Edge/UI flows against an isolated synthetic database, operator/Admin permissions, frozen print ordering, count completion, pending-list removal, historical corrections, retry protection, stock movement safeguards and existing PO/receiving/spray/report regressions. Shared ERP UI/date checks and TypeScript passed. Physical printer output, mobile device behavior and real-role signed-in acceptance remain to be verified.
+
+Release verification
+- Implementation commit: 3961263 on development.
+- Applied migration: 20261113142150_combined_stocktake (recorded exact Supabase-generated version).
+- Deployed workflow handler version 81, JWT verification enabled; downloaded source matches implementation commit.
+- Development web deployment: nny6mypv21, alias development.
+- Stock Take URL returned HTTP 200 and the expected new entry-966f9bf8a86c0511b2c91f695b38fea7.js bundle.
+- Existing 73 documents and 388 movement rows preserved; movement digest before/after 2656ffbe833a29c27f8c8f4b13b628cf.
+- No operational count, adjustment or test transaction posted during deployment verification; new combined sheet table remains empty.
+- All three new tables have RLS enabled and no authenticated browser SELECT permission.
+- Existing ST-1 through ST-5 retained.
+- No production alias or main branch change.
+
+Print permission clarification
+Only Admin and active Clerk may create stocktake sheets or open print/reprint preview. The separate Stock operator role retains count input, with no printing controls. No user role assignments are changed. Server authorization checks cover combined sheet creation, explicit print preview requests and legacy sheet creation. Historical editing and stock adjustment approval remain Admin-only.
+123 regression checks passed, including Admin/Clerk print access, inactive Clerk denial, Stock denial despite a forged client permission flag, Stock input access without printing, reprint access and previous workflow regressions. TypeScript and shared UI/date checks passed.
+
+Staff access now distinguishes Clerk from Stock operator. Existing Clerk records retain their role; no accounts are reassigned. Stock operator is a separate assignable role with normal Stock input access and no stocktake printing. Supervisor also has no stocktake printing. Role assignment remains Admin-only and audited.
+Print permission migration applied: 20261113142833_stocktake_print_permissions. Workflow handler version 82 matches implementation commit 6c2ba69, JWT verification enabled. Existing 73 documents/388 movements and movement digest are unchanged.
+
+Separate Stock operator role migration: 20261113143309_stock_operator_role. Role assignment and admission support Clerk, Stock operator, Supervisor and Admin; only Clerk/Admin pass stocktake printing authorization. No user assignments changed. Rerun: all 123 checks, TypeScript, shared ERP UI/date checks and final Expo web export passed. Actual signed-in Clerk/Stock device acceptance remains unverified.
+Final permission frontend: dxap5n4h0k, development alias verified HTTP 200 with entry-30d86e25bde21a16e91a875d3fb0e6fd.js. Development alias reapplied after initially serving the previous bundle; final alias and immutable deployment both match. Production alias unchanged.

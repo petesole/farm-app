@@ -4,15 +4,23 @@
     "strict": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./*"]
-    }
+      "@/*": [
+        "./*"
+      ]
+    },
+    "moduleSuffixes": [
+      ".native",
+      ""
+    ]
   },
   "include": [
     "**/*.ts",
     "**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "supabase/functions"
   ]
 }
-
-

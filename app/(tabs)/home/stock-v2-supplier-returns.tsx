@@ -1,0 +1,66 @@
+import {StockSelect} from "@/components/jspl/StockWorkflowControls";
+import {stockMutation} from "@/utils/stock-workflow";
+import {parseJsplDateInput,displayJsplDate} from "@/utils/jspl-input";
+import {useEffect,useRef,useState} from "react";
+import {useRouter} from "expo-router";
+import {ActivityIndicator,Pressable,ScrollView,StyleSheet,TextInput,View} from "react-native";
+import {StockV2Header} from "@/components/jspl/StockV2Header";
+import {ThemedText} from "@/components/themed-text";
+import {ThemedView} from "@/components/themed-view";
+import {supabase} from "../../../supabase";
+import {jsplColors} from "@/constants/jspl-design";
+const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
+type Product={item_code:string;item_name:string;quantity:number;base_unit:string;ao_quantity?:number};
+type Receipt={display_no:number;document_id:number;receipt_line_id:number;document_number:string;document_date:string;item_code:string;item_name:string;received_quantity:number;previously_returned:number;original_unit_price:number|null};
+type Return={document_id:number;document_number:string;supplier_name:string;credit_status:string;return_mode:string;lines:{quantity:number;agreed_price:number;item_name:string;inventory_value:number;valuation_difference:number;original_grv_value:number|null;sources:{grv:string;quantity:number}[]}[]};
+const displayDate=(s:string)=>/^\d{4}-\d{2}-\d{2}/.test(s)?s.slice(8,10)+"/"+s.slice(5,7)+"/"+s.slice(0,4):s;
+const iso=(value:string)=>parseJsplDateInput(value) ?? "";
+export default function SupplierReturns(){
+ const router=useRouter();const pageRef=useRef<ScrollView>(null);const [owner,setOwner]=useState("JS"),[supplier,setSupplier]=useState(""),[reference,setReference]=useState(""),[reason,setReason]=useState("");
+ const [mode,setMode]=useState<"specific_grv"|"supplier_stock">("specific_grv"),[suppliers,setSuppliers]=useState<{name:string;owner_code:string}[]>([]),[supplierOpen,setSupplierOpen]=useState(false);const [products,setProducts]=useState<Product[]>([]),[returns,setReturns]=useState<Return[]>([]),[search,setSearch]=useState("");
+ const [lines,setLines]=useState<Record<string,{qty:string;price:string}>>({});const [receipts,setReceipts]=useState<Receipt[]>([]);const [alloc,setAlloc]=useState<Record<number,string>>({});
+ const [grvId,setGrvId]=useState<number|null>(null),[grvOpen,setGrvOpen]=useState(false);
+ const [creditId,setCreditId]=useState<number|null>(null),[creditNo,setCreditNo]=useState(""),[creditDate,setCreditDate]=useState("");
+ const [loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");
+ const getSession=async()=>{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");return session.access_token};
+ const load=async()=>{setLoading(true);try{const token=await getSession();const [a,b,c]=await Promise.all([fetch(endpoint,{headers:{authorization:"Bearer "+token}}),fetch(endpoint+"?supplier_returns=1",{headers:{authorization:"Bearer "+token}}),fetch(endpoint+"?supplier_return_suppliers=1",{headers:{authorization:"Bearer "+token}})]);const x=await a.json(),y=await b.json(),z=await c.json();if(!a.ok||!b.ok||!c.ok)throw Error(x.error||y.error||z.error||"Could not load stock");setProducts(x.items??[]);setReturns(y.rows??[]);setSuppliers(z.rows??[])}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setLoading(false)}};
+ useEffect(()=>{void load()},[]);
+ const fetchReceipts=async()=>{setError("");try{const token=await getSession();const r=await fetch(endpoint+"?supplier_return_sources=1&supplier="+encodeURIComponent(supplier.trim())+"&owner="+encodeURIComponent(owner),{headers:{authorization:"Bearer "+token}});const d=await r.json();if(!r.ok)throw Error(d.error||"Could not load GRVs");setReceipts((d.rows??[]).map((r:Receipt)=>({...r,document_id:Number(r.document_id),receipt_line_id:Number(r.receipt_line_id),received_quantity:Number(r.received_quantity),previously_returned:Number(r.previously_returned),original_unit_price:r.original_unit_price==null?null:Number(r.original_unit_price)})));setAlloc({});setGrvId(null);setGrvOpen(false)}catch(e){setError(e instanceof Error?e.message:String(e))}};
+ const selectedGrvLines=receipts.filter(x=>x.document_id===grvId);
+ const post=async()=>{if(!supplier.trim()){setError("Choose a supplier");return}if(reason.trim().length<5){setError("Enter a reason for return (at least five characters)");return}if(mode==="specific_grv"&&!grvId){setError("Select a specific GRV first");return}const chosen=Object.entries(lines).filter(([,v])=>Number(v.qty)>0).map(([item_code,v])=>({item_code,quantity:Number(v.qty),agreed_price:v.price.trim()?Number(v.price):0,sources:mode==="specific_grv"?selectedGrvLines.filter(x=>x.item_code===item_code&&Number(alloc[x.receipt_line_id])>0).map(x=>({receipt_line_id:x.receipt_line_id,quantity:Number(alloc[x.receipt_line_id])})):[]}));if(mode==="specific_grv"&&chosen.some(l=>{const rec=selectedGrvLines.find(x=>x.item_code===l.item_code);const p=products.find(x=>x.item_code===l.item_code);return !rec||l.quantity>Math.max(0,Math.min(rec.received_quantity-rec.previously_returned,Number(owner==="JS"?p?.quantity:p?.ao_quantity)||0))})) {setError("Return quantity cannot exceed the original GRV balance or physical stock");return}if(!chosen.length||chosen.some(l=>!Number.isFinite(l.agreed_price)||l.agreed_price<0)){setError("Enter return quantities and a valid optional expected credit price");return}
+ setSaving(true);setError("");try{const d=await stockMutation("supplier-return",{action:"supplier_return_post",owner_code:owner,supplier_name:supplier,return_mode:mode,return_reference:reference,reason,lines:chosen});setNotice("Posted "+d.result.document_number+". Supplier credit will be reconciled separately by Admin.");setCreditId(Number(d.result.document_id));setCreditNo("");setCreditDate("");pageRef.current?.scrollTo({y:0,animated:true});setLines({});setReceipts([]);setAlloc({});setGrvId(null);setSupplier("");setReference("");setReason("");await load()}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setSaving(false)}};
+ return <ThemedView style={styles.root}><ScrollView ref={pageRef} contentContainerStyle={styles.page}>
+ <StockV2Header title="Supplier Returns / Credit Notes"/>
+
+ <Pressable style={styles.button} onPress={()=>router.push("/(tabs)/home/stock-v2-credits")}><ThemedText style={styles.white}>Open Supplier Credit Notes & Reconciliation</ThemedText></Pressable>
+ <ThemedText>Supplier returns reduce physical stock when dispatched. Stock enters the actual credit separately for Admin approval, including partial credit notes, multiple returns and differences.</ThemedText>
+  <ThemedText style={styles.heading}>New Supplier Return</ThemedText>
+ <StockSelect label="Stock owner" value={owner} options={['JS','AO'].map(x=>({id:x,label:x}))} onChange={v=>{setOwner(String(v??'JS'));setSupplier('');setGrvId(null);setLines({});setReceipts([]);setAlloc({})}}/>
+ <StockSelect label="Return type" value={mode} options={[{id:'specific_grv',label:'Against specific GRV'},{id:'supplier_stock',label:'General return to supplier'}]} onChange={v=>{setMode(v as 'specific_grv'|'supplier_stock');setGrvId(null);setAlloc({});setReceipts([]);setLines({})}}/>
+ <StockSelect label="Supplier" value={supplier} options={suppliers.filter(v=>v.owner_code===owner).map(v=>({id:v.name,label:v.name}))} onChange={v=>{setSupplier(String(v??''));setReceipts([]);setAlloc({});setGrvId(null);setLines({})}}/>
+ <TextInput style={styles.input} placeholder="Supplier collection reference (optional)" value={reference} onChangeText={setReference}/>
+ <TextInput style={styles.input} placeholder="Reason for return (required)" value={reason} onChangeText={setReason}/>
+ {mode==="specific_grv"?<View style={{gap:8}}><Pressable style={styles.choice} onPress={()=>void fetchReceipts()}><ThemedText>Load GRVs for Selected Supplier</ThemedText></Pressable>
+ {receipts.length>0?<StockSelect label="Original GRV" value={grvId} options={receipts.filter((v,i,a)=>a.findIndex(x=>x.document_id===v.document_id)===i&&receipts.some(x=>x.document_id===v.document_id&&x.received_quantity>x.previously_returned)).map(x=>({id:x.document_id,label:'GRV '+x.display_no+' · '+displayDate(x.document_date)}))} onChange={v=>{setGrvId(v==null?null:Number(v));setLines({});setAlloc({})}}/>:null}
+ </View>:null}
+ <ThemedText>{mode==="specific_grv"?"Allocate each returned quantity against its original GRV.":"Return any available stock to the selected supplier without linking it to a specific GRV. Inventory value and negotiated credit are reconciled separately."}</ThemedText>
+ {mode==="supplier_stock"?<View style={{gap:6}}> <TextInput style={styles.input} placeholder="Find product" value={search} onChangeText={setSearch}/>
+ {loading?<ActivityIndicator/>:products.filter(p=>p.item_name.toLowerCase().includes(search.toLowerCase())||p.item_code.toLowerCase().includes(search.toLowerCase())).filter(p=>Number(owner==="JS"?p.quantity:p.ao_quantity)>0).slice(0,45).map(p=><View key={p.item_code} style={styles.product}>
+ <View style={{flex:2}}><ThemedText style={styles.strong}>{p.item_name}</ThemedText><ThemedText>{p.item_code} · Available {owner==="JS"?p.quantity:p.ao_quantity} {p.base_unit==="UNVERIFIED"?"":p.base_unit}</ThemedText></View>
+ <TextInput style={[styles.input,{flex:1}]} placeholder="Qty" keyboardType="decimal-pad" value={lines[p.item_code]?.qty??""} onChangeText={v=>setLines(old=>({...old,[p.item_code]:{qty:v,price:old[p.item_code]?.price??""}}))}/>
+ <TextInput style={[styles.input,{flex:1}]} placeholder="Est. credit $/unit" keyboardType="decimal-pad" value={lines[p.item_code]?.price??""} onChangeText={v=>setLines(old=>({...old,[p.item_code]:{qty:old[p.item_code]?.qty??"",price:v}}))}/>
+ </View>)}
+ </View>:null}
+ {mode==="specific_grv"&&grvId?<View style={{gap:7}}><ThemedText style={styles.strong}>Original GRV Products</ThemedText>
+ {selectedGrvLines.map(r=>{const p=products.find(x=>x.item_code===r.item_code);const physical=Number(owner==="JS"?p?.quantity:p?.ao_quantity)||0;const eligible=Math.max(0,Math.min(r.received_quantity-r.previously_returned,physical));return <View key={r.receipt_line_id} style={styles.product}>
+ <View style={{flex:3}}><ThemedText style={styles.strong}>{r.item_name}</ThemedText><ThemedText>Original GRV qty: {r.received_quantity} · Original price: {r.original_unit_price==null?"Unpriced":"$"+Number(r.original_unit_price).toFixed(2)}</ThemedText><ThemedText>Previously returned: {r.previously_returned} · Physical stock: {physical} · Max return: {eligible}</ThemedText></View>
+ <TextInput style={[styles.input,{flex:1}]} placeholder="Return qty" keyboardType="decimal-pad" value={alloc[r.receipt_line_id]??""} onChangeText={v=>{setAlloc(a=>({...a,[r.receipt_line_id]:v}));setLines(a=>({...a,[r.item_code]:{qty:v,price:a[r.item_code]?.price??(r.original_unit_price==null?"":String(r.original_unit_price))}}))}}/>
+ <TextInput style={[styles.input,{flex:1}]} placeholder="Est. credit $/unit" keyboardType="decimal-pad" value={lines[r.item_code]?.price??(r.original_unit_price==null?"":String(r.original_unit_price))} onChangeText={v=>setLines(a=>({...a,[r.item_code]:{qty:a[r.item_code]?.qty??"",price:v}}))}/>
+ </View>})}</View>:null}
+ <Pressable disabled={saving} style={styles.button} onPress={()=>void post()}><ThemedText style={styles.white}>{saving?"Posting…":"Post Physical Supplier Return"}</ThemedText></Pressable>
+  <ThemedText style={styles.heading}>Credited Returns (History)</ThemedText>
+ {returns.filter(r=>r.credit_status==="confirmed").map(r=><View key={r.document_id} style={styles.panel}><ThemedText style={styles.strong}>{r.document_number} · {r.supplier_name}</ThemedText><ThemedText>Credit note confirmed · {r.lines.length} product lines</ThemedText></View>)}
+ {error?<ThemedText style={styles.error}>{error}</ThemedText>:null}{notice?<ThemedText style={styles.link}>{notice}</ThemedText>:null}
+ </ScrollView></ThemedView>;
+}
+const styles=StyleSheet.create({root:{flex:1,backgroundColor:jsplColors.background},page:{padding:16,gap:12},heading:{fontSize:20,fontWeight:"700"},row:{flexDirection:"row",gap:8},choice:{padding:11,borderWidth:1,borderColor:"#b6cabd",borderRadius:5},active:{backgroundColor:"#cee8d6"},input:{borderWidth:1,borderColor:"#cbd8cf",padding:10,backgroundColor:"#fff",borderRadius:5,minHeight:42},product:{flexDirection:"row",alignItems:"center",gap:6,borderBottomWidth:1,borderColor:"#e0e6e0",paddingVertical:5},strong:{fontWeight:"700"},button:{backgroundColor:jsplColors.primary,padding:13,borderRadius:5,alignSelf:"flex-start"},white:{color:"#fff",fontWeight:"700"},panel:{backgroundColor:"#fff",padding:12,borderRadius:7,gap:7},error:{color:"#b02d20",fontWeight:"700"},link:{color:jsplColors.primary}});
