@@ -18,7 +18,7 @@ begin
 end $$;
 
 insert into public.vehicle_type(type_code,type_name,sort_order)
-values('MIST_BLOWER','Mist Blower',50),('MOTORBIKE','Motorbike',60),('MOWER','Mower',70)
+values('GENERATOR','Generator',40),('MIST_BLOWER','Mist Blower',50),('MOTORBIKE','Motorbike',60),('MOWER','Mower',70)
 on conflict(type_code) do nothing;
 
 do $$
@@ -28,7 +28,8 @@ begin
   ('Mist Blower','MIST_BLOWER'),
   ('Motorbike-Tich','MOTORBIKE'),
   ('2 Wheel Mower','MOWER'),
-  ('J Sole Mower','MOWER')
+  ('J Sole Mower','MOWER'),
+  ('JS Genset','GENERATOR')
  ) as requested(machine_name,type_code) loop
   select count(*),min(fuel_type) into existing_count,existing_fuel
    from public.vehicle where lower(btrim(vehicle_name))=lower(entry.machine_name);
