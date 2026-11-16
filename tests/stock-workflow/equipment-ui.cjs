@@ -1,0 +1,83 @@
+const fs=require('fs'),Module=require('module'),assert=require('node:assert/strict');
+const root=require('path').resolve(__dirname,'../..');
+async function testEquipmentUI(db,admin,stock){
+ const {JSDOM}=require('jsdom');const dom=new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>',{url:'http://localhost'});
+ global.window=dom.window;global.document=dom.window.document;Object.defineProperty(global,'navigator',{value:dom.window.navigator,configurable:true});global.HTMLElement=dom.window.HTMLElement;global.IS_REACT_ACT_ENVIRONMENT=true;
+ const React=require(root+'/node_modules/react'),{createRoot}=require(root+'/node_modules/react-dom/client');const ts=require(root+'/node_modules/typescript');const oldLoad=Module._load;let actor=admin,routeParams={},stringSprayIds=false;const navigate=x=>{routing.push(x);routeParams=typeof x==='object'?x.params??{}:{}};
+ const {edge}=require('./edge-harness.cjs');const storage=new Map();const routing=[];
+ const previewStyle=(value)=>{
+  if(!process.env.SPRAY_PREVIEW_DIR)return undefined;
+  const flatten=v=>Array.isArray(v)?Object.assign({},...v.filter(Boolean).map(flatten)):v??{};
+  const st={...flatten(value)};for(const [key,props] of Object.entries({paddingHorizontal:['paddingLeft','paddingRight'],paddingVertical:['paddingTop','paddingBottom'],marginHorizontal:['marginLeft','marginRight'],marginVertical:['marginTop','marginBottom']}))if(st[key]!=null){for(const p of props)st[p]=st[key];delete st[key]};if(st.borderWidth)st.borderStyle='solid';return st;
+ };
+ const snapshot=(name)=>{if(!process.env.SPRAY_PREVIEW_DIR)return;fs.mkdirSync(process.env.SPRAY_PREVIEW_DIR,{recursive:true});fs.writeFileSync(process.env.SPRAY_PREVIEW_DIR+'/'+name+'.html','<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0;font-family:Arial;background:#f5f7f5;font-size:14px}*{box-sizing:border-box}button,input{font:inherit}button{cursor:pointer;background:transparent}input{max-width:100%} .preview-note{padding:10px 20px;background:#fff;color:#526358}</style></head><body><div class="preview-note">Local development preview · sample data</div>'+document.body.innerHTML+'</body></html>')};
+ const native={Alert:{alert:()=>{}},StyleSheet:{create:x=>x},useWindowDimensions:()=>({width:1200,height:900}),Platform:{OS:'web'}};
+ const Tabs=({children,initialRouteName})=>React.createElement('div',{'data-initial-route':initialRouteName},children);Tabs.Screen=({name,options})=>React.createElement('span',{'data-tab':name,'data-href':options?.href??''});
+ native.Switch=({value,onValueChange,disabled})=>React.createElement('input',{type:'checkbox',checked:value,onChange:e=>onValueChange(e.target.checked),disabled});
+ for(const name of ['View','ScrollView','Text','Image','ActivityIndicator','Modal','Pressable','TextInput'])native[name]=({children,style,contentContainerStyle,onPress,onChangeText,onFocus,onBlur,accessibilityLabel,accessibilityRole,accessibilityState,keyboardType,editable,visible,disabled,...props})=>{
+  if(name==='Modal'&&!visible)return null;
+  if(name==='TextInput')return React.createElement('input',{value:props.value??'',placeholder:props.placeholder,'aria-label':accessibilityLabel,onChange:e=>onChangeText?.(e.target.value),onFocus,onBlur,disabled:editable===false,style:previewStyle(style)});
+  if(name==='Pressable')return React.createElement('button',{onClick:onPress,disabled,'aria-label':accessibilityLabel,role:accessibilityRole,'aria-checked':accessibilityState?.checked,style:previewStyle(style)},children);
+  if(name==='Image')return process.env.SPRAY_PREVIEW_DIR&&previewStyle(style)?.width===64?React.createElement('img',{src:'data:image/png;base64,'+fs.readFileSync(root+'/assets/images/jspl_farm_logo.png').toString('base64'),style:previewStyle(style)}):null;
+  return React.createElement(name==='Text'?'span':'div',{...(name==='Text'?{'data-color':style?.color}:{}),style:process.env.SPRAY_PREVIEW_DIR?{display:name==='Text'?'block':'flex',...(name==='Text'?{}:{flexDirection:'column',minWidth:0}),...previewStyle(style),...previewStyle(contentContainerStyle)}:undefined},children);
+ };
+ Module._load=function(name,parent,isMain){
+  if(name==='react-native')return native;
+  if(name==='expo-router')return {useLocalSearchParams:()=>routeParams,usePathname:()=>"/stock-test",Tabs,Redirect:({href})=>React.createElement('div',{'data-redirect':href}),useRouter:()=>({push:navigate,replace:navigate}),router:{push:navigate,replace:navigate},useFocusEffect:cb=>React.useEffect(cb,[cb])};
+  if(name==='@/components/themed-text')return {ThemedText:native.Text};
+  if(name==='@/components/themed-view')return {ThemedView:native.View};
+  if(name==='@react-native-async-storage/async-storage')return {getItem:async k=>storage.get(k)??null,setItem:async(k,v)=>storage.set(k,v),removeItem:async k=>storage.delete(k)};
+  if(name==='@/lib/sprayer-identity')return {getPhoneIdentity:async()=>null,setPhoneIdentity:async()=>{},clearPhoneIdentity:async()=>{}};
+  if(name==='@react-native-picker/picker'){const Picker=({children,selectedValue,onValueChange,enabled})=>React.createElement('select',{value:selectedValue??'',disabled:enabled===false,onChange:e=>onValueChange(e.target.value?Number(e.target.value):null)},children);Picker.Item=({label,value})=>React.createElement('option',{value:value??''},label);return {Picker};}
+  if(name==='@/supabase'||name==='../../../supabase'||name==='../../supabase')return {supabase:{from:table=>{
+   let op='select',data=null,where=[],single=false,sort=null;
+   const b={select:()=>b,not:()=>b,is:()=>b,limit:()=>b,order:k=>{sort=k;return b},eq:(k,v)=>{where.push([k,v]);return b},single:()=>{single=true;return b},insert:d=>{op='insert';data=d;return b},update:d=>{op='update';data=d;return b},then:(yes,no)=>{
+    let values=[],sql='select * from public.'+table;
+    if(op==='insert'){values=Object.values(data);sql='insert into public.'+table+'('+Object.keys(data).join(',')+') values('+values.map((_,i)=>'$'+(i+1)).join(',')+')';}
+    if(op==='update'){values=Object.values(data);sql='update public.'+table+' set '+Object.keys(data).map((k,i)=>k+'=$'+(i+1)).join(',');}
+    if(where.length){sql+=' where '+where.map(([k,v])=>{values.push(v);return k+'=$'+values.length}).join(' and ');}
+    if(op!=='select')sql+=' returning *';else if(sort)sql+=' order by '+sort;
+    return db.query(sql,values).then(r=>({data:single?r.rows[0]:r.rows,error:null})).catch(e=>({data:null,error:{message:e.message}})).then(yes,no);
+   }};return b;},rpc:async()=>({data:(await db.query('select role_name from public.app_user_role where user_id=$1',[actor])).rows.map(r=>r.role_name)}),auth:{getUser:async()=>({data:{user:{id:actor}}}),getSession:async()=>({data:{session:{access_token:'local',user:{id:actor}}}})}}};
+  if(name.endsWith('.png'))return 1;
+  if(name.startsWith('@/'))name=root+'/'+name.slice(2);
+  return oldLoad.call(this,name,parent,isMain);
+ };
+ for(const ext of ['.ts','.tsx'])require.extensions[ext]=(mod,file)=>mod._compile(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,file);
+ global.fetch=async(url,options={})=>{const name=String(url).includes('stock-v2-sprayer')?'stock-v2-sprayer':String(url).includes('stock-v2-credits')?'stock-v2-credits':'stock-v2-demo-workflow';const query=String(url).includes('?')?'?'+String(url).split('?')[1]:'';const r=await edge(db,name,actor)(query,options.body?JSON.parse(options.body):undefined);if(stringSprayIds){if(r.body.sprays)r.body.sprays=r.body.sprays.map(l=>({...l,job_id:String(l.job_id),external_tracecode_id:String(l.external_tracecode_id)}));if(query.includes('spray_return_issues')&&r.body.rows)r.body.rows=r.body.rows.map(l=>({...l,document_id:String(l.document_id),source_line_id:String(l.source_line_id)}));}return new Response(JSON.stringify(r.body),{status:r.status})};
+ const mount=createRoot(document.getElementById('root'));const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+ const settle=async(fn)=>{await React.act(async()=>{fn?.();await sleep(80)});};
+ const until=async(fn,label)=>{for(let n=0;n<50;n++){if(fn())return;await settle();}throw Error(label+'\n'+document.body.textContent)};
+ const button=(label)=>[...document.querySelectorAll('button')].find(b=>b.textContent.trim()===label);
+ const click=async label=>{const b=button(label);assert(b,'Button '+label);await settle(()=>b.click());};
+ const combo=async(label,choice)=>{const input=document.querySelector('input[aria-label="'+label+'"]');assert(input,'Combo '+label);await settle(()=>{input.blur();input.focus()});await click(choice);};
+ const fill=async(label,value)=>{const input=[...document.querySelectorAll('input')].find(n=>n.getAttribute('aria-label')===label);assert(input,'Field '+label+'; available '+JSON.stringify([...document.querySelectorAll('input')].map(x=>x.getAttribute('aria-label'))));await settle(()=>{const setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;setter.call(input,value);input.dispatchEvent(new window.Event('input',{bubbles:true}));});};
+ const render=async name=>{const C=require(root+'/app/'+name+'.tsx').default;await settle(()=>mount.render(React.createElement(C)));};
+
+ let passed=0;const check=(v,n)=>{assert(v,n);console.log('PASS',n);passed++};
+ try{
+ await db.exec(`alter table public.vehicle add column vehicle_model text,add column vehicle_assignment_id bigint,add column tractor_class_id bigint,add column tractor_size numeric,add column consumption numeric;
+ create table public.vehicle_assignment(vehicle_assignment_id bigint,vehicle_assignment text);create table public.tractor_class(tractor_class_id bigint,class_name text,sort_order int);`);
+ routeParams={mode:'create'};await render('(tabs)/vehicle-detail');await until(()=>document.querySelector('input[aria-label="Fuel type"]'),'Fuel type edit field');
+ await fill('Vehicle name','Mistblower A');await click('Save Vehicle');check(document.body.textContent.includes('Select Diesel, Petrol or No fuel.'),'New vehicle cannot save without fuel type');
+ await combo('Fuel type','Petrol');await click('Save Vehicle');await until(()=>routing.at(-1)==='/(tabs)/vehicle-management','Vehicle saved to parent list');
+ let vehicle=(await db.query("select * from public.vehicle where vehicle_name='Mistblower A'")).rows[0];check(vehicle.fuel_type==='PETROL','Vehicle edit persists petrol classification');
+ await render('(tabs)/vehicle-management');await until(()=>document.body.textContent.includes('Mistblower A'),'New equipment visible without browser refresh');check(document.body.textContent.includes('Petrol'),'Vehicle list displays fuel type');
+ routeParams={id:String(vehicle.vehicle_id),mode:'edit'};await render('(tabs)/vehicle-detail');await until(()=>document.querySelector('input[aria-label="Fuel type"]')?.value==='Petrol','Petrol classification restored on edit');
+ await combo('Fuel type','No fuel (e.g. implement)');await click('Save Vehicle');await until(()=>routing.at(-1)==='/(tabs)/vehicle-management','Fuel type correction confirmed');check((await db.query('select fuel_type from public.vehicle where vehicle_id=$1',[vehicle.vehicle_id])).rows[0].fuel_type==='NONE','Vehicle edit supports future non-powered implements');
+ routeParams={id:'new'};await render('(tabs)/vehicle-type-edit');await until(()=>!button('Save type').disabled,'Type editor ready');await fill('Type name','Mistblower');await fill('Type code','MISTBLOWER');await click('Save type');await until(()=>routing.at(-1)==='/(tabs)/vehicle-types','Type saved');
+ await render('(tabs)/vehicle-types');await until(()=>document.body.textContent.includes('Mistblower'),'New vehicle type in list');check(true,'Vehicle type create and return refresh work');
+ const type=(await db.query("select * from public.vehicle_type where type_code='MISTBLOWER'")).rows[0];routeParams={id:String(type.vehicle_type_id)};await render('(tabs)/vehicle-type-edit');await until(()=>document.querySelector('input[aria-label="Type name"]')?.value==='Mistblower','Type editor loaded');await fill('Type name','Mistblowers');await click('Save type');await until(()=>routing.at(-1)==='/(tabs)/vehicle-types','Type renamed');check((await db.query('select type_name from public.vehicle_type where vehicle_type_id=$1',[type.vehicle_type_id])).rows[0].type_name==='Mistblowers','Vehicle type rename persists without changing ID');
+ actor=stock;routeParams={operation:'Direct Issue'};await render('(tabs)/home/stock-v2-workflow');await until(()=>button('Select product ▾'),'Direct issue ready');await click('Select product ▾');await click('Petrol (L) · Available: 94.000 L');await fill('Quantity to issue PETROL','1');
+ await combo('Petrol — Equipment','Other');await click('☐ Confirm transaction');check(button('Post Direct Issue').disabled,'Other petrol cannot post without description');
+ await fill('Other description (required)','Border mistblower');await click('☐ Confirm transaction');check(!button('Post Direct Issue').disabled,'Other petrol description enables confirmed save');
+ const count=Number((await db.query('select count(*) as n from stock_v2.movement')).rows[0].n);await click('Post Direct Issue');await until(()=>document.body.textContent.includes('Posted Direct Issue successfully'),'Equipment issue posted');check(Number((await db.query('select count(*) as n from stock_v2.movement')).rows[0].n)===count+1,'Direct issue UI deducts stock once and returns home');
+ // Reopen: petrol offers only petrol machines; switching products clears prior destinations.
+ await click('Direct Issue');await until(()=>button('Select product ▾'),'New issue ready');await click('Select product ▾');await click('Petrol (L) · Available: 93.000 L');await combo('Petrol — Equipment','Renamed bike');
+ await settle(()=>{const input=document.querySelector('input[aria-label="Petrol — Equipment"]');input.blur();input.focus()});check(!button('Tractor A'),'Petrol selector excludes diesel equipment');await click('Close');
+ await click('Petrol ▾');await click('Gear Oil (L) · Available: 97.000 L');check(document.querySelector('input[aria-label="Gear Oil — Equipment"]').value==='','Changing product clears equipment destination');
+ await combo('Gear Oil — Equipment','Tractor A');await fill('Quantity to issue OIL','1');await click('☐ Confirm transaction');check(!button('Post Direct Issue').disabled,'Oil can use diesel equipment without a field');
+ }finally{await settle(()=>mount.unmount());Module._load=oldLoad;dom.window.close();}
+ return passed;
+}
+module.exports={testEquipmentUI};

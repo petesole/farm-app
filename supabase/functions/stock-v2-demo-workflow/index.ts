@@ -17,6 +17,11 @@ Deno.serve(async(req)=>{
  try{
   const access=(await db`select stock_v2.workflow_access(${user.id}::uuid) as value`)[0].value;
   if(req.method==="GET" && new URL(req.url).searchParams.has("stock_access"))return reply({access});
+  if(req.method==="GET" && new URL(req.url).searchParams.has("equipment_catalog")){
+    await db`select stock_v2.workflow_require(${user.id}::uuid)`;
+    const rows=await db`select vehicle_id,vehicle_name,fuel_type,is_other,vehicle_discontinued from public.vehicle where not vehicle_discontinued order by vehicle_name`;
+    return reply({rows});
+  }
   if(req.method==="GET" && new URL(req.url).searchParams.has("chemical_actives")){
     await db`select stock_v2.workflow_require(${user.id}::uuid)`;
     try{

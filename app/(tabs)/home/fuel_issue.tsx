@@ -34,6 +34,8 @@ function formatMeter(value: number | null) {
 type VehicleRow = {
   vehicle_id: number;
   vehicle_name: string;
+  fuel_type: string;
+  is_other: boolean;
   vehicle_discontinued?: boolean;
   has_meter: boolean | null;
   meter_type: 'HOURS' | 'KM' | null;
@@ -140,7 +142,7 @@ export default function FuelIssueScreen() {
 
   const vehicleType = Number(selectedVehicle?.vehicle_type_id ?? 0);
   const tractorClass = Number(selectedVehicle?.tractor_class_id ?? 0);
-  const planEligible = vehicleType === 1 || vehicleType === 2 || [1, 2, 3, 10].includes(tractorClass);
+  const planEligible = !selectedVehicle?.is_other && (vehicleType === 1 || vehicleType === 2 || [1, 2, 3, 10].includes(tractorClass));
   const vehicleName = (selectedVehicle?.vehicle_name ?? '').toLowerCase();
   const isHarvester = tractorClass === 10 || /harvest|combine|case 2388/.test(vehicleName);
   const visiblePlannedJobs = plannedJobs.filter(j => {
@@ -183,9 +185,10 @@ export default function FuelIssueScreen() {
     const { data, error } = await supabase
       .from('vehicle')
       .select(
-        'vehicle_id,vehicle_name,vehicle_discontinued,has_meter,meter_type,vehicle_type_id,tractor_class_id'
+        'vehicle_id,vehicle_name,vehicle_discontinued,has_meter,meter_type,vehicle_type_id,tractor_class_id,fuel_type,is_other'
       )
       .eq('vehicle_discontinued', false)
+      .eq('fuel_type', 'DIESEL')
       .order('vehicle_name', { ascending: true });
 
     if (error) {
@@ -274,12 +277,14 @@ export default function FuelIssueScreen() {
 
     const selected = vehicles.find((v) => Number(v.vehicle_id) === Number(vehicleId));
 
-    if (!selected) {
+    if (!selected || selected.vehicle_discontinued) {
       Alert.alert('Vehicle not available', 'Please reselect a vehicle.');
       await loadVehicles();
       return;
     }
 
+    if(selected.fuel_type!=='DIESEL'){Alert.alert('Diesel equipment required','Reselect diesel equipment.');return;}
+    if(selected.is_other&&!notes.trim()){Alert.alert('Description required','Describe the Other diesel use in Notes.');return;}
     if (selected.has_meter) {
       if (!meterReading.trim()) {
         Alert.alert(
@@ -555,7 +560,7 @@ export default function FuelIssueScreen() {
       ) : null}
 
       <ThemedView style={styles.card}>
-        <ThemedText type="subtitle">Notes (optional)</ThemedText>
+        <ThemedText type="subtitle">{selectedVehicle?.is_other?'Other description (required)':'Notes (optional)'}</ThemedText>
         <TextInput
           style={styles.input}
           value={notes}

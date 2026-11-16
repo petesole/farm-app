@@ -76,6 +76,8 @@ export default function TabsLayout() {
       <Tabs.Screen name="control-panel" options={{ href: null }} />
       <Tabs.Screen name="vehicle-management" options={{ href: null }} />
       <Tabs.Screen name="vehicle-detail" options={{ href: null }} />
+      <Tabs.Screen name="vehicle-types" options={{ href: null }} />
+      <Tabs.Screen name="vehicle-type-edit" options={{ href: null }} />
       <Tabs.Screen name="fields-control" options={{ href: null }} />
       <Tabs.Screen name="field-control-list" options={{ href: null }} />
       <Tabs.Screen name="field-control-detail" options={{ href: null }} />
