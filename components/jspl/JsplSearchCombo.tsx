@@ -12,9 +12,10 @@ type Props = {
   includeInactive?: boolean;
   placeholder?: string;
   disabled?: boolean;
+  hideLabel?: boolean;
 };
 export function JsplSearchCombo({ label, selector, options, value, onChange,
-  includeInactive = false, placeholder = 'Search...', disabled = false }: Props) {
+  includeInactive = false, placeholder = 'Search...', disabled = false, hideLabel = false }: Props) {
   const selected = options.find(o => o.id === value);
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState(false);
@@ -22,7 +23,7 @@ export function JsplSearchCombo({ label, selector, options, value, onChange,
     filterJsplOptions(options, selector, query, includeInactive),
     [options, selector, query, includeInactive]);
   return <View style={styles.wrapper}>
-    <Text style={styles.label}>{label}</Text>
+    {!hideLabel && <Text style={styles.label}>{label}</Text>}
     <View style={styles.inputRow}>
       <TextInput accessibilityLabel={label} editable={!disabled}
         value={expanded ? query : selected?.label ?? ''}
