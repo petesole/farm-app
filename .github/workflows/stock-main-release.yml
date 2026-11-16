@@ -26,6 +26,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm ci --prefix tests/stock-workflow --no-audit --no-fund
       - run: node tests/stock-workflow/run.cjs
+      - run: node tests/stock-workflow/equipment-fuel.cjs
       - run: node tests/stock-workflow/browser-deployment.cjs
       - run: npx tsc --noEmit
       - run: npm run build:web

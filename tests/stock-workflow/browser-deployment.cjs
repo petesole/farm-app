@@ -5,11 +5,13 @@ const root=path.resolve(__dirname,'../..');
  const db=await fixture();try{
   // Reproduce the hosted Stock backend without the separately staged phone feature.
   for(const name of ['drafts/stock_approval_workflow.sql','drafts/stock_audit_rectification.sql','drafts/combined_stocktake.sql','drafts/stocktake_print_permissions.sql','drafts/stock_operator_role.sql','migrations/20261113145707_stock_adjustment_report.sql','drafts/dated_adjustment_reconciliation.sql','migrations/20261114060000_item_active_ingredients.sql','migrations/20261114060001_spray_similar_actives.sql'])await db.exec(fs.readFileSync(root+'/supabase/'+name,'utf8'));
+  await require('./equipment-fuel.cjs').equipmentSchema(db);
   const actor=randomUUID();await db.query("insert into auth.users(id,email) values($1,'deployment@test');",[actor]);await db.query("insert into public.app_user_role(user_id,role_name) values($1,'admin')",[actor]);
   await db.exec("insert into stock_v2.owner(owner_code,owner_name) values('TEST_JS','HS'),('TEST_AO','AO');insert into stock_v2.location(location_code,location_name) values('TEST_WH','Test store')");
   const api=edge(db,'stock-v2-demo-workflow',actor);
   const result=await api();assert.equal(result.status,200,JSON.stringify(result));assert(Array.isArray(result.body.sprays));
   assert.equal((await api('?chemical_actives=1')).status,200);
+  const equipment=await api('?equipment_catalog=1');assert.equal(equipment.status,200);assert(equipment.body.rows.some(v=>v.vehicle_name==='JS Genset'&&v.fuel_type==='PETROL'));
   const outsider=randomUUID();await db.query("insert into auth.users(id,email) values($1,'outside@test')",[outsider]);assert.notEqual((await edge(db,'stock-v2-demo-workflow',outsider)('?chemical_actives=1')).status,200);
   assert.equal((await db.query("select bool_and(relrowsecurity) as protected from pg_class where oid in ('stock_v2.item_active_ingredient'::regclass,'stock_v2.item_active_ingredient_audit'::regclass)")).rows[0].protected,true);
   assert.equal((await db.query("select to_regclass('stock_v2.sprayer_completion') as phone")).rows[0].phone,null);

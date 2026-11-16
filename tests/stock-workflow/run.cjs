@@ -18,6 +18,7 @@ const root=require('path').resolve(__dirname,'../..');
  await db.exec(fs.readFileSync(root+'/supabase/drafts/sprayer_phone.sql','utf8'));
  await db.exec(fs.readFileSync(root+'/supabase/migrations/20261114060000_item_active_ingredients.sql','utf8'));
  await db.exec(fs.readFileSync(root+'/supabase/migrations/20261114060001_spray_similar_actives.sql','utf8'));
+ await require('./equipment-fuel.cjs').equipmentSchema(db);
  await q(`select stock_v2.workflow_assign_staff($1,$2,'clerk',true,'Test stock assignment')`,[admin,stock]);
  await q(`select stock_v2.workflow_assign_staff($1,$2,'admin',true,'Test stock admin')`,[admin,stockAdmin]);
  await rejects(()=>q('select stock_v2.workflow_require($1)',[other]),/Stock staff access/,'Unassigned user rejected');

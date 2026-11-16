@@ -1,4 +1,5 @@
 import { formatJsplDate } from "@/constants/jspl-design";
+import {fuelEquipmentTypes, type FuelType} from '@/utils/equipment-fuel';
 import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 // app/(tabs)/fuel_issue.tsx
 import { Picker } from '@react-native-picker/picker';
@@ -34,6 +35,8 @@ function formatMeter(value: number | null) {
 type VehicleRow = {
   vehicle_id: number;
   vehicle_name: string;
+  fuel_type: FuelType;
+  is_other: boolean;
   vehicle_discontinued?: boolean;
   has_meter: boolean | null;
   meter_type: 'HOURS' | 'KM' | null;
@@ -71,7 +74,7 @@ export default function FuelIssueScreen() {
   const [vehicles, setVehicles] = useState<VehicleRow[]>([]);
   const [vehicleTypes, setVehicleTypes] = useState<{vehicle_type_id:number;type_name:string}[]>([]);
   const [typeFilter, setTypeFilter] = useState<number | null>(null);
-  const visibleVehicles = useMemo(() => vehicles.filter(v => typeFilter === null || Number(v.vehicle_type_id) === typeFilter), [vehicles,typeFilter]);
+  const visibleVehicles = useMemo(() => vehicles.filter(v => v.fuel_type==='DIESEL'&&!v.vehicle_discontinued&&(typeFilter === null || Number(v.vehicle_type_id) === typeFilter)), [vehicles,typeFilter]);
   const [vehicleId, setVehicleId] = useState<number | null>(null);
 
   const [litres, setLitres] = useState<string>('');
@@ -140,7 +143,7 @@ export default function FuelIssueScreen() {
 
   const vehicleType = Number(selectedVehicle?.vehicle_type_id ?? 0);
   const tractorClass = Number(selectedVehicle?.tractor_class_id ?? 0);
-  const planEligible = vehicleType === 1 || vehicleType === 2 || [1, 2, 3, 10].includes(tractorClass);
+  const planEligible = !selectedVehicle?.is_other && (vehicleType === 1 || vehicleType === 2 || [1, 2, 3, 10].includes(tractorClass));
   const vehicleName = (selectedVehicle?.vehicle_name ?? '').toLowerCase();
   const isHarvester = tractorClass === 10 || /harvest|combine|case 2388/.test(vehicleName);
   const visiblePlannedJobs = plannedJobs.filter(j => {
@@ -183,9 +186,10 @@ export default function FuelIssueScreen() {
     const { data, error } = await supabase
       .from('vehicle')
       .select(
-        'vehicle_id,vehicle_name,vehicle_discontinued,has_meter,meter_type,vehicle_type_id,tractor_class_id'
+        'vehicle_id,vehicle_name,vehicle_discontinued,has_meter,meter_type,vehicle_type_id,tractor_class_id,fuel_type,is_other'
       )
       .eq('vehicle_discontinued', false)
+      .eq('fuel_type', 'DIESEL')
       .order('vehicle_name', { ascending: true });
 
     if (error) {
@@ -196,16 +200,19 @@ export default function FuelIssueScreen() {
       return;
     }
 
-    const list = (data ?? []) as VehicleRow[];
+    const list = ((data ?? []) as VehicleRow[]).filter(v=>v.fuel_type==='DIESEL'&&!v.vehicle_discontinued);
     setVehicles(list);
+    const nextType=typeFilter!==null&&list.some(v=>Number(v.vehicle_type_id)===typeFilter)?typeFilter:null;
+    setTypeFilter(nextType);
+    const candidates=list.filter(v=>nextType===null||Number(v.vehicle_type_id)===nextType);
 
     const stillValid =
-      vehicleId !== null && list.some((v) => Number(v.vehicle_id) === Number(vehicleId));
+      vehicleId !== null && candidates.some((v) => Number(v.vehicle_id) === Number(vehicleId));
 
     const nextVehicleId = stillValid
       ? vehicleId
-      : list.length
-      ? list[0].vehicle_id
+      : candidates.length
+      ? candidates[0].vehicle_id
       : null;
 
     setVehicleId(nextVehicleId);
@@ -274,12 +281,14 @@ export default function FuelIssueScreen() {
 
     const selected = vehicles.find((v) => Number(v.vehicle_id) === Number(vehicleId));
 
-    if (!selected) {
+    if (!selected || selected.vehicle_discontinued) {
       Alert.alert('Vehicle not available', 'Please reselect a vehicle.');
       await loadVehicles();
       return;
     }
 
+    if(selected.fuel_type!=='DIESEL'){Alert.alert('Diesel equipment required','Reselect diesel equipment.');return;}
+    if(selected.is_other&&!notes.trim()){Alert.alert('Description required','Describe the Other diesel use in Notes.');return;}
     if (selected.has_meter) {
       if (!meterReading.trim()) {
         Alert.alert(
@@ -403,7 +412,7 @@ export default function FuelIssueScreen() {
         <ThemedText type="subtitle">Vehicle</ThemedText>
 
         <View style={{flexDirection:'row',flexWrap:'wrap',gap:8,marginVertical:8}}>
-          {[{vehicle_type_id:null,type_name:'All'},...vehicleTypes.filter(t=>vehicles.some(v=>Number(v.vehicle_type_id)===Number(t.vehicle_type_id)))].map(t=>(
+          {[{vehicle_type_id:null,type_name:'All'},...fuelEquipmentTypes(vehicleTypes,vehicles,'DIESEL')].map(t=>(
             <Pressable key={t.vehicle_type_id??'all'} disabled={saving} onPress={()=>{
               const next=t.vehicle_type_id==null?null:Number(t.vehicle_type_id);
               setTypeFilter(next);
@@ -555,7 +564,7 @@ export default function FuelIssueScreen() {
       ) : null}
 
       <ThemedView style={styles.card}>
-        <ThemedText type="subtitle">Notes (optional)</ThemedText>
+        <ThemedText type="subtitle">{selectedVehicle?.is_other?'Other description (required)':'Notes (optional)'}</ThemedText>
         <TextInput
           style={styles.input}
           value={notes}
