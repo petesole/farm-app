@@ -56,6 +56,12 @@ async function testEquipmentUI(db,admin,stock){
 
  let passed=0;const check=(v,n)=>{assert(v,n);console.log('PASS',n);passed++};
  try{
+ const {fuelEquipmentTypes,eligibleEquipment}=require(root+'/utils/equipment-fuel.ts');
+ const types=[{vehicle_type_id:1,type_name:'Tractor'},{vehicle_type_id:2,type_name:'Mistblower'},{vehicle_type_id:3,type_name:'Motorbike'}];
+ const mixed=[{vehicle_id:1,vehicle_name:'Tractor A',vehicle_type_id:1,fuel_type:'DIESEL'},{vehicle_id:2,vehicle_name:'Mistblower A',vehicle_type_id:2,fuel_type:'PETROL'},{vehicle_id:3,vehicle_name:'Motorbike A',vehicle_type_id:3,fuel_type:'PETROL'},{vehicle_id:4,vehicle_name:'Retired diesel mistblower',vehicle_type_id:2,fuel_type:'DIESEL',vehicle_discontinued:true}];
+ check(JSON.stringify(fuelEquipmentTypes(types,mixed,'DIESEL').map(t=>t.type_name))===JSON.stringify(['Tractor']),'Diesel types exclude petrol-only mistblowers and motorbikes');
+ check(JSON.stringify(fuelEquipmentTypes(types,mixed,'PETROL').map(t=>t.type_name))===JSON.stringify(['Mistblower','Motorbike']),'Petrol types exclude diesel-only tractors');
+ check(eligibleEquipment(mixed,'DIESEL').every(v=>v.fuel_type==='DIESEL')&&eligibleEquipment(mixed,'PETROL').every(v=>v.fuel_type==='PETROL'),'Fuel machine choices cannot cross diesel and petrol');
  await db.exec(`alter table public.vehicle add column vehicle_model text,add column vehicle_assignment_id bigint,add column tractor_class_id bigint,add column tractor_size numeric,add column consumption numeric;
  create table public.vehicle_assignment(vehicle_assignment_id bigint,vehicle_assignment text);create table public.tractor_class(tractor_class_id bigint,class_name text,sort_order int);`);
  routeParams={mode:'create'};await render('(tabs)/vehicle-detail');await until(()=>document.querySelector('input[aria-label="Fuel type"]'),'Fuel type edit field');

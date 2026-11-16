@@ -1,4 +1,5 @@
 import { formatJsplDate } from "@/constants/jspl-design";
+import {fuelEquipmentTypes, type FuelType} from '@/utils/equipment-fuel';
 import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 // app/(tabs)/fuel_issue.tsx
 import { Picker } from '@react-native-picker/picker';
@@ -34,7 +35,7 @@ function formatMeter(value: number | null) {
 type VehicleRow = {
   vehicle_id: number;
   vehicle_name: string;
-  fuel_type: string;
+  fuel_type: FuelType;
   is_other: boolean;
   vehicle_discontinued?: boolean;
   has_meter: boolean | null;
@@ -73,7 +74,7 @@ export default function FuelIssueScreen() {
   const [vehicles, setVehicles] = useState<VehicleRow[]>([]);
   const [vehicleTypes, setVehicleTypes] = useState<{vehicle_type_id:number;type_name:string}[]>([]);
   const [typeFilter, setTypeFilter] = useState<number | null>(null);
-  const visibleVehicles = useMemo(() => vehicles.filter(v => typeFilter === null || Number(v.vehicle_type_id) === typeFilter), [vehicles,typeFilter]);
+  const visibleVehicles = useMemo(() => vehicles.filter(v => v.fuel_type==='DIESEL'&&!v.vehicle_discontinued&&(typeFilter === null || Number(v.vehicle_type_id) === typeFilter)), [vehicles,typeFilter]);
   const [vehicleId, setVehicleId] = useState<number | null>(null);
 
   const [litres, setLitres] = useState<string>('');
@@ -199,16 +200,19 @@ export default function FuelIssueScreen() {
       return;
     }
 
-    const list = (data ?? []) as VehicleRow[];
+    const list = ((data ?? []) as VehicleRow[]).filter(v=>v.fuel_type==='DIESEL'&&!v.vehicle_discontinued);
     setVehicles(list);
+    const nextType=typeFilter!==null&&list.some(v=>Number(v.vehicle_type_id)===typeFilter)?typeFilter:null;
+    setTypeFilter(nextType);
+    const candidates=list.filter(v=>nextType===null||Number(v.vehicle_type_id)===nextType);
 
     const stillValid =
-      vehicleId !== null && list.some((v) => Number(v.vehicle_id) === Number(vehicleId));
+      vehicleId !== null && candidates.some((v) => Number(v.vehicle_id) === Number(vehicleId));
 
     const nextVehicleId = stillValid
       ? vehicleId
-      : list.length
-      ? list[0].vehicle_id
+      : candidates.length
+      ? candidates[0].vehicle_id
       : null;
 
     setVehicleId(nextVehicleId);
@@ -408,7 +412,7 @@ export default function FuelIssueScreen() {
         <ThemedText type="subtitle">Vehicle</ThemedText>
 
         <View style={{flexDirection:'row',flexWrap:'wrap',gap:8,marginVertical:8}}>
-          {[{vehicle_type_id:null,type_name:'All'},...vehicleTypes.filter(t=>vehicles.some(v=>Number(v.vehicle_type_id)===Number(t.vehicle_type_id)))].map(t=>(
+          {[{vehicle_type_id:null,type_name:'All'},...fuelEquipmentTypes(vehicleTypes,vehicles,'DIESEL')].map(t=>(
             <Pressable key={t.vehicle_type_id??'all'} disabled={saving} onPress={()=>{
               const next=t.vehicle_type_id==null?null:Number(t.vehicle_type_id);
               setTypeFilter(next);
