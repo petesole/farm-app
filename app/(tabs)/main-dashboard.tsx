@@ -33,6 +33,7 @@ export default function MainDashboard() {
         <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Stock" description="Purchase orders, receiving, issues and balances" onPress={() => router.push("/stock")} /></View>
         <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Labour" description="Daily labour entry and costing" onPress={() => router.push("/(tabs)/labour")} /></View>
         <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Rainfall" description="Record readings and view rainfall reports" onPress={() => router.push("/home/rainfall/rainfall_index")} /></View>
+        <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Irrigation" description="Water requirements, schedules and applied irrigation" onPress={() => router.push("/(tabs)/irrigation_main_dashboard")} /></View>
         <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Control Panel" description="Admin setup and management" onPress={() => router.push("/(tabs)/control-panel")} /></View>
       </View>
     </ScrollView>

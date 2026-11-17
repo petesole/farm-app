@@ -1,4 +1,7 @@
 import { supabase } from "@/supabase";
+import {verifiedIrrigationRoles,irrigationRole} from '@/utils/irrigation-access';
+import {JsplModuleHeader} from '@/components/jspl/JsplModuleHeader';
+import {jsplColors as C} from '@/constants/jspl-design';
 import {fuelDateISO} from "../fuel_admin_dates";
 import { useFocusEffect } from "@react-navigation/native";
 import { router, useLocalSearchParams } from "expo-router";
@@ -161,27 +164,7 @@ export default function IrrigationActual() {
 
   const fetchRole = useCallback(async () => {
     setRoleLoading(true);
-    const { data: auth } = await supabase.auth.getUser();
-    const uid = auth?.user?.id;
-    if (!uid) {
-      setRoleName("unknown");
-      setRoleLoading(false);
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from("app_user_role")
-      .select("role_name")
-      .eq("user_id", uid)
-      .maybeSingle();
-
-    if (error) {
-      setRoleName("unknown");
-      setRoleLoading(false);
-      return;
-    }
-
-    setRoleName(normRole((data as any)?.role_name) || "unknown");
+    setRoleName(irrigationRole(await verifiedIrrigationRoles(supabase)));
     setRoleLoading(false);
   }, []);
 
@@ -249,7 +232,7 @@ export default function IrrigationActual() {
       }
 
       initRef.current = true;
-      dbg(`Loaded. schedules=${list.length} active=${running ? running.irrigation_applied_id : "none"}`);
+      setDebugMsg('');
     } catch (e: any) {
       dbg(`Load failed: ${e?.message ?? String(e)}`);
     } finally {
@@ -344,7 +327,7 @@ export default function IrrigationActual() {
     }
   }, [canEdit, roleName, active, endDate, endTime, goBack]);
 
-  if (loading || roleLoading) return <ActivityIndicator style={{ marginTop: 30 }} />;
+  if (loading || roleLoading) return <View style={{padding:16,flex:1,backgroundColor:C.background}}><JsplModuleHeader title="Applied Irrigation" backLabel="Back to Irrigation" onBack={goBack}/><ActivityIndicator style={{ marginTop: 30 }} /></View>;
 
   const titleTrace =
     scheduleOptions[0]?.tracecode_name ?? (selectedSchedule ? selectedSchedule.tracecode_name : "Tracecode");
@@ -353,23 +336,12 @@ export default function IrrigationActual() {
 
   return (
     <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, paddingBottom: 24 }}>
-      <View style={styles.topRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 18, fontWeight: "900" }}>{titleTrace}</Text>
-          <Text style={{ color: "#666" }}>{titleCrop}</Text>
-        </View>
-
-        <Pressable onPress={goBack} style={styles.cancelBtn}>
-          <Text style={styles.cancelText}>Cancel</Text>
-        </Pressable>
-      </View>
-
-      <Text style={{ fontWeight: "900", marginTop: 8 }}>Role: {roleName}</Text>
+      <JsplModuleHeader title="Applied Irrigation" subtitle={titleTrace+' · '+titleCrop} backLabel="Back to Irrigation" onBack={goBack}/>
 
       {/* DEBUG BANNER */}
       {debugMsg ? (
         <View style={styles.debugBox}>
-          <Text style={{ fontWeight: "900" }}>DEBUG</Text>
+          <Text style={{ fontWeight: "900" }}>Irrigation status</Text>
           <Text selectable>{debugMsg}</Text>
         </View>
       ) : null}
@@ -554,7 +526,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingVertical: 12,
     borderRadius: 10,
-    backgroundColor: "#111",
+    backgroundColor: C.primaryDark,
     alignItems: "center",
   },
   primaryText: { color: "#fff", fontWeight: "900" },

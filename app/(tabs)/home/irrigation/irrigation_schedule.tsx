@@ -1,5 +1,8 @@
 import {fuelDateISO} from "../fuel_admin_dates";
 import { supabase } from "@/supabase";
+import {verifiedIrrigationRoles,irrigationRole} from '@/utils/irrigation-access';
+import {JsplModuleHeader} from '@/components/jspl/JsplModuleHeader';
+import {jsplColors as C} from '@/constants/jspl-design';
 import { useFocusEffect } from "@react-navigation/native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
@@ -76,21 +79,7 @@ export default function IrrigationSchedule() {
   }, []);
 
   const fetchRole = useCallback(async () => {
-    const { data: auth } = await supabase.auth.getUser();
-    const uid = auth?.user?.id;
-    if (!uid) return;
-
-    const { data, error } = await supabase
-      .from("app_user_role")
-      .select("role_name")
-      .eq("user_id", uid)
-      .maybeSingle();
-
-    if (error) {
-      setRoleName("unknown");
-      return;
-    }
-    setRoleName(String(data?.role_name ?? "unknown").trim().toLowerCase());
+    setRoleName(irrigationRole(await verifiedIrrigationRoles(supabase)));
   }, []);
 
   const fetchTraceInfo = useCallback(async () => {
@@ -239,10 +228,10 @@ export default function IrrigationSchedule() {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#fff" />
+      <View style={{flex:1,padding:16,backgroundColor:C.background}}><JsplModuleHeader title="Irrigation Schedule" backLabel="Back to Irrigation" onBack={goBackDashboard}/><View style={styles.center}>
+        <ActivityIndicator size="large" color={C.primary} />
         <Text style={styles.loadingText}>Loading…</Text>
-      </View>
+      </View></View>
     );
   }
 
@@ -254,18 +243,8 @@ export default function IrrigationSchedule() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />}
       ListHeaderComponent={
         <View style={styles.header}>
-          <View style={styles.topRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.traceName}>{tracecodeName}</Text>
-              <Text style={styles.cropName}>{cropName}</Text>
-            </View>
-
-            <Pressable onPress={goBackDashboard} style={styles.cancelBtn}>
-              <Text style={styles.cancelText}>Cancel</Text>
-            </Pressable>
-          </View>
-
-          <Text style={styles.role}>Role: {isAdmin ? "admin ✓" : "view only"}</Text>
+          <JsplModuleHeader title="Irrigation Schedule" subtitle={tracecodeName+' · '+cropName} backLabel="Back to Irrigation" onBack={goBackDashboard}/>
+          {!isAdmin?<Text style={{color:C.textSecondary}}>View only — scheduling is available to Admin.</Text>:null}
 
           <View style={styles.addBox}>
             <Text style={styles.addTitle}>Add planned irrigation</Text>
@@ -380,24 +359,24 @@ export default function IrrigationSchedule() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: "#000",
+    backgroundColor: C.surface,
   },
 
   center: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#000",
+    backgroundColor: C.surface,
   },
 
   loadingText: {
     marginTop: 10,
-    color: "#fff",
+    color: C.text,
   },
 
   header: {
     padding: 16,
-    backgroundColor: "#000",
+    backgroundColor: C.surface,
   },
 
   topRow: {
@@ -424,20 +403,20 @@ const styles = StyleSheet.create({
   traceName: {
     fontSize: 22,
     fontWeight: "900",
-    color: "red",
+    color: C.primaryDark,
   },
 
   cropName: {
     fontSize: 18,
     fontWeight: "900",
-    color: "red",
+    color: C.primaryDark,
     marginBottom: 10,
   },
 
   role: {
     marginBottom: 10,
     fontWeight: "800",
-    color: "#fff",
+    color: C.text,
   },
 
   addBox: {
@@ -445,13 +424,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#e6e6e6",
     borderRadius: 10,
-    backgroundColor: "#000",
+    backgroundColor: C.surface,
   },
 
   addTitle: {
     fontWeight: "900",
     marginBottom: 8,
-    color: "#fff",
+    color: C.text,
   },
 
   addRow: {
@@ -475,8 +454,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 10,
     paddingVertical: 10,
-    color: "#fff",
-    backgroundColor: "#000",
+    color: C.text,
+    backgroundColor: C.surface,
     minHeight: 44,
   },
 
@@ -493,7 +472,7 @@ const styles = StyleSheet.create({
   },
 
   btn: {
-    backgroundColor: "#fff",
+    backgroundColor: C.primaryDark,
     minHeight: 44,
     minWidth: 72,
     paddingHorizontal: 14,
@@ -503,7 +482,7 @@ const styles = StyleSheet.create({
   },
 
   btnText: {
-    color: "#000",
+    color: C.surface,
     fontWeight: "900",
   },
 
@@ -514,7 +493,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#e6e6e6",
     borderRadius: 10,
-    backgroundColor: "#000",
+    backgroundColor: C.surface,
   },
 
   rowTop: {
@@ -525,17 +504,17 @@ const styles = StyleSheet.create({
 
   date: {
     fontWeight: "900",
-    color: "#fff",
+    color: C.text,
   },
 
   status: {
     fontWeight: "900",
     opacity: 0.8,
-    color: "#fff",
+    color: C.text,
   },
 
   cardText: {
-    color: "#fff",
+    color: C.text,
   },
 
   actionRow: {
@@ -561,23 +540,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 8,
-    backgroundColor: "#fff",
+    backgroundColor: C.primaryDark,
   },
 
   smallBtnPrimaryText: {
-    color: "#000",
+    color: C.surface,
     fontWeight: "900",
   },
 
   outlineBtn: {
     backgroundColor: "transparent",
     borderWidth: 1,
-    borderColor: "#fff",
+    borderColor: C.border,
   },
 
   outlineBtnText: {
     fontWeight: "900",
-    color: "#fff",
+    color: C.text,
   },
 
   dimmed: {
