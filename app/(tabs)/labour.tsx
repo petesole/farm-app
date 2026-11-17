@@ -54,10 +54,10 @@ export default function LabourMain(){
  })();return()=>{active=false}},[week,previousWeek]);
  const tiles=[
  {title:"Labour Input",description:"Enter daily Labour records",path:"/labour-entry"},
- {title:"Daily Report",description:"Select date, print report",path:"/labour-reports?mode=daily"},
- {title:"Weekly Report",description:"Select week, print or export to Excel",path:"/labour-reports?mode=weekly"},
+ {title:"Labour Reports",description:"Daily, weekly or monthly by Farm, Crop and Trace. Excel or print.",path:"/labour-reports?mode=daily"},
+
  {title:"Input History",description:"Look up historical Labour records",path:"/labour-history"},
- {title:"AO Weekly",description:"Agri Orange weekly Labour report",path:"/labour-reports?mode=ao"},
+
  ];
  return <ScrollView contentContainerStyle={styles.page}>
   <JsplModuleHeader title="Labour" backLabel={canReturnToMain?"Back to Main":undefined} backHref="/(tabs)/main-dashboard" />

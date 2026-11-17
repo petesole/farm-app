@@ -15,12 +15,12 @@ export function labourExportCSV(title:string,columns:Column[],rows:Row[],total:n
  const uri=URL.createObjectURL(file),a=document.createElement("a");
  a.href=uri;a.download=slug(title)+".csv";a.style.display="none";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(uri),2500);
 }
-export function labourPrintReport(title:string,columns:Column[],rows:Row[],total:number,weeklyTotals?:{qty:string;kgs:string}){
+export function labourPrintReport(title:string,columns:Column[],rows:Row[],total:number,weeklyTotals?:{qty:string;kgs:string},options?:{summary:string;landscape?:boolean}){
  if(typeof window==="undefined")throw Error("Print Preview is available in a desktop browser.");
  const popup=window.open("","_blank");if(!popup)throw Error("Enable pop-ups to print this Labour report.");
  const head="<tr>"+columns.map(c=>"<th>"+safe(c.label)+"</th>").join("")+"</tr>";
- const body=rows.map(r=>"<tr>"+columns.map(c=>"<td>"+safe(value(r,c.field))+"</td>").join("")+"</tr>").join("");
- const summary = weeklyTotals
+ const body=rows.map(r=>'<tr'+(r._kind==='subtotal'?' class="subtotal"':'')+'>'+columns.map(c=>{const raw=r[c.field];const display=options&&c.field==='total_cost'&&typeof raw==='number'?'$'+raw.toFixed(2):value(r,c.field);return '<td'+(options&&['labour_qty','total_cost'].includes(c.field)?' style="text-align:right"':'')+'>'+safe(display)+'</td>'}).join('')+'</tr>').join('');
+ const summary = options?'<div class="sum">'+safe(options.summary)+'</div>':weeklyTotals
   ? `<div class="sum">Total Qty ${safe(weeklyTotals.qty)} · Total Kgs ${safe(weeklyTotals.kgs)} · Total Value USD ${total.toFixed(2)}</div>`
   : `<div class="sum">Grand Total: USD ${total.toFixed(2)}</div>`;
  const html=[
@@ -28,7 +28,7 @@ export function labourPrintReport(title:string,columns:Column[],rows:Row[],total
  'body{font:12px Arial,sans-serif;color:#183526;margin:25px}h1{font-size:20px;color:#103d2b;margin-bottom:5px}.muted{color:#666;font-size:11px;margin-bottom:12px}',
  'table{width:100%;border-collapse:collapse;margin-top:12px}th,td{border:1px solid #bbb;padding:5px 7px;text-align:left}th{background:#e8f0e8}tr{break-inside:avoid}',
  '.sum{font-size:14px;font-weight:700;margin-top:15px}button{background:#25633a;color:white;border:0;padding:9px 14px;margin:10px 0;cursor:pointer}',
- '@media print{button{display:none}body{margin:8mm}@page{size:A4 '+(weeklyTotals?'portrait':'landscape')+';margin:8mm}}',
+ 'tr.subtotal{font-weight:bold;background:#e9f1eb}@media print{button{display:none}body{margin:8mm}@page{size:A4 '+(options?.landscape?'landscape':weeklyTotals?'portrait':'landscape')+';margin:8mm}}',
  weeklyTotals ? 'table{margin-top:4px;font-size:11px;line-height:1.15}th,td{padding:2px 4px}thead{display:table-header-group}.sum{margin:4px 0 6px}@media print{body{margin:0}h1{margin:0 0 3px}.muted{margin-bottom:4px}}' : '',
  '</style></head><body><h1>John Sole (Private) Limited</h1><div class="muted">',safe(title),'</div>',
  weeklyTotals ? summary : '',
