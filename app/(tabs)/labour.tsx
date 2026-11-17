@@ -54,8 +54,9 @@ export default function LabourMain(){
  })();return()=>{active=false}},[week,previousWeek]);
  const tiles=[
  {title:"Labour Input",description:"Enter daily Labour records",path:"/labour-entry"},
- {title:"Labour Reports",description:"Daily, weekly or monthly by Farm, Crop and Trace. Excel or print.",path:"/labour-reports?mode=daily"},
+ {title:"Labour Reports",description:"Choose Season, Farm, Crop or Trace. Group daily, weekly or monthly.",path:"/labour-reports?mode=daily"},
 
+ {title:"Daily Report",description:"Select an individual date",path:"/labour-date-report"},
  {title:"Input History",description:"Look up historical Labour records",path:"/labour-history"},
 
  ];
