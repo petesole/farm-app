@@ -1,5 +1,8 @@
 import { supabase } from "@/supabase";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import {verifiedIrrigationRoles} from '@/utils/irrigation-access';
+import {JsplModuleHeader} from '@/components/jspl/JsplModuleHeader';
+import {jsplColors as C} from '@/constants/jspl-design';
+import {displayJsplDate} from '@/utils/jspl-input';
 import { useFocusEffect } from "@react-navigation/native";
 import { router } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -55,7 +58,7 @@ function fmt1(v: any) {
 
 function fmtDate(v: any) {
   if (!v) return "-";
-  return String(v);
+  return displayJsplDate(String(v));
 }
 
 const COLS = [
@@ -90,20 +93,7 @@ export default function IrrigationMainDashboard() {
   );
 
   const loadRoles = useCallback(async () => {
-    try {
-      const storedRole = await AsyncStorage.getItem("role");
-      const r = normRole(storedRole);
-
-      if (!r) {
-        setRoles(["unknown"]);
-        return;
-      }
-
-      setRoles([r]);
-    } catch (e: any) {
-      console.log("Role load error:", e?.message ?? e);
-      setRoles(["unknown"]);
-    }
+    setRoles(await verifiedIrrigationRoles(supabase));
   }, []);
 
   const fetchData = useCallback(async () => {
@@ -286,27 +276,23 @@ export default function IrrigationMainDashboard() {
 
   if (loading) {
     return (
-      <View style={styles.center}>
+      <View style={{flex:1,padding:16,backgroundColor:C.background}}><JsplModuleHeader title="Irrigation" backLabel={isAdmin?'Back to Main':undefined} backHref="/(tabs)/main-dashboard"/><View style={styles.center}>
         <ActivityIndicator size="large" />
         <Text style={{ marginTop: 10 }}>Loading dashboard…</Text>
-      </View>
+      </View></View>
     );
   }
 
   if (errorText) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.error}>{errorText}</Text>
-      </View>
+      <View style={{flex:1,padding:16,backgroundColor:C.background}}><JsplModuleHeader title="Irrigation" backLabel={isAdmin?'Back to Main':undefined} backHref="/(tabs)/main-dashboard"/><View style={styles.center}><Text style={styles.error}>{errorText}</Text><Pressable onPress={onRefresh}><Text>Retry</Text></Pressable></View></View>
     );
   }
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1,padding:16,backgroundColor:C.background }}>
+      <JsplModuleHeader title="Irrigation" backLabel={isAdmin?'Back to Main':undefined} backHref="/(tabs)/main-dashboard"/>
       <View style={styles.searchWrap}>
-        <Text style={{ fontWeight: "900", marginBottom: 6 }}>
-          Roles: {roles.length ? roles.map(normRole).join(", ") : "unknown"}
-        </Text>
         <TextInput
           value={search}
           onChangeText={setSearch}
@@ -394,7 +380,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
   },
-  actionBtnDark: { backgroundColor: "#111", borderColor: "#111" },
+  actionBtnDark: { backgroundColor: C.primaryDark, borderColor: C.primaryDark },
   actionBtnTextDark: { color: "#fff", fontWeight: "900", fontSize: 12 },
   actionBtnLight: { backgroundColor: "#fff", borderColor: "#111" },
   actionBtnTextLight: { color: "#111", fontWeight: "900", fontSize: 12 },

@@ -11,6 +11,8 @@ export function JsplReturnNavigation(){
   if(path.includes("/rainfall/") || path==="/rainfall-entry")return null;
   // Stock screens supply their own single return control.
   if(path==="/stock" || path.endsWith("/stock-test") || path.includes("stock-v2-"))return null;
+  // Promoted irrigation screens provide their own single branded return control.
+  if(path.endsWith('/irrigation_main_dashboard')||path.includes('/home/irrigation/'))return null;
   const isMain=path.endsWith("/main-dashboard") || path.endsWith("/field-dashboard") || path==="/fuel" || path.endsWith("/fuel") || path==="/weighbridge" || path.endsWith("/wb-admin");
   if(isMain)return null;
   let label="Main";

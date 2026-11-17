@@ -16,6 +16,12 @@ on:
       - 'utils/labour-period-report.ts'
       - 'lib/labour*'
       - 'tests/labour-reports.cjs'
+      - 'app/(tabs)/main-dashboard.tsx'
+      - 'app/(tabs)/irrigation_main_dashboard.tsx'
+      - 'app/(tabs)/home/irrigation/**'
+      - 'utils/irrigation-access.ts'
+      - 'components/jspl/JsplReturnNavigation.tsx'
+      - 'tests/irrigation-navigation.cjs'
       - '.github/workflows/stock-main-release.yml'
 permissions:
   contents: read
@@ -35,5 +41,6 @@ jobs:
       - run: node tests/stock-workflow/equipment-fuel.cjs
       - run: node tests/stock-workflow/browser-deployment.cjs
       - run: node tests/labour-reports.cjs
+      - run: node tests/irrigation-navigation.cjs
       - run: npx tsc --noEmit
       - run: npm run build:web
