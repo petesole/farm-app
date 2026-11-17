@@ -1,4 +1,6 @@
 import {JsplSearchCombo} from "@/components/jspl/JsplSearchCombo";
+import {StockProductEditor} from '@/components/jspl/StockProductEditor';
+import {stockRequest} from '@/utils/stock-workflow';
 import {Equipment,equipmentIssueKind,eligibleEquipment,validEquipmentDestination} from "@/utils/equipment-fuel";
 import {stockV2Endpoint} from "@/utils/stock-v2-endpoint";
 import {stockMutation} from "@/utils/stock-workflow";
@@ -51,6 +53,8 @@ export default function StockV2Workflow(){
  const [tab,setTab]=useState<Tab|null>(null),[snapshot,setSnapshot]=useState<Snapshot|null>(null);
  const [chemicalActives,setChemicalActives]=useState<Record<string,ChemicalActive[]>>({});
  const [activeItem,setActiveItem]=useState<Item|null>(null);
+ const [productEditor,setProductEditor]=useState<{product:any}|null>(null);
+ const editProduct=async(p:Item)=>{try{const catalog=await stockRequest('?product_catalog=1');const product=catalog.items.find((x:any)=>x.item_code===p.item_code);if(!product)throw Error('Product not found');setProductEditor({product})}catch(e){setStatus((e as Error).message)}};
  const [activeRows,setActiveRows]=useState<ChemicalActive[]>([]);
  const [activeSaving,setActiveSaving]=useState(false),[activeError,setActiveError]=useState("");
  const [activesReady,setActivesReady]=useState(false);
@@ -263,6 +267,7 @@ export default function StockV2Workflow(){
   {status?<View style={styles.notice}><ThemedText>{status}</ThemedText></View>:null}
   {latestIssueDocument&&tab===null?<Pressable style={styles.submit} onPress={()=>router.push({pathname:"/stock-v2-issue-slip",params:{documentId:String(latestIssueDocument)}})}><ThemedText style={styles.submitText}>Print Latest Issue Slip</ThemedText></Pressable>:null}
   {tab===null?null:tab==="Stock Balances"?<View style={styles.sheet}>
+   {workflow?.access.is_stock||workflow?.access.is_admin?<Pressable style={styles.add} onPress={()=>setProductEditor({product:null})}><ThemedText>+ New Product</ThemedText></Pressable>:null}
    {header("STOCK BALANCES",["Stock Owners: JS / AO","Warehouse: Stores"])}
    <View style={styles.filters}>
     <StockSelect label="Stock status" value={stockFilter} options={[{id:'stock',label:'In Stock'},{id:'none',label:'No Stock'},{id:'all',label:'All'}]} onChange={v=>{setStockFilter(v as 'stock'|'none'|'all');setTypeFilter('');setCategoryFilter('')}}/>
@@ -280,6 +285,7 @@ export default function StockV2Workflow(){
       {key:"ao_qty",title:"AO On Hand",kind:"number",width:110,value:x=>x.ao_quantity},
       {key:"ao_mov",title:"AO Movements",width:116,value:()=>"Movements",onPress:x=>router.push({pathname:"/stock-v2-movements",params:{item_code:x.item_code,owner:"AO"}})},
       {key:"unit",title:"Unit",width:75,value:x=>x.base_unit},
+      {key:"edit_product",title:"Product Details",width:120,filterable:false,value:()=>workflow?.access.is_admin?'Edit Product':'—',onPress:x=>workflow?.access.is_admin&&void editProduct(x)},
       {key:"active_action",title:"Active Details",width:120,filterable:false,value:x=>isChemical(x)?(chemicalActives[x.item_code]?.length?"Edit Active":"Add Active"):"—",onPress:x=>isChemical(x)&&openActive(x)},
       {key:"last",title:"JS Last Purchase Price",kind:"number",width:160,value:x=>x.last_purchase_price},
       {key:"supplier",title:"JS Last Purchase Supplier",width:210,value:x=>x.last_purchase_supplier||"—"},
@@ -352,17 +358,19 @@ export default function StockV2Workflow(){
   <View style={styles.footer}><Pressable onPress={()=>setConfirmed(x=>!x)} style={styles.confirm}><ThemedText>{confirmed?"☑":"☐"} Confirm transaction</ThemedText></Pressable><Pressable disabled={!valid||!confirmed||busy} onPress={submit} style={[styles.submit,(!valid||!confirmed||busy)&&styles.off]}><ThemedText style={styles.submitText}>{busy?"Posting…":tab==="POs Outstanding"?(receiptMode==="dnote"?"Post DNote":"Post Invoice GRV"):"Post "+tab}</ThemedText></Pressable></View>
    {!valid?<ThemedText style={styles.alert}>Complete the required fields, product and positive quantities before posting.</ThemedText>:null}</>:<ThemedText style={styles.muted}>Select Stock Owner and Contract first, then supplier or outstanding PO.</ThemedText>}
   </View>}
+ {productEditor?<StockProductEditor product={productEditor.product} onCancel={()=>setProductEditor(null)} onSaved={async product=>{const data=await stockRequest();if(!data.items?.some((p:any)=>p.item_code===product.item_code))throw Error('Product saved; list refresh not confirmed. Verify Save to return.');setSnapshot(data);const actual=await stockRequest('?chemical_actives=1');const mapped:Record<string,ChemicalActive[]>={};(actual.rows as ChemicalActiveRow[]).forEach(a=>(mapped[a.item_code]??=[]).push({name:a.active_name,amount:String(a.concentration),unit:a.concentration_unit}));setChemicalActives(mapped);setStockFilter('all');setTypeFilter('');setCategoryFilter('');setProductEditor(null)}}/>:null}
  <Modal visible={!!activeItem} transparent animationType="fade" onRequestClose={()=>!activeSaving&&setActiveItem(null)}>
    <View style={{flex:1,backgroundColor:"rgba(0,0,0,0.5)",justifyContent:"center",padding:20}}>
     <View style={{backgroundColor:"#fff",borderRadius:10,padding:18,maxWidth:660,width:"100%",alignSelf:"center",maxHeight:"85%"}}>
      <ThemedText style={{fontSize:19,fontWeight:"700",marginBottom:12}}>Active Ingredients — {activeItem?.item_name}</ThemedText>
      <ScrollView keyboardShouldPersistTaps="handled">
       {activeRows.map((a,i)=><View key={i} style={{flexDirection:"row",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
-       <TextInput accessibilityLabel={"Active ingredient "+(i+1)} placeholder="Active ingredient" value={a.name} onChangeText={name=>setActiveRows(old=>old.map((x,j)=>j===i?{...x,name}:x))} style={{borderWidth:1,borderColor:"#bbb",padding:10,minWidth:180,flex:2}}/>
-       <TextInput accessibilityLabel={"Concentration "+(i+1)} placeholder="Amount" keyboardType="decimal-pad" value={a.amount} onChangeText={amount=>setActiveRows(old=>old.map((x,j)=>j===i?{...x,amount}:x))} style={{borderWidth:1,borderColor:"#bbb",padding:10,minWidth:95,flex:1}}/>
-       <Pressable accessibilityRole="button" onPress={()=>setActiveRows(old=>old.map((x,j)=>j===i?{...x,unit:x.unit==="g/L"?"g/kg":"g/L"}:x))} style={{padding:12,backgroundColor:"#edf2ee"}}><ThemedText>{a.unit} ▾</ThemedText></Pressable>
+       <View style={{width:100}}><ThemedText style={styles.label}>Unit</ThemedText><JsplSearchCombo label={"Unit "+(i+1)} hideLabel selector="product" value={a.unit} options={[{id:"g/L",label:"L"},{id:"g/kg",label:"kg"}]} disabled={activeSaving} onChange={unit=>setActiveRows(old=>old.map((x,j)=>j===i?{...x,unit:unit==="g/kg"?"g/kg":"g/L"}:x))}/></View>
+       <View style={{minWidth:160,flex:2}}><ThemedText style={styles.label}>Active Ingredient</ThemedText><JsplSearchCombo label={"Active ingredient "+(i+1)} hideLabel selector="product" value={a.name} disabled={activeSaving} options={[...new Set([...Object.values(chemicalActives).flat().map(x=>x.name),...activeRows.map(x=>x.name)].filter(Boolean))].sort().map(name=>({id:name,label:name}))} onChange={name=>setActiveRows(old=>old.map((x,j)=>j===i?{...x,name:String(name??'')}:x))} onCreate={name=>{if(name)setActiveRows(old=>old.map((x,j)=>j===i?{...x,name}:x))}} createLabel="+ Add New Active Ingredient"/></View>
+       <View style={{minWidth:100,flex:1}}><ThemedText style={styles.label}>Quantity (g)</ThemedText><TextInput accessibilityLabel={"Quantity (g) "+(i+1)} placeholder="Quantity (g)" keyboardType="decimal-pad" value={a.amount} editable={!activeSaving} onChangeText={amount=>setActiveRows(old=>old.map((x,j)=>j===i?{...x,amount}:x))} style={{borderWidth:1,borderColor:"#bbb",padding:10}}/></View>
        <Pressable accessibilityLabel={"Remove active "+(i+1)} onPress={()=>setActiveRows(old=>old.filter((_,j)=>j!==i))}><ThemedText style={{color:"#b31b1b"}}>Remove</ThemedText></Pressable>
       </View>)}
+      <ThemedText style={{marginBottom:12}}>L = grams per litre (g/L). kg = grams per kilogram (g/kg).</ThemedText>
       <Pressable onPress={()=>setActiveRows(old=>[...old,{name:"",amount:"",unit:activeItem?.base_unit.toLowerCase().includes("kg")?"g/kg":"g/L"}])} style={{padding:11,alignSelf:"flex-start",backgroundColor:"#e5eee7",borderRadius:5}}><ThemedText>+ Add Another Active</ThemedText></Pressable>
       {activeError?<ThemedText style={{color:"#be2525",marginTop:12}}>{activeError}</ThemedText>:null}
      </ScrollView>

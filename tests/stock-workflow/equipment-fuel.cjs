@@ -76,6 +76,8 @@ if(require.main===module)(async()=>{const db=await fixture();let passed=0;
  await q("select stock_v2.workflow_assign_staff($1,$2,'clerk',true,'Equipment test')",[admin,fuel]);
  const {edge}=require('./edge-harness.cjs');
  const catalog=await edge(db,'stock-v2-demo-workflow',fuel)('?equipment_catalog=1');
+ await db.exec(fs.readFileSync(root+'/supabase/migrations/20261117044313_stock_product_catalogue.sql','utf8'));
+ passed+=await require('./products.cjs')(db,admin,fuel);
  check(catalog.status===200&&catalog.body.rows.some(v=>v.vehicle_name==='Tractor A'),'Stock clerk can load shared equipment without vehicle editing rights');
  passed+=await require('./equipment-ui.cjs').testEquipmentUI(db,admin,fuel);
  console.log(passed+' equipment/fuel checks passed');

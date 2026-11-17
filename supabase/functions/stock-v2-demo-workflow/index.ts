@@ -51,8 +51,9 @@ Deno.serve(async(req)=>{
       return reply({error:"Each active needs a unique name, positive concentration and g/L or g/kg unit"},400);
     try{
       await db.begin(async(tx:any)=>{
-        const found=await tx`select item_id from stock_v2.item where item_code=${code} for update`;
+        const found=await tx`select item_id,input_type from stock_v2.item where item_code=${code} for update`;
         if(!found.length)throw Error("Product not found");
+        if(!/^chemicals?$/i.test(found[0].input_type??''))throw Error('Active ingredients apply to Chemicals only');
         const itemId=found[0].item_id;
         const prior=await tx`select active_name,concentration::float8 as amount,concentration_unit as unit from stock_v2.item_active_ingredient where item_id=${itemId} order by id`;
         await tx`delete from stock_v2.item_active_ingredient where item_id=${itemId}`;
@@ -61,12 +62,20 @@ Deno.serve(async(req)=>{
           values(${itemId},${a.name},${a.amount},${a.unit},${user.id}::uuid)`;
         await tx`insert into stock_v2.item_active_ingredient_audit(item_id,actor,old_ingredients,new_ingredients)
           values(${itemId},${user.id}::uuid,${JSON.stringify(prior)}::jsonb,${JSON.stringify(normalized)}::jsonb)`;
+        await tx`insert into stock_v2.product_metadata(item_id,version) values(${itemId},1) on conflict(item_id) do update set version=product_metadata.version+1`;
       });
       return reply({saved:true});
     }catch(e){return reply({error:e instanceof Error?e.message:String(e)},400)}
   }
 
   await db`select stock_v2.workflow_require(${user.id}::uuid)`;
+  if(req.method==='GET'&&new URL(req.url).searchParams.has('product_catalog')){
+   const items=await db`select i.item_code,i.item_name,i.base_unit,i.input_type,i.input_category,i.active,
+    m.pastel_stock_code,coalesce(m.version,0) as version,
+    coalesce((select jsonb_agg(jsonb_build_object('name',a.active_name,'amount',a.concentration::text,'unit',a.concentration_unit) order by a.id) from stock_v2.item_active_ingredient a where a.item_id=i.item_id),'[]'::jsonb) as actives
+    from stock_v2.item i left join stock_v2.product_metadata m using(item_id) order by i.item_name`;
+   return reply({items,can_create:access.is_stock||access.is_admin,can_edit:access.is_admin});
+  }
   if(req.method==='GET'&&new URL(req.url).searchParams.has('stock_adjustment_report')){
    if(!(await db`select stock_v2.can_print_stocktake(${user.id}::uuid) as allowed`)[0].allowed)return reply({error:'Admin or Clerk access required'},403);
    const rows=await db`select p.*,p.take_date::text as take_date,p.required_quantity::float8 as required_quantity from stock_v2.stocktake_adjustment_pending p order by p.take_date,p.sheet_id,p.position,p.owner_code`;
@@ -511,6 +520,42 @@ left join lateral (
    if(body.operation_id)await tx`insert into stock_v2.approval_operation(id,actor,request,result) values(${body.operation_id}::uuid,${user.id}::uuid,${tx.json(body)}::jsonb,${tx.json(result)}::jsonb)`;
    return result;
   });
+  if(body?.action==='product_save'){
+   const p=body.payload??{},code=String(p.item_code??'').trim();
+   if(code?!access.is_admin:!(access.is_admin||access.is_stock))return reply({error:'Product creation requires Stock access; editing requires Admin access'},403);
+   if(!/^[-a-f0-9]{36}$/i.test(String(body.operation_id??'')))return reply({error:'Reload the form to use a recoverable save'},400);
+   const clean=(v:any)=>String(v??'').trim().replace(/\s+/g,' ');
+   const name=clean(p.item_name),type=clean(p.input_type),category=clean(p.input_category),unit=clean(p.base_unit),pastel=clean(p.pastel_stock_code);
+   const chemical=/^chemicals?$/i.test(type),actives=p.actives;
+   if(!name||name.length>200||!type||type.length>100||!category||category.length>100||!unit||(!code&&unit==='UNVERIFIED')||unit.length>30||pastel.length>100)return reply({error:'Enter Type, Category, Product Name and a confirmed Unit of Measure'},400);
+   if(!Array.isArray(actives)||actives.length>20||(!chemical&&actives.length)||chemical&&!code&&(!actives.length||!/^l(t|ts|itre(s)?)?$|^kg(s)?$/i.test(unit)))return reply({error:'New Chemicals require active ingredients and a litre or kilogram unit; other Types cannot have actives'},400);
+   const normalized=actives.map((a:any)=>({name:clean(a.name),amount:Number(a.amount),unit:unit==='UNVERIFIED'?String(a.unit):/kg/i.test(unit)?'g/kg':'g/L'}));
+   if(normalized.some((a:any)=>!a.name||a.name.length>150||!Number.isFinite(a.amount)||a.amount<=0||!['g/L','g/kg'].includes(a.unit))||new Set(normalized.map((a:any)=>a.name.toLowerCase())).size!==normalized.length)return reply({error:'Each active needs a unique name and positive concentration'},400);
+   const result=await transaction(async tx=>{
+    const found=code?await tx`select i.*,coalesce(m.version,0) as version,m.pastel_stock_code from stock_v2.item i left join stock_v2.product_metadata m using(item_id) where i.item_code=${code} for update of i`:[];
+    if(code&&!found.length)throw Error('Product not found');
+    if(code&&(Number(p.version)!==Number(found[0].version)))throw Error('Product changed since this form opened. Reopen Edit Product before saving.');
+    if(code&&unit!==found[0].base_unit)throw Error('Existing stock units cannot be changed here');
+    const duplicates=await tx`select item_code from stock_v2.item where lower(regexp_replace(btrim(item_name),'[[:space:]]+',' ','g'))=lower(${name}) and item_code<>${code}`;
+    if(duplicates.length)throw Error('A product with this name already exists. Use the existing product.');
+    const matchingCategory=await tx`select 1 from stock_v2.item where input_type=${type} and input_category=${category} limit 1`;
+    if(!matchingCategory.length)throw Error('Choose a Category belonging to the selected Type');
+    const oldActives=code?await tx`select active_name as name,concentration::text as amount,concentration_unit as unit from stock_v2.item_active_ingredient where item_id=${found[0].item_id} order by id`:[];
+    const old=code?{...found[0],actives:oldActives}:null;
+    const itemCode=code||'P-'+body.operation_id;
+    const saved=code?await tx`update stock_v2.item set item_name=${name},input_type=${type},input_category=${category},active_ingredient=${normalized.map((a:any)=>a.name).join(' + ')||null} where item_code=${code} returning item_id`:
+     await tx`insert into stock_v2.item(item_code,item_name,input_type,input_category,base_unit,active_ingredient) values(${itemCode},${name},${type},${category},${unit},${normalized.map((a:any)=>a.name).join(' + ')||null}) returning item_id`;
+    const itemId=saved[0].item_id;
+    await tx`insert into stock_v2.product_metadata(item_id,pastel_stock_code,version) values(${itemId},${pastel||null},1) on conflict(item_id) do update set pastel_stock_code=excluded.pastel_stock_code,version=product_metadata.version+1`;
+    await tx`delete from stock_v2.item_active_ingredient where item_id=${itemId}`;
+    for(const a of normalized)await tx`insert into stock_v2.item_active_ingredient(item_id,active_name,concentration,concentration_unit,updated_by) values(${itemId},${a.name},${a.amount},${a.unit},${user.id}::uuid)`;
+    const version=Number(found[0]?.version??0)+1;
+    const product={item_code:itemCode,item_name:name,input_type:type,input_category:category,base_unit:unit,pastel_stock_code:pastel||null,actives:normalized.map((a:any)=>({...a,amount:String(a.amount)})),version,active:found[0]?.active??true};
+    await tx`insert into stock_v2.product_audit(item_id,actor,operation_id,old_values,new_values) values(${itemId},${user.id}::uuid,${body.operation_id}::uuid,${tx.json(old)}::jsonb,${tx.json(product)}::jsonb)`;
+    await tx`insert into stock_v2.item_active_ingredient_audit(item_id,actor,old_ingredients,new_ingredients) values(${itemId},${user.id}::uuid,${tx.json(oldActives)}::jsonb,${tx.json(normalized)}::jsonb)`;
+    return {product};
+   });return reply({success:true,result});
+  }
   if(['stocktake_adjustment_save','individual_adjustment_save'].includes(body?.action)){const result=await db`select stock_v2.stock_adjustment_command(${user.id}::uuid,${body.operation_id}::uuid,${body.action}::text,${db.json(body)}::jsonb) as result`;return reply({success:true,result:result[0].result});}
   if(body?.action==='stock_adjustment_post')return reply({error:'Use Stock Adjustment to save a numbered individual adjustment'},409);
   if(['combined_stocktake_create','combined_stocktake_save','combined_stocktake_post'].includes(body?.action)){

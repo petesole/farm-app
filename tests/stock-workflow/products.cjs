@@ -1,0 +1,26 @@
+const assert=require('node:assert/strict'),{randomUUID:uuid}=require('crypto');
+module.exports=async function testProducts(db,admin,stock){
+ const {edge}=require('./edge-harness.cjs'),api=edge(db,'stock-v2-demo-workflow',admin),clerk=edge(db,'stock-v2-demo-workflow',stock);let passed=0;
+ const check=(v,n)=>{assert(v,n);console.log('PASS',n);passed++};
+ const scalar=async sql=>Object.values((await db.query(sql)).rows[0])[0];
+ await db.exec("insert into stock_v2.item(item_code,item_name,base_unit,input_type,input_category) values('SEED_TEMPLATE','Existing Seed','kg','Seed','Seed')");
+ const before=await scalar('select count(*) from stock_v2.movement');
+ const payload={item_name:'Test Chemical New',input_type:'Chemical',input_category:'Insecticide',base_unit:'L',pastel_stock_code:'CH-NEW',actives:[{name:'Ingredient A',amount:'200',unit:'g/L'},{name:'Ingredient B',amount:'50',unit:'g/L'}]};
+ const body={action:'product_save',operation_id:uuid(),payload};let r=await clerk('',body);
+ check(r.status===200,'Stock clerk can create chemical with multiple actives and Pastel code');const product=r.body.result.product;
+ check((await clerk('',body)).body.result.replayed,'Retry returns the same product without duplicate creation');
+ check(await scalar('select count(*) from stock_v2.movement')===before,'Creating product creates no stock movement');
+ check((await api('?product_catalog=1')).body.items.some(p=>p.item_code===product.item_code&&p.actives.length===2&&p.pastel_stock_code==='CH-NEW'),'New product and actives visible immediately in catalogue');
+ r=await api('',{...body,operation_id:uuid(),payload:{...payload,item_name:'  test   chemical NEW '}});check(r.status===400&&/already exists/.test(r.body.error),'Case and whitespace duplicate blocked server-side');
+ r=await api('',{...body,operation_id:uuid(),payload:{...payload,item_name:'Wrong Category',input_type:'Seed'}});check(r.status===400,'Non-chemical product cannot carry chemical actives');
+ r=await api('',{...body,operation_id:uuid(),payload:{...payload,item_name:'Wrong Category',input_category:'Seed'}});check(r.status===400,'Category must belong to the selected Type');
+ r=await clerk('',{...body,operation_id:uuid(),payload:{...product,item_name:'Renamed Chemical'}});check(r.status===403,'Clerk cannot rename existing master data');
+ const renamed=await api('',{...body,operation_id:uuid(),payload:{...product,item_name:'Renamed Chemical',pastel_stock_code:'UPDATED'}});check(renamed.status===200&&renamed.body.result.product.item_code===product.item_code,'Admin rename preserves product identity and updates optional Pastel code');
+ r=await api('',{...body,operation_id:uuid(),payload:{...product,item_name:'Stale Edit'}});check(r.status===400&&/changed since/.test(r.body.error),'Stale edit rejected without overwriting a newer save');
+ r=await api('',{...body,operation_id:uuid(),payload:{...renamed.body.result.product,base_unit:'kg'}});check(r.status===400&&/units/.test(r.body.error),'Existing stock unit cannot silently change');
+ r=await clerk('',{action:'product_save',operation_id:uuid(),payload:{item_name:'New Seed',input_type:'Seed',input_category:'Seed',base_unit:'kg',pastel_stock_code:'SD-1',actives:[]}});check(r.status===200&&r.body.result.product.pastel_stock_code==='SD-1','Non-chemical product accepts Pastel code without actives');
+ check(Number(await scalar('select count(*) from stock_v2.product_audit'))===3,'Successful creates and edit have audit records; failures do not');
+ check(await scalar('select count(*) from stock_v2.movement')===before,'Product editing and rejected saves preserve inventory');
+ r=await edge(db,'stock-v2-demo-workflow',uuid())('?product_catalog=1');check(r.status>=400,'Unassigned user cannot read product catalogue');
+ return passed;
+};
