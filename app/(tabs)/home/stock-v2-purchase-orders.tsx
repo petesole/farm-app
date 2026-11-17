@@ -1,4 +1,5 @@
 import {StockRecovery} from "@/components/jspl/StockWorkflowControls";
+import {StockProductEditor} from '@/components/jspl/StockProductEditor';
 import {useState,useCallback,useEffect,useRef} from 'react';
 import {useFocusEffect,useLocalSearchParams,useRouter} from 'expo-router';
 import {ActivityIndicator,Modal,ScrollView,Text,View} from 'react-native';
@@ -11,6 +12,8 @@ const blank=():Line=>({item_code:'',quantity:'',unit_price:''});
 export default function PurchaseOrders(){
  const router=useRouter(),params=useLocalSearchParams<{edit?:string;status?:string;from?:string;fromSpray?:string}>(),openedEdit=useRef('');
  const [sourceSpray,setSourceSpray]=useState<number|null>(null);
+ const [newProductLine,setNewProductLine]=useState<number|null>(null);
+ const [newProductName,setNewProductName]=useState('');
  const [context,setContext]=useState<WorkflowContext|null>(null),[setup,setSetup]=useState<any>({}),[items,setItems]=useState<any[]>([]),[suppliers,setSuppliers]=useState<any[]>([]);
  const [busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[filter,setFilter]=useState<string>(params.status??'all');
  const [editing,setEditing]=useState<ApprovalDocument|null>(null),[editor,setEditor]=useState(false),[id,setId]=useState(''),[owner,setOwner]=useState(''),[supplier,setSupplier]=useState(''),[date,setDate]=useState(''),[contract,setContract]=useState<number|null>(null),[lines,setLines]=useState<Line[]>([blank()]),[reason,setReason]=useState(''),[cancelling,setCancelling]=useState<ApprovalDocument|null>(null);
@@ -64,7 +67,7 @@ export default function PurchaseOrders(){
  <Field label="Order date (dd/mm/yyyy)" value={date} onChange={setDate}/>
  {selectedOwner?.po_requires_contract?<Select label="Contract" value={selectedOwner.default_contract_id==null?contract:Number(selectedOwner.default_contract_id)} disabled={!!selectedOwner.default_contract_id} options={(setup.contracts??[]).filter((c:any)=>c.active).map((c:any)=>({id:Number(c.contract_id),label:c.contract_code}))} onChange={v=>setContract(v==null?null:Number(v))}/>:null}
  {lines.map((l,n)=><View key={n} style={S.card}><ScrollView horizontal contentContainerStyle={{flexGrow:1}}><View style={{flexDirection:'row',alignItems:'flex-start',gap:12,minWidth:680,flex:1}}>
- <View style={{flex:3,minWidth:260}}><Select label={'Product '+(n+1)} value={l.item_code} options={items.filter(i=>i.active&&!lines.some((x,j)=>j!==n&&x.item_code===i.item_code)).map(i=>({id:i.item_code,label:i.item_name+' · '+i.base_unit}))} onChange={v=>change(n,'item_code',String(v??''))}/></View>
+ <View style={{flex:3,minWidth:260,gap:8}}><Select label={'Product '+(n+1)} value={l.item_code} options={items.filter(i=>i.active&&!lines.some((x,j)=>j!==n&&x.item_code===i.item_code)).map(i=>({id:i.item_code,label:i.item_name+' · '+i.base_unit}))} onChange={v=>change(n,'item_code',String(v??''))} onCreate={q=>{setNewProductName(q);setNewProductLine(n)}}/><Button title={'+ New Product for line '+(n+1)} disabled={busy||!context?.access.is_stock} onPress={()=>{setNewProductName('');setNewProductLine(n)}}/></View>
  <View style={{flex:1,minWidth:140}}><Field label="Quantity" numeric value={l.quantity} onChange={v=>change(n,'quantity',v)}/></View>
  <View style={{flex:1,minWidth:150}}><Field label="Unit price (optional)" numeric value={l.unit_price} onChange={v=>change(n,'unit_price',v)}/></View>
  {lines.length>1?<View style={{paddingTop:26}}><Button title="Remove line" disabled={busy} onPress={()=>setLines(ls=>ls.filter((_,i)=>i!==n))}/></View>:null}
@@ -72,5 +75,6 @@ export default function PurchaseOrders(){
  <View style={S.row}><Button title="Add product" disabled={busy||lines.length>=30} onPress={()=>setLines(ls=>[...ls,blank()])}/></View>
  {editing?<Field label="Reason for correction / cancellation" value={reason} onChange={setReason}/>:null}
  <View style={S.row}><Button title={editing?'Save Changes':'Save Draft'} disabled={busy} onPress={()=>void save('save')}/>{!editing||!['approved','applied'].includes(editing.status)?<Button title="Submit for Approval" disabled={busy} onPress={()=>void save('submit')}/>:null}{editing?<Button title="Cancel PO" disabled={busy} onPress={()=>void command('cancel',editing,{reason})}/>:null}</View>
+ {newProductLine!==null?<StockProductEditor product={null} initialName={newProductName} onCancel={()=>setNewProductLine(null)} onSaved={async product=>{const data=await stockRequest();if(!data.items?.some((p:any)=>p.item_code===product.item_code))throw Error('Product saved; refresh not confirmed. Verify Save to return to this PO.');setItems(data.items);change(newProductLine,'item_code',product.item_code);setNewProductLine(null)}}/>:null}
  </ScrollView></Modal></ScrollView>;
 }

@@ -9,6 +9,7 @@ exports.testSimilarActives=async(db,admin,stock)=>{
  const post=async(action,payload,id=uuid())=>{const r=await api('',{action,payload,operation_id:id});assert.equal(r.status,200,JSON.stringify(r));return r.body.result};
  await db.exec("insert into public.tracecode(tracecode_id,tracecode_name,tracecode_size,start_date) values(910,'Similar active test',20,'2026-01-01');insert into stock_v2.item(item_code,item_name,base_unit,formulation_type) values('LAMBDA','Lambda test','L','EC'),('TRIGGER','Trigger test','L','EC'),('MIXED','Mixed active test','L','EC');insert into stock_v2.access_spray_type_catalog(access_spray_type_id,spray_type_name,spray_tank_size,spray_rate_per_ha) values(910,'Similar boom',600,225)");
  for(const [code,amount] of [['LAMBDA',50],['TRIGGER',100],['MIXED',50]]){
+  await db.query("update stock_v2.item set input_type='Chemical',input_category='Insecticide' where item_code=$1",[code]);
   const r=await adminAPI('?chemical_actives=1',{item_code:code,actives:[{name:'Lambda-cyhalothrin',amount,unit:'g/L'},...(code==='MIXED'?[{name:'Other active',amount:10,unit:'g/L'}]:[])]});assert.equal(r.status,200,JSON.stringify(r));
  }
  for(const [owner,code,qty] of [['JS','LAMBDA',1],['JS','TRIGGER',1.5],['AO','LAMBDA',7],['AO','TRIGGER',4]])await scalar("select stock_v2.demo_multi('direct_grv',$1,$2::jsonb)",[uuid(),JSON.stringify({owner_code:owner,supplier:'Supplier A',receipt_mode:'invoice',invoice_number:uuid(),receipt_date:'2026-11-14',lines:[{item_code:code,quantity:qty,unit_price:10}]})]);
