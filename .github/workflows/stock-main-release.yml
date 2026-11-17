@@ -10,6 +10,12 @@ on:
       - 'utils/stock*'
       - 'supabase/functions/stock-v2-*/**'
       - 'tests/stock-workflow/**'
+      - 'app/labour*'
+      - 'app/(tabs)/labour.tsx'
+      - 'components/jspl/LabourPeriodReport.tsx'
+      - 'utils/labour-period-report.ts'
+      - 'lib/labour*'
+      - 'tests/labour-reports.cjs'
       - '.github/workflows/stock-main-release.yml'
 permissions:
   contents: read
@@ -28,5 +34,6 @@ jobs:
       - run: node tests/stock-workflow/run.cjs
       - run: node tests/stock-workflow/equipment-fuel.cjs
       - run: node tests/stock-workflow/browser-deployment.cjs
+      - run: node tests/labour-reports.cjs
       - run: npx tsc --noEmit
       - run: npm run build:web
