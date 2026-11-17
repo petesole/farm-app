@@ -42,7 +42,7 @@ export default function FuelIssueEdit(){
   if(!vehicleId){setError("Select a vehicle.");return;}
   if(!Number.isFinite(qty)||qty<=0){setError("Enter a positive fuel quantity.");return;}
   if(meterValue!==null&&(!Number.isFinite(meterValue)||meterValue<0)){setError("Invalid meter reading.");return;}
-  const vehicle=vehicles.find(v=>v.vehicle_id===vehicleId);
+  const vehicle=vehicles.find(v=>Number(v.vehicle_id)===Number(vehicleId));
   if((editing===null||vehicleId!==editing.vehicle_id)&&(!vehicle||vehicle.fuel_type!=="DIESEL"||vehicle.vehicle_discontinued)){setError("Select active diesel equipment.");return;}
   if(vehicle?.is_other&&!notes.replace(/^\[UNPLANNED\]\s*/i,"").trim()){setError("Description required for Other diesel use.");return;}
   if(vehicle?.has_meter&&meterValue===null){setError("Enter the vehicle meter reading.");return;}
@@ -87,10 +87,10 @@ export default function FuelIssueEdit(){
   </View>}
   {editing!==undefined&&<View style={s.card}>
    <ThemedText type="subtitle">{editing===null?"Add fuel issue":"Edit issue #"+editing.fuel_issue_id}</ThemedText>
-   <ThemedText>Vehicle</ThemedText><View style={s.picker}><Picker selectedValue={vehicleId} onValueChange={setVehicleId}><Picker.Item label="Select vehicle" value={null}/>{vehicles.filter(v=>(v.fuel_type==="DIESEL"&&!v.vehicle_discontinued)||v.vehicle_id===editing?.vehicle_id).map(v=><Picker.Item key={v.vehicle_id} value={v.vehicle_id} label={v.vehicle_name}/>)}</Picker></View>
-   <ThemedText>Litres issued</ThemedText><TextInput style={s.input} value={litres} onChangeText={setLitres} keyboardType="numeric"/>
-   <ThemedText>Meter reading (if vehicle has meter)</ThemedText><TextInput style={s.input} value={meter} onChangeText={setMeter} keyboardType="numeric"/>
-   <ThemedText>Notes</ThemedText><TextInput style={s.input} value={notes} onChangeText={setNotes}/>
+   <ThemedText>Vehicle</ThemedText><View style={s.picker}><Picker selectedValue={vehicleId} onValueChange={v=>setVehicleId(Number(v)>0?Number(v):null)}><Picker.Item label="Select vehicle" value={null}/>{vehicles.filter(v=>(v.fuel_type==="DIESEL"&&!v.vehicle_discontinued)||v.vehicle_id===editing?.vehicle_id).map(v=><Picker.Item key={v.vehicle_id} value={v.vehicle_id} label={v.vehicle_name}/>)}</Picker></View>
+   <ThemedText>Litres issued</ThemedText><TextInput accessibilityLabel="Litres issued" style={s.input} value={litres} onChangeText={setLitres} keyboardType="numeric"/>
+   <ThemedText>Meter reading (if vehicle has meter)</ThemedText><TextInput accessibilityLabel="Vehicle meter reading" style={s.input} value={meter} onChangeText={setMeter} keyboardType="numeric"/>
+   <ThemedText>Notes</ThemedText><TextInput accessibilityLabel="Fuel issue notes" style={s.input} value={notes} onChangeText={setNotes}/>
    <View style={s.row}><Pressable style={s.btn} disabled={saving} onPress={save}><ThemedText>{saving?"Saving…":"Save"}</ThemedText></Pressable><Pressable style={s.btn} onPress={()=>setEditing(undefined)}><ThemedText>Cancel</ThemedText></Pressable></View>
   </View>}
  </ScrollView>;
