@@ -1,3 +1,5 @@
+create schema if not exists potato_market_private;
+revoke all on schema potato_market_private from public,anon,authenticated;
 create table if not exists public.potato_market_sale (
  sale_id uuid primary key default gen_random_uuid(),
  dispatch_id uuid not null unique references public.wb_potato_dispatch(dispatch_id),
