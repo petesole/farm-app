@@ -5,7 +5,15 @@ create policy irrigation_applied_add on public.irrigation_applied
   for insert to authenticated
   with check (
     (select auth.uid()) is not null
-    and (select public.my_farm_app_roles()) && array['admin','irrigation']::text[]
+    and (
+      'admin' = any((select public.my_farm_app_roles()))
+      or (
+        'irrigation' = any((select public.my_farm_app_roles()))
+        and (start_at at time zone 'Africa/Harare')::date between
+          (now() at time zone 'Africa/Harare')::date - 9 and
+          (now() at time zone 'Africa/Harare')::date
+      )
+    )
   );
 
 drop policy if exists irrigation_pan_add on public.irrigation_pan;
@@ -13,7 +21,15 @@ create policy irrigation_pan_add on public.irrigation_pan
   for insert to authenticated
   with check (
     (select auth.uid()) is not null
-    and (select public.my_farm_app_roles()) && array['admin','irrigation']::text[]
+    and (
+      'admin' = any((select public.my_farm_app_roles()))
+      or (
+        'irrigation' = any((select public.my_farm_app_roles()))
+        and irrigation_pan_date between
+          (now() at time zone 'Africa/Harare')::date - 9 and
+          (now() at time zone 'Africa/Harare')::date
+      )
+    )
   );
 
 -- Pan changes affect evap and irrigation requirements. The cache must be
