@@ -1,4 +1,4 @@
-import {labourTotals,labourEntryColumns,LabourEntry,LabourLine,LabourMode} from './labour-period-report';
+import {labourTotals,labourEntryColumns,loadLabourPages,LabourEntry,LabourLine,LabourMode} from './labour-period-report';
 export type Season={season_id:number|string;season_name:string;season_complete:boolean;plan_year:number|null};
 export type Farm={farm_id:number|string;farm_name:string;active:boolean};
 export type Crop={crop_id:number|string;crop_name:string;active:boolean};
@@ -55,5 +55,94 @@ export function buildSeasonReport(rows:LabourEntry[],lists:LabourLists,s:SeasonS
  const make=(data:LabourEntry[],label?:string,level?:'farm'|'crop'|'trace'):LabourLine=>{const t=labourTotals(data),r=data[0],master=[...new Set(data.map(x=>(x as LabourEntry&{master_warning?:string}).master_warning).filter(Boolean))].join('; ');return {labour_date:label?'':s.mode==='weekly'?'Week '+period(r):period(r),report_farm:r.report_farm,crop_name:level==='farm'?'':r.crop_name,tracecode_name:level==='farm'||level==='crop'?'':r.tracecode_name,activity_name:label??r.activity_name,labour_qty:t.missingQty===t.entries?'Not recorded':t.qty,total_cost:t.missingValue===t.entries?'Not recorded':t.value,status:[t.missingQty?`Missing Qty: ${t.missingQty}`:'',t.missingValue?`Missing Value: ${t.missingValue}`:'',master].filter(Boolean).join('; '),_kind:label?'subtotal':'detail',entries:t.entries}};
  const output:LabourLine[]=[];
  for(const farm of groups(selected,r=>r.report_farm)){for(const crop of groups(farm,r=>r.crop_name)){for(const trace of groups(crop,r=>r.tracecode_name+'|'+r.tracecode_id)){for(const p of groups(trace,period)){for(const activity of groups(p,r=>r.activity_name+'|'+r.activity_id))output.push(make(activity))}output.push(make(trace,'Trace total','trace'))}output.push(make(crop,'Crop total','crop'))}output.push(make(farm,'Farm total','farm'))}
+ return {rows:output,totals:labourTotals(selected),sourceRows:selected.length,missingMaster:selected.filter(r=>r.master_warning).length};
+}
+
+export type AllocationFilters = SeasonSelection & {company: string; activity: string};
+type AllocationDimension = Exclude<keyof AllocationFilters, 'mode'>;
+type ReportAllocation = LabourEntry & Record<AllocationDimension, string> & { seasonLabel: string; master_warning: string };
+
+const dimensions: AllocationDimension[] = ['season', 'farm', 'crop', 'trace', 'company', 'activity'];
+
+export async function loadAllocationReport(client: Parameters<typeof loadLabourPages>[0]) {
+ const [lists, entries] = await Promise.all([loadLabourLists(client), loadLabourPages(client, labourEntryColumns)]);
+ const seasons = new Map(lists.seasons.map(s => [id(s.season_id), s.season_name]));
+ const farms = new Map(lists.farms.map(f => [id(f.farm_id), f.farm_name]));
+ const crops = new Map(lists.crops.map(c => [id(c.crop_id), c.crop_name]));
+ const fields = new Map(lists.fields.map(f => [id(f.field_id), id(f.farm_id)]));
+ const traces = new Map(lists.traces.map(t => [id(t.tracecode_id), t]));
+ return (entries as LabourEntry[]).map((row): ReportAllocation => {
+  const trace = traces.get(id(row.tracecode_id));
+  const season = id(trace?.season_id);
+  const farm = fields.get(id(trace?.field_id)) ?? '';
+  const crop = id(trace?.crop_id);
+  return {
+   ...row, season, farm, crop, trace: trace ? id(trace.tracecode_id) : '',
+   company: row.report_farm === 'AgriOrange' ? 'AO' : 'JS',
+   activity: id(row.activity_id),
+   seasonLabel: seasons.get(season) ?? '',
+   report_farm: farms.get(farm) ?? row.report_farm ?? 'Unassigned farm',
+   crop_name: crops.get(crop) ?? row.crop_name ?? 'Unassigned crop',
+   tracecode_name: trace?.tracecode_name ?? row.tracecode_name ?? 'Unassigned trace',
+   master_warning: [!trace && 'Trace not assigned', !seasons.has(season) && 'Season not assigned', !farms.has(farm) && 'Farm not assigned', !crops.has(crop) && 'Crop not assigned'].filter(Boolean).join('; '),
+  };
+ });
+}
+
+function allocationMatches(row: ReportAllocation, selection: AllocationFilters, omit?: AllocationDimension) {
+ return dimensions.every(key => key === omit || !selection[key] || row[key] === selection[key]);
+}
+
+export function allocationOptions(rows: ReportAllocation[], selection: AllocationFilters, key: AllocationDimension) {
+ const values = new Map<string, string>();
+ for (const row of rows) {
+  if (!row[key] || !allocationMatches(row, selection, key)) continue;
+  const label = {season: row.seasonLabel, farm: row.report_farm, crop: row.crop_name, trace: row.tracecode_name,
+   company: row.company, activity: row.activity_name}[key];
+  if (label) values.set(row[key], label);
+ }
+ return [...values].map(([id, label]) => ({id, label})).sort((a,b) => a.label.localeCompare(b.label, 'en', {numeric:true}));
+}
+
+export function repairAllocationFilters(rows: ReportAllocation[], filters: AllocationFilters) {
+ const next = {...filters};
+ // On refresh, keep any selection that still forms a valid combination.
+ for (const key of [...dimensions].reverse()) {
+  if (next[key] && !allocationOptions(rows, next, key).some(option => option.id === next[key])) next[key] = '';
+ }
+ return next;
+}
+
+export function buildAllocationReport(rows: ReportAllocation[], selection: AllocationFilters) {
+ const selected = rows.filter(row => allocationMatches(row, selection));
+ const dateFor = (row: ReportAllocation) => selection.mode === 'weekly' ? row.labour_week :
+  selection.mode === 'monthly' ? row.labour_date.slice(0,7) : row.labour_date;
+ const detail: ReportAllocation[][] = [];
+ if (selection.mode === 'daily') {
+  for (const row of selected) detail.push([row]);
+ } else {
+  const groups = new Map<string, ReportAllocation[]>();
+  for (const row of selected) {
+   const key = JSON.stringify([dateFor(row),row.season,row.company,row.farm,row.crop,row.trace,row.activity || row.activity_name]);
+   const group = groups.get(key);
+   if (group) group.push(row);
+   else groups.set(key, [row]);
+  }
+  for (const group of groups.values()) detail.push(group);
+ }
+ detail.sort(([a],[b]) => dateFor(b).localeCompare(dateFor(a), 'en', {numeric:true}) ||
+  a.report_farm.localeCompare(b.report_farm) || a.tracecode_name.localeCompare(b.tracecode_name) ||
+  a.activity_name.localeCompare(b.activity_name));
+ const output = detail.map((group): LabourLine & {company:string} => {
+  const row = group[0], totals = labourTotals(group);
+  return {
+   labour_date: dateFor(row), company: row.company, report_farm: row.report_farm, crop_name: row.crop_name,
+   tracecode_name: row.tracecode_name, activity_name: row.activity_name,
+   labour_qty: totals.missingQty === totals.entries ? 'Not recorded' : totals.qty,
+   total_cost: totals.missingValue === totals.entries ? 'Not recorded' : totals.value,
+   status: [totals.missingQty ? `Missing Qty: ${totals.missingQty}` : '', totals.missingValue ? `Missing Value: ${totals.missingValue}` : '', row.master_warning].filter(Boolean).join('; '),
+   _kind: 'detail', entries: totals.entries,
+  };
+ });
  return {rows:output,totals:labourTotals(selected),sourceRows:selected.length,missingMaster:selected.filter(r=>r.master_warning).length};
 }
