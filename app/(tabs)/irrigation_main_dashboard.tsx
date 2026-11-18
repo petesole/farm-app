@@ -1,467 +1,257 @@
 import { supabase } from "@/supabase";
-import {verifiedIrrigationRoles} from '@/utils/irrigation-access';
-import {JsplModuleHeader} from '@/components/jspl/JsplModuleHeader';
-import {jsplColors as C} from '@/constants/jspl-design';
-import {displayJsplDate} from '@/utils/jspl-input';
+import { verifiedIrrigationRoles } from "@/utils/irrigation-access";
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
+import { jsplColors as C } from "@/constants/jspl-design";
+import { displayJsplDate } from "@/utils/jspl-input";
+import { Picker } from "@react-native-picker/picker";
 import { useFocusEffect } from "@react-navigation/native";
 import { router } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  useWindowDimensions,
-  View,
+  ActivityIndicator, FlatList, Pressable, RefreshControl,
+  StyleSheet, Text, View, useWindowDimensions,
 } from "react-native";
 
-type DashRow = {
+type Field = {
   tracecode_id: number;
-  crop: string | null;
-  trace: string | null;
-  in_cycle: boolean | null;
-  last_irrigation_date?: string | null;
-  last_mm?: number | null;
-  cycle_stamp: string | null;
-  ["DSL_Irr/Rain"]?: number | null;
+  tracecode_name: string;
+  crop_id: number;
+  crop: { crop_name: string } | { crop_name: string }[] | null;
+};
+type Cached = {
+  tracecode_id: number;
+  last_irrigation_date: string | null;
   daily_req: number | null;
   acc_req: number | null;
+  net_mm: number | null;
   next_app: string | null;
   next_app_mm: number | null;
-  next_schedule_id: number | null;
-  seasonal_depletion_mm?: number | null;
 };
-
-type RoleName = "admin" | "irrigation" | "manager" | "viewer" | "unknown" | string;
-
-function normRole(x: any) {
-  return String(x ?? "").trim().toLowerCase();
-}
-
-function toNum(v: any): number | null {
-  if (v === null || v === undefined) return null;
-  const n = typeof v === "string" ? Number(v) : v;
-  return Number.isFinite(n) ? n : null;
-}
-
-function fmt0(v: any) {
-  const n = toNum(v);
-  return n === null ? "-" : String(Math.round(n));
-}
-
-function fmt1(v: any) {
-  const n = toNum(v);
-  return n === null ? "-" : (Math.round(n * 10) / 10).toFixed(1);
-}
-
-function fmtDate(v: any) {
-  if (!v) return "-";
-  return displayJsplDate(String(v));
-}
-
-const COLS = [
-  { key: "crop", label: "Crop", width: 150 },
-  { key: "trace", label: "Trace", width: 160 },
-  { key: "last_irrigation_date", label: "Last irrigation", width: 125 },
-  { key: "last_mm", label: "Last mm", width: 95 },
-  { key: "DSL_Irr/Rain", label: "DSL", width: 70 },
-  { key: "daily_req", label: "Daily", width: 90 },
-  { key: "acc_req", label: "Acc", width: 90 },
-  { key: "seasonal_depletion_mm", label: "Season", width: 90 },
-  { key: "next_app", label: "Next d", width: 110 },
-  { key: "next_app_mm", label: "Next mm", width: 90 },
-  { key: "actions", label: "Actions", width: 190 },
+type Applied = { tracecode_id: number; applied_date: string; mm_applied: number; irrigation_applied_id: number };
+type Row = {
+  tracecode_id: number; trace: string; crop: string; crop_id: number;
+  lastDate: string | null; lastMm: number | null;
+  daily: number | null; accumulated: number | null; net: number | null;
+  nextDate: string | null; nextMm: number | null;
+};
+const fmt = (v: number | null) => v == null ? "—" : Number(v).toFixed(1);
+const date = (v: string | null) => v ? displayJsplDate(v) : "—";
+const columns = [
+  { key: "crop", title: "Crop", width: 140 },
+  { key: "trace", title: "Trace Code", width: 190 },
+  { key: "lastDate", title: "Last Irrigation", width: 130 },
+  { key: "lastMm", title: "Last mm", width: 90 },
+  { key: "daily", title: "Daily mm", width: 90 },
+  { key: "accumulated", title: "Accumulated", width: 115 },
+  { key: "net", title: "Net mm", width: 90 },
+  { key: "nextDate", title: "Next Date", width: 110 },
+  { key: "nextMm", title: "Next mm", width: 90 },
+  { key: "open", title: "Action", width: 110 },
 ] as const;
 
 export default function IrrigationMainDashboard() {
   const { width } = useWindowDimensions();
   const isPhone = width < 700;
-
-  const [rows, setRows] = useState<DashRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<Row[]>([]);
+  const [cropId, setCropId] = useState("all");
+  const [traceId, setTraceId] = useState("all");
+  const [roles, setRoles] = useState<string[]>([]);
+  const isAdmin = roles.includes("admin");
+  const [busy, setBusy] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [errorText, setErrorText] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [panDate, setPanDate] = useState(() => {
-    const d=new Date();return String(d.getDate()).padStart(2,"0")+"/"+String(d.getMonth()+1).padStart(2,"0")+"/"+d.getFullYear();
-  });
-  const [panMm, setPanMm] = useState("");
-  const [panSaving, setPanSaving] = useState(false);
-  const [recentPan, setRecentPan] = useState<{irrigation_pan_date:string;irrigation_pan_reading:number}[]>([]);
+  const [error, setError] = useState("");
 
-  const [roles, setRoles] = useState<RoleName[]>([]);
-  const isAdmin = useMemo(() => roles.map(normRole).includes("admin"), [roles]);
-  const canEnter = useMemo(() => roles.some(r => ["admin","irrigation"].includes(normRole(r))), [roles]);
+  const loadRoles = useCallback(async () => setRoles(await verifiedIrrigationRoles(supabase)), []);
+  useEffect(() => { void loadRoles(); }, [loadRoles]);
 
-  const tableWidth = useMemo(
-    () => COLS.reduce((sum, c) => sum + c.width, 0),
-    []
-  );
-
-  const loadRoles = useCallback(async () => {
-    setRoles(await verifiedIrrigationRoles(supabase));
-  }, []);
-
-  const fetchData = useCallback(async () => {
-    setErrorText(null);
-    setLoading(true);
-
+  const load = useCallback(async () => {
+    setBusy(true);
+    setError("");
     try {
-      const queryPromise = supabase
-        .from("irrigation_dashboard_cache")
-        .select(
-          'tracecode_id,crop,trace,in_cycle,cycle_stamp,last_irrigation_date,daily_req,acc_req,next_app,next_app_mm,next_schedule_id,"DSL_Irr/Rain",seasonal_depletion_mm'
-        )
-        .order("in_cycle", { ascending: false })
-        .order("acc_req", { ascending: false })
-        .order("trace", { ascending: true });
+      // This is the sole field inclusion rule: crop assigned and end_date IS NULL.
+      // Do not filter by a planting/start date, irrigation type, or dashboard cache membership.
+      const { data: fields, error: fieldsError } = await supabase
+        .from("tracecode")
+        .select("tracecode_id,tracecode_name,crop_id,crop:crop_id(crop_name)")
+        .not("crop_id", "is", null)
+        .is("end_date", null)
+        .order("tracecode_name", { ascending: true })
+        .limit(2000);
+      if (fieldsError) throw fieldsError;
+      const f = (fields ?? []) as Field[];
 
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Dashboard query timed out")), 20000)
-      );
-
-      const result: any = await Promise.race([queryPromise, timeoutPromise]);
-      const { data, error } = result;
-
-      if (error) throw error;
-
-      const {data: applied,error:appliedError}=await supabase.from("irrigation_applied")
-        .select("tracecode_id,applied_date,mm_applied,irrigation_applied_id")
-        .order("applied_date",{ascending:false}).order("irrigation_applied_id",{ascending:false}).limit(2000);
-      if(appliedError)throw appliedError;
-      const latest=new Map<number,number>();
-      for(const a of applied??[]){const id=Number(a.tracecode_id);if(!latest.has(id))latest.set(id,Number(a.mm_applied));}
-      // Cache can contain finished crops. Show only current irrigated traces.
-      const ids = ((data ?? []) as DashRow[]).map(r => r.tracecode_id);
-      let eligible = new Set<number>();
-      if (ids.length) {
-        const {data: traces,error:traceError} = await supabase.from("tracecode")
-          .select("tracecode_id,start_date,end_date,irrigation_type_id")
-          .in("tracecode_id",ids);
-        if (traceError) throw traceError;
-        const today = new Date();
-        const iso = today.getFullYear()+"-"+String(today.getMonth()+1).padStart(2,"0")+"-"+String(today.getDate()).padStart(2,"0");
-        eligible = new Set((traces ?? [])
-          .filter(t => t.start_date && t.start_date <= iso && (!t.end_date || t.end_date >= iso) && Number(t.irrigation_type_id) !== 4)
-          .map(t => Number(t.tracecode_id)));
+      // Metrics are optional. Missing cache rows never hide an eligible field.
+      const [cacheResult, appliedResult] = await Promise.all([
+        supabase.from("irrigation_dashboard_cache")
+          .select("tracecode_id,last_irrigation_date,daily_req,acc_req,net_mm,next_app,next_app_mm")
+          .limit(2000),
+        supabase.from("irrigation_applied")
+          .select("tracecode_id,applied_date,mm_applied,irrigation_applied_id")
+          .order("applied_date", { ascending: false })
+          .order("irrigation_applied_id", { ascending: false })
+          .limit(5000),
+      ]);
+      if (appliedResult.error) throw appliedResult.error;
+      const metrics = new Map<number, Cached>();
+      if (!cacheResult.error) for (const c of (cacheResult.data ?? []) as Cached[]) {
+        metrics.set(Number(c.tracecode_id), c);
       }
-      setRows(((data??[]) as DashRow[]).filter(r=>eligible.has(r.tracecode_id))
-        .map(r=>({...r,last_mm:latest.get(r.tracecode_id)??null})));
-      const {data:pan}=await supabase.from("irrigation_pan")
-        .select("irrigation_pan_date,irrigation_pan_reading")
-        .order("irrigation_pan_date",{ascending:false}).limit(7);
-      setRecentPan(pan??[]);
+      const latest = new Map<number, Applied>();
+      for (const a of (appliedResult.data ?? []) as Applied[]) {
+        if (!latest.has(Number(a.tracecode_id))) latest.set(Number(a.tracecode_id), a);
+      }
+      setRows(f.map(t => {
+        const c = metrics.get(Number(t.tracecode_id));
+        const a = latest.get(Number(t.tracecode_id));
+        const crop = Array.isArray(t.crop) ? t.crop[0]?.crop_name : t.crop?.crop_name;
+        return {
+          tracecode_id: Number(t.tracecode_id), trace: t.tracecode_name,
+          crop: crop ?? "Unspecified crop", crop_id: Number(t.crop_id),
+          lastDate: a?.applied_date ?? c?.last_irrigation_date ?? null,
+          lastMm: a?.mm_applied == null ? null : Number(a.mm_applied),
+          daily: c?.daily_req == null ? null : Number(c.daily_req),
+          accumulated: c?.acc_req == null ? null : Number(c.acc_req),
+          net: c?.net_mm == null ? null : Number(c.net_mm),
+          nextDate: c?.next_app ?? null,
+          nextMm: c?.next_app_mm == null ? null : Number(c.next_app_mm),
+        };
+      }));
     } catch (e: any) {
-      setRows([]);
-      setErrorText(e?.message ?? String(e));
+      setError(e?.message ?? "Unable to load current fields.");
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   }, []);
 
-  useEffect(() => {
-    loadRoles();
-  }, [loadRoles]);
-
-  useFocusEffect(
-    useCallback(() => {
-      fetchData();
-    }, [fetchData])
-  );
-
-  const onRefresh = useCallback(async () => {
+  useFocusEffect(useCallback(() => { void load(); }, [load]));
+  const refresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchData();
+    await load();
     setRefreshing(false);
-  }, [fetchData]);
+  }, [load]);
 
-  const filteredRows = useMemo(() => {
-    const s = search.trim().toLowerCase();
-    if (!s) return rows;
+  const crops = useMemo(() => {
+    const list = new Map<number, string>();
+    for (const r of rows) list.set(r.crop_id, r.crop);
+    return [...list.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [rows]);
+  const traces = useMemo(() => rows
+    .filter(r => cropId === "all" || String(r.crop_id) === cropId)
+    .sort((a, b) => a.trace.localeCompare(b.trace)), [rows, cropId]);
+  const selectedTrace = traces.some(r => String(r.tracecode_id) === traceId) ? traceId : "all";
+  const visible = useMemo(() => traces.filter(r => selectedTrace === "all" || String(r.tracecode_id) === selectedTrace), [traces, selectedTrace]);
+  const open = (id: number) => router.push({ pathname: "/(tabs)/home/irrigation/irrigation_actual", params: { tracecode_id: String(id) } });
 
-    return rows.filter((r) => {
-      const crop = (r.crop ?? "").toLowerCase();
-      const trace = (r.trace ?? "").toLowerCase();
-      return crop.includes(s) || trace.includes(s);
-    });
-  }, [rows, search]);
+  const filters = (
+    <View style={styles.filters}>
+      <View style={styles.filter}>
+        <Text style={styles.label}>Crop</Text>
+        <View style={styles.pickerWrap}>
+          <Picker selectedValue={cropId} onValueChange={v => { setCropId(String(v)); setTraceId("all"); }} style={styles.picker}>
+            <Picker.Item label="All crops" value="all" />
+            {crops.map(([id, name]) => <Picker.Item key={id} label={name} value={String(id)} />)}
+          </Picker>
+        </View>
+      </View>
+      <View style={styles.filter}>
+        <Text style={styles.label}>Trace Code</Text>
+        <View style={styles.pickerWrap}>
+          <Picker selectedValue={selectedTrace} onValueChange={v => setTraceId(String(v))} style={styles.picker}>
+            <Picker.Item label="All trace codes" value="all" />
+            {traces.map(t => <Picker.Item key={t.tracecode_id} label={t.trace} value={String(t.tracecode_id)} />)}
+          </Picker>
+        </View>
+      </View>
+    </View>
+  );
 
-  const goSchedule = (tracecode_id: number) => {
-    router.push({
-      pathname: "/(tabs)/home/irrigation/irrigation_schedule",
-      params: { tracecode_id: String(tracecode_id) },
-    });
-  };
-
-  const goActual = (tracecode_id: number) => {
-    router.push({
-      pathname: "/(tabs)/home/irrigation/irrigation_actual",
-      params: { tracecode_id: String(tracecode_id) },
-    });
-  };
-
-  const savePan = async () => {
-    if(!canEnter || panSaving)return;
-    const match=/^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?$/.exec(panDate.trim());
-    if(!match)return Alert.alert("Invalid date","Use DD/MM/YYYY.");
-    const d=Number(match[1]),m=Number(match[2]),y=match[3]?Number(match[3]):new Date().getFullYear();
-    const entered=new Date(y,m-1,d),now=new Date();
-    const oldest=new Date(now.getFullYear(),now.getMonth(),now.getDate()-9);
-    const newest=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1);
-    if(entered.getFullYear()!==y||entered.getMonth()!==m-1||entered.getDate()!==d||entered<oldest||entered>=newest)
-      return Alert.alert("Invalid date","Pan entries must be dated within the last 10 calendar days.");
-    const reading=Number(panMm);
-    if(!panMm.trim()||!Number.isFinite(reading)||reading<0||reading>30)
-      return Alert.alert("Invalid reading","Enter pan evaporation in mm (0–30).");
-    const iso=y+"-"+String(m).padStart(2,"0")+"-"+String(d).padStart(2,"0");
-    if(recentPan.some(p=>p.irrigation_pan_date===iso))
-      return Alert.alert("Reading exists","Pan reading already recorded for that date; Admin must correct it.");
-    setPanSaving(true);
-    try{
-      const {error}=await supabase.from("irrigation_pan").insert({irrigation_pan_date:iso,irrigation_pan_reading:reading});
-      if(error)throw error;
-      setPanMm("");await fetchData();Alert.alert("Saved","Daily pan reading recorded.");
-    }catch(e:any){Alert.alert("Not saved",e?.message??"Please retry.");}
-    finally{setPanSaving(false);}
-  };
-  const renderActions = (r: DashRow) => (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-      <Pressable onPress={() => goActual(r.tracecode_id)} style={[styles.actionBtn, styles.actionBtnLight]}>
-        <Text style={styles.actionBtnTextLight}>Open</Text>
+  const record = ({ item: r }: { item: Row }) => (
+    <View style={styles.card}>
+      <Text style={styles.trace}>{r.trace}</Text>
+      <Text style={styles.crop}>{r.crop}</Text>
+      <View style={styles.metrics}>
+        <Detail label="Last irrigation" value={date(r.lastDate)} />
+        <Detail label="Last applied" value={fmt(r.lastMm) + " mm"} />
+        <Detail label="Daily" value={fmt(r.daily)} />
+        <Detail label="Accumulated" value={fmt(r.accumulated)} />
+        <Detail label="Net" value={fmt(r.net)} />
+        <Detail label="Next" value={date(r.nextDate)} />
+      </View>
+      <Pressable style={styles.open} onPress={() => open(r.tracecode_id)}>
+        <Text style={styles.openText}>Open</Text>
       </Pressable>
-      {isAdmin ? <Pressable onPress={() => goSchedule(r.tracecode_id)} style={[styles.actionBtn, styles.actionBtnDark]}>
-        <Text style={styles.actionBtnTextDark}>Schedule</Text>
-      </Pressable> : null}
     </View>
   );
-
-  const renderCard = ({ item }: { item: DashRow }) => {
-    const inCycle = !!item.in_cycle;
-    const cycle = item.cycle_stamp ?? "-";
-
-    return (
-      <View style={[styles.cardPhone, inCycle && styles.cardGreen]}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10 }}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.cardTrace}>{item.trace ?? "-"}</Text>
-            <Text style={styles.cardCrop}>{item.crop ?? "-"}</Text>
-          </View>
-          <Text style={styles.cardCycle}>{fmtDate(item.last_irrigation_date)}</Text>
-        </View>
-
-        <View style={styles.metricGrid}>
-          <Metric label="Last mm" value={fmt1(item.last_mm)} />
-          <Metric label="DSL" value={fmt0(item["DSL_Irr/Rain"])} />
-          <Metric label="Daily" value={fmt1(item.daily_req)} />
-          <Metric label="Acc" value={fmt1(item.acc_req)} />
-          <Metric label="Season" value={fmt0(item.seasonal_depletion_mm)} />
-          <Metric label="Next d" value={fmtDate(item.next_app)} />
-          <Metric label="Next mm" value={fmt0(item.next_app_mm)} />
-        </View>
-
-        <View style={{ marginTop: 10 }}>{renderActions(item)}</View>
-      </View>
-    );
+  const value = (r: Row, key: string) => {
+    if (key === "crop") return r.crop;
+    if (key === "trace") return r.trace;
+    if (key === "lastDate") return date(r.lastDate);
+    if (key === "nextDate") return date(r.nextDate);
+    if (key === "lastMm") return fmt(r.lastMm);
+    if (key === "daily") return fmt(r.daily);
+    if (key === "accumulated") return fmt(r.accumulated);
+    if (key === "net") return fmt(r.net);
+    if (key === "nextMm") return fmt(r.nextMm);
+    return "";
   };
 
-  const renderHeader = () => (
-    <View style={[styles.tr, styles.headerRow]}>
-      {COLS.map((c) => (
-        <View key={c.key} style={[styles.td, { width: c.width }]}>
-          <Text style={styles.headerText}>{c.label}</Text>
-        </View>
-      ))}
+  return <View style={styles.screen}>
+    <JsplModuleHeader title="Irrigation" backLabel={isAdmin ? "Back to Main" : undefined} backHref="/(tabs)/main-dashboard" />
+    <View style={styles.actions}>
+      <Text style={styles.count}>{visible.length} of {rows.length} current crop fields</Text>
+      <Pressable style={styles.panButton} onPress={() => router.push("/(tabs)/home/irrigation/pan-readings")}>
+        <Text style={styles.panButtonText}>View Pan Readings</Text>
+      </Pressable>
     </View>
-  );
-
-  const renderCell = (row: DashRow, colKey: (typeof COLS)[number]["key"]) => {
-    if (colKey === "crop") return <Text style={styles.cellText}>{row.crop ?? "-"}</Text>;
-    if (colKey === "trace")
-      return <Text style={[styles.cellText, { fontWeight: "900" }]}>{row.trace ?? "-"}</Text>;
-    if (colKey === "last_irrigation_date") return <Text style={styles.cellText}>{fmtDate(row.last_irrigation_date)}</Text>;
-    if (colKey === "last_mm") return <Text style={styles.cellText}>{fmt1(row.last_mm)}</Text>;
-    if (colKey === "DSL_Irr/Rain") return <Text style={styles.cellText}>{fmt0(row["DSL_Irr/Rain"])}</Text>;
-    if (colKey === "daily_req") return <Text style={styles.cellText}>{fmt1(row.daily_req)}</Text>;
-    if (colKey === "acc_req") return <Text style={styles.cellText}>{fmt1(row.acc_req)}</Text>;
-    if (colKey === "seasonal_depletion_mm")
-      return <Text style={styles.cellText}>{fmt0(row.seasonal_depletion_mm)}</Text>;
-    if (colKey === "next_app") return <Text style={styles.cellText}>{fmtDate(row.next_app)}</Text>;
-    if (colKey === "next_app_mm") return <Text style={styles.cellText}>{fmt0(row.next_app_mm)}</Text>;
-    if (colKey === "actions") return renderActions(row);
-    return <Text style={styles.cellText}>-</Text>;
-  };
-
-  const renderRow = ({ item }: { item: DashRow }) => {
-    const inCycle = !!item.in_cycle;
-    return (
-      <View style={[styles.tr, inCycle && styles.trGreen]}>
-        {COLS.map((c) => (
-          <View key={c.key} style={[styles.td, { width: c.width }]}>
-            {renderCell(item, c.key)}
-          </View>
-        ))}
-      </View>
-    );
-  };
-
-  if (loading) {
-    return (
-      <View style={{flex:1,padding:16,backgroundColor:C.background}}><JsplModuleHeader title="Irrigation" backLabel={isAdmin?'Back to Main':undefined} backHref="/(tabs)/main-dashboard"/><View style={styles.center}>
-        <ActivityIndicator size="large" />
-        <Text style={{ marginTop: 10 }}>Loading dashboard…</Text>
-      </View></View>
-    );
-  }
-
-  if (errorText) {
-    return (
-      <View style={{flex:1,padding:16,backgroundColor:C.background}}><JsplModuleHeader title="Irrigation" backLabel={isAdmin?'Back to Main':undefined} backHref="/(tabs)/main-dashboard"/><View style={styles.center}><Text style={styles.error}>{errorText}</Text><Pressable onPress={onRefresh}><Text>Retry</Text></Pressable></View></View>
-    );
-  }
-
-  return (
-    <View style={{ flex: 1,padding:16,backgroundColor:C.background }}>
-      <JsplModuleHeader title="Irrigation" backLabel={isAdmin?'Back to Main':undefined} backHref="/(tabs)/main-dashboard"/>
-      <View style={styles.searchWrap}>
-        <TextInput
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Search crop or trace…"
-          style={styles.search}
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-      </View>
-
-      {canEnter ? <View style={styles.panBox}>
-        <Text style={{fontWeight:"800",color:C.primaryDark}}>Daily pan reading</Text>
-        <View style={{flexDirection:"row",gap:8,alignItems:"center",flexWrap:"wrap",marginTop:8}}>
-          <TextInput style={[styles.search,{width:135}]} value={panDate} onChangeText={setPanDate} placeholder="DD/MM/YYYY" />
-          <TextInput style={[styles.search,{width:100}]} value={panMm} onChangeText={setPanMm} keyboardType="decimal-pad" placeholder="mm" />
-          <Pressable disabled={panSaving} onPress={savePan} style={[styles.actionBtn,styles.actionBtnDark]}>
-            <Text style={styles.actionBtnTextDark}>{panSaving?"Saving…":"Save Pan"}</Text>
-          </Pressable>
-        </View>
-        {recentPan.length ? <Text style={{color:C.textSecondary,marginTop:8}}>
-          Latest: {fmtDate(recentPan[0].irrigation_pan_date)} · {fmt1(recentPan[0].irrigation_pan_reading)} mm
-        </Text> : null}
-      </View> : null}
-      {isPhone ? (
-        <FlatList
-          data={filteredRows}
-          keyExtractor={(r) => String(r.tracecode_id)}
-          renderItem={renderCard}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          contentContainerStyle={{ padding: 12, paddingBottom: 24 }}
-          ListEmptyComponent={
-            <View style={styles.center}>
-              <Text style={{ fontWeight: "900" }}>No matches</Text>
-            </View>
-          }
-        />
-      ) : (
-        <ScrollView horizontal showsHorizontalScrollIndicator>
-          <View style={{ minWidth: tableWidth }}>
-            {renderHeader()}
-            <FlatList
-              data={filteredRows}
-              keyExtractor={(r) => String(r.tracecode_id)}
-              renderItem={renderRow}
-              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-              contentContainerStyle={filteredRows.length === 0 ? { flexGrow: 1 } : undefined}
-              ListEmptyComponent={
-                <View style={styles.center}>
-                  <Text style={{ fontWeight: "900" }}>No matches</Text>
-                </View>
-              }
-            />
-          </View>
-        </ScrollView>
-      )}
-    </View>
-  );
+    {filters}
+    {busy ? <ActivityIndicator style={{marginTop:24}} size="large"/> :
+     error ? <View style={styles.center}><Text style={styles.error}>{error}</Text><Pressable onPress={refresh}><Text>Retry</Text></Pressable></View> :
+     isPhone ? <FlatList data={visible} keyExtractor={r => String(r.tracecode_id)} renderItem={record}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh}/>}
+        ListEmptyComponent={<Text style={styles.empty}>No matching trace codes.</Text>}
+        contentContainerStyle={{paddingBottom:40}}/> :
+     <View style={{flex:1}}>
+       <View style={styles.tableScroll}><FlatList horizontal data={[1]} renderItem={() =>
+         <View><View style={styles.tableHead}>{columns.map(c=><Text key={c.key} style={[styles.headCell,{width:c.width}]}>{c.title}</Text>)}</View>
+          <FlatList data={visible} keyExtractor={r=>String(r.tracecode_id)} renderItem={({item:r})=>
+            <View style={styles.tableRow}>{columns.map(c => c.key==="open" ?
+              <Pressable key={c.key} style={[styles.tableCell,{width:c.width}]} onPress={()=>open(r.tracecode_id)}><Text style={styles.openLink}>Open</Text></Pressable>
+              : <Text key={c.key} style={[styles.tableCell,{width:c.width}]}>{value(r,c.key)}</Text>)}</View>}
+            ListEmptyComponent={<Text style={styles.empty}>No matching trace codes.</Text>}
+          /></View>} keyExtractor={() => "table"} /></View>
+     </View>}
+  </View>;
 }
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.metric}>
-      <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={styles.metricValue}>{value}</Text>
-    </View>
-  );
+function Detail({label,value}:{label:string;value:string}){
+  return <View style={styles.detail}><Text style={styles.detailLabel}>{label}</Text><Text style={styles.detailValue}>{value}</Text></View>;
 }
-
-const styles = StyleSheet.create({
-  center: { flex: 1, justifyContent: "center", alignItems: "center", padding: 16 },
-  error: { color: "crimson", fontWeight: "900" },
-
-  panBox: { marginHorizontal: 12, marginTop: 8, padding: 12, backgroundColor: "#fff", borderWidth: 1, borderColor: "#e6e6e6", borderRadius: 10 },
-  searchWrap: {
-    padding: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e6e6e6",
-  },
-  search: {
-    borderWidth: 1,
-    borderColor: "#dcdcdc",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    backgroundColor: "#fafafa",
-  },
-
-  tr: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: "#e6e6e6" },
-  headerRow: { backgroundColor: "#f3f3f3" },
-  td: { paddingVertical: 10, paddingHorizontal: 8, justifyContent: "center" },
-  headerText: { fontWeight: "900", fontSize: 12 },
-  cellText: { fontSize: 12 },
-  trGreen: { backgroundColor: "#dff5df" },
-
-  actionBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  actionBtnDark: { backgroundColor: C.primaryDark, borderColor: C.primaryDark },
-  actionBtnTextDark: { color: "#fff", fontWeight: "900", fontSize: 12 },
-  actionBtnLight: { backgroundColor: "#fff", borderColor: "#111" },
-  actionBtnTextLight: { color: "#111", fontWeight: "900", fontSize: 12 },
-
-  cardPhone: {
-    borderWidth: 1,
-    borderColor: "#e6e6e6",
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 12,
-    backgroundColor: "#fff",
-  },
-  cardGreen: { backgroundColor: "#dff5df" },
-  cardTrace: { fontSize: 18, fontWeight: "900" },
-  cardCrop: { marginTop: 2, color: "#666", fontWeight: "800" },
-  cardCycle: { fontWeight: "900", color: "#111" },
-
-  metricGrid: {
-    marginTop: 10,
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-  },
-  metric: {
-    width: "31%",
-    borderWidth: 1,
-    borderColor: "#efefef",
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    backgroundColor: "#fafafa",
-  },
-  metricLabel: { fontSize: 11, fontWeight: "900", color: "#666" },
-  metricValue: { marginTop: 2, fontSize: 16, fontWeight: "900" },
+const styles=StyleSheet.create({
+  screen:{flex:1,backgroundColor:C.background,padding:12},
+  actions:{flexDirection:"row",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,marginTop:12},
+  count:{color:C.textSecondary,fontWeight:"700"},
+  panButton:{backgroundColor:C.primaryDark,paddingVertical:12,paddingHorizontal:16,borderRadius:8},
+  panButtonText:{color:"#fff",fontWeight:"800"},
+  filters:{flexDirection:"row",flexWrap:"wrap",gap:12,marginVertical:12},
+  filter:{minWidth:180,flex:1},
+  label:{fontWeight:"700",color:C.text,marginBottom:5},
+  pickerWrap:{borderWidth:1,borderColor:C.border,borderRadius:8,backgroundColor:"#fff",overflow:"hidden"},
+  picker:{color:C.text,height:50},
+  card:{padding:14,marginBottom:10,borderWidth:1,borderColor:C.border,borderRadius:12,backgroundColor:"#fff"},
+  trace:{fontWeight:"900",fontSize:17,color:C.primaryDark},
+  crop:{color:C.textSecondary,marginTop:3},
+  metrics:{flexDirection:"row",flexWrap:"wrap",marginTop:10,gap:7},
+  detail:{width:"31%",minWidth:85,backgroundColor:C.background,borderRadius:7,padding:7},
+  detailLabel:{fontSize:11,color:C.textSecondary},
+  detailValue:{fontWeight:"700",color:C.text,marginTop:4},
+  open:{alignSelf:"flex-start",marginTop:12,paddingVertical:10,paddingHorizontal:22,borderRadius:8,backgroundColor:C.primaryDark},
+  openText:{color:"#fff",fontWeight:"800"},
+  tableScroll:{flex:1,marginTop:5},
+  tableHead:{flexDirection:"row",backgroundColor:"#eaf0ec"},
+  headCell:{padding:10,fontWeight:"800",color:C.text,borderBottomWidth:1,borderColor:C.border},
+  tableRow:{flexDirection:"row",borderBottomWidth:1,borderColor:C.border,backgroundColor:"#fff"},
+  tableCell:{padding:10,color:C.text},
+  openLink:{fontWeight:"800",color:C.primaryDark},
+  center:{alignItems:"center",padding:24},
+  error:{color:"#b00020"},
+  empty:{padding:18,color:C.textSecondary},
 });
