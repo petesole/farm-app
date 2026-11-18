@@ -1,9 +1,9 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {ActivityIndicator,Pressable,ScrollView,StyleSheet,Text,View} from 'react-native';
+import {Picker} from '@react-native-picker/picker';
 import {useFocusEffect,useLocalSearchParams} from 'expo-router';
 import {supabase} from '@/supabase';
 import {JsplModuleHeader} from './JsplModuleHeader';
-import {JsplSearchCombo} from './JsplSearchCombo';
 import {jsplColors as C,formatJsplDate,formatJsplNumber} from '@/constants/jspl-design';
 import {labourPrintReport} from '@/lib/labour-report-export';
 import {labourExportXLSX} from '@/lib/labour-xlsx-export';
@@ -37,13 +37,17 @@ export default function LabourSeasonReport(){
  const excel=()=>{if(!report?.sourceRows)return;try{labourExportXLSX(exportTitle,labourColumns,rows)}catch(e){setError((e as Error).message)}};
  const print=()=>{if(!report?.sourceRows)return;try{labourPrintReport(exportTitle,labourColumns,rows,t!.value,undefined,{summary:`${incomplete?'Known totals':'Totals'}: Qty ${qty} · Value ${value}${warnings?' — '+warnings:''}`,landscape:true})}catch(e){setError((e as Error).message)}};
  const locked=loading||busy,seasonReady=lists.seasons.some(s=>String(s.season_id)===selection.season);
- const selector=(key:'farm'|'crop'|'trace',name:string)=><View style={S.filter}><JsplSearchCombo label={name} selector="product" value={selection[key]||'all'} disabled={locked||!selection.season} options={[{id:'all',label:'All '+(key==='trace'?'traces':key==='crop'?'crops':'farms')},...seasonOptions(lists,selection,key)]} onChange={v=>change(key,v==='all'?'':String(v??''))}/></View>;
+ const picker=(label:string,value:string,options:ReadonlyArray<{id:string|number;label:string}>,onChange:(value:string)=>void,disabled:boolean)=><View style={S.filter}><Text style={S.label}>{label}</Text><View style={S.picker}><Picker selectedValue={value} enabled={!disabled} onValueChange={v=>onChange(String(v))} style={S.pickerControl}>{options.map(option=><Picker.Item key={String(option.id)} label={option.label} value={String(option.id)}/>)}</Picker></View></View>;
  return <ScrollView contentContainerStyle={S.page}>
  <JsplModuleHeader title="Labour Reports" backLabel="Back to Labour" backHref="/(tabs)/labour"/>
  <View style={S.card}>
- <JsplSearchCombo label="Season" selector="product" value={selection.season||null} disabled={locked} placeholder="Choose from the season list" options={[...lists.seasons].sort((a,b)=>a.season_name.localeCompare(b.season_name,'en',{numeric:true})).map(s=>({id:String(s.season_id),label:s.season_name}))} onChange={v=>change('season',String(v??''))}/>
- <View style={S.filters}>{selector('farm','Farm')}{selector('crop','Crop')}{selector('trace','Trace')}</View>
- <View style={S.filter}><JsplSearchCombo label="Report period" selector="product" value={selection.mode} disabled={locked||!selection.season} options={modes} onChange={v=>change('mode',(v??'daily') as LabourMode)}/></View>
+ {picker('Season',selection.season,[{id:'',label:'Choose season'},...[...lists.seasons].sort((a,b)=>a.season_name.localeCompare(b.season_name,'en',{numeric:true})).map(s=>({id:String(s.season_id),label:s.season_name}))],v=>change('season',v),locked)}
+ <View style={S.filters}>
+ {picker('Farm',selection.farm||'all',[{id:'all',label:'All farms'},...seasonOptions(lists,selection,'farm')],v=>change('farm',v==='all'?'':v),locked||!selection.season)}
+ {picker('Crop',selection.crop||'all',[{id:'all',label:'All crops'},...seasonOptions(lists,selection,'crop')],v=>change('crop',v==='all'?'':v),locked||!selection.season)}
+ {picker('Trace',selection.trace||'all',[{id:'all',label:'All traces'},...seasonOptions(lists,selection,'trace')],v=>change('trace',v==='all'?'':v),locked||!selection.season)}
+ </View>
+ <View style={S.filter}>{picker('Report period',selection.mode,modes,v=>change('mode',v as LabourMode),locked||!selection.season)}</View>
  <Text style={S.hint}>Daily, Weekly and Monthly group all recorded labour for the selected season. Farm, Crop and Trace come from their existing lists and saved links. Completed traces are included in season reports.</Text>
  <View style={S.actions}>
  <Pressable accessibilityRole="button" style={[S.primary,(locked||!seasonReady)&&S.disabled]} disabled={locked||!seasonReady} onPress={()=>void open()}><Text style={S.white}>{busy?'Opening…':'Open Report'}</Text></Pressable>
@@ -58,4 +62,4 @@ export default function LabourSeasonReport(){
  </View></ScrollView>}</View>:null}
  </ScrollView>;
 }
-const S=StyleSheet.create({page:{padding:20,gap:14,backgroundColor:C.background,flexGrow:1},card:{backgroundColor:'#FFF',padding:16,borderWidth:1,borderColor:C.border,borderRadius:10,gap:12},filters:{flexDirection:'row',flexWrap:'wrap',gap:16},filter:{flex:1,minWidth:210},actions:{flexDirection:'row',flexWrap:'wrap',gap:10},primary:{backgroundColor:C.primary,padding:12,borderRadius:7},button:{borderWidth:1,borderColor:C.primary,padding:12,borderRadius:7},white:{color:'#FFF',fontWeight:'700'},green:{color:C.primaryDark,fontWeight:'700'},disabled:{opacity:.4},hint:{fontSize:12,color:C.textSecondary},error:{color:C.danger,fontWeight:'700'},title:{fontSize:18,fontWeight:'800',color:C.primaryDark},total:{fontSize:15,fontWeight:'700',color:C.primaryDark},header:{flexDirection:'row',backgroundColor:C.primaryDark},cell:{fontSize:12,paddingHorizontal:9,paddingVertical:8,color:C.text},line:{flexDirection:'row',borderBottomWidth:1,borderColor:C.border},subtotal:{backgroundColor:'#E9F1EB'},numeric:{textAlign:'right'},bold:{fontWeight:'700'}});
+const S=StyleSheet.create({page:{padding:20,gap:14,backgroundColor:C.background,flexGrow:1},card:{backgroundColor:'#FFF',padding:16,borderWidth:1,borderColor:C.border,borderRadius:10,gap:12},filters:{flexDirection:'row',flexWrap:'wrap',gap:16},filter:{flex:1,minWidth:210},label:{fontSize:14,fontWeight:'700',color:C.text},picker:{borderWidth:1,borderColor:C.border,borderRadius:7,backgroundColor:'#FFF',minHeight:50,justifyContent:'center'},pickerControl:{height:50,width:'100%',color:C.text},actions:{flexDirection:'row',flexWrap:'wrap',gap:10},primary:{backgroundColor:C.primary,padding:12,borderRadius:7},button:{borderWidth:1,borderColor:C.primary,padding:12,borderRadius:7},white:{color:'#FFF',fontWeight:'700'},green:{color:C.primaryDark,fontWeight:'700'},disabled:{opacity:.4},hint:{fontSize:12,color:C.textSecondary},error:{color:C.danger,fontWeight:'700'},title:{fontSize:18,fontWeight:'800',color:C.primaryDark},total:{fontSize:15,fontWeight:'700',color:C.primaryDark},header:{flexDirection:'row',backgroundColor:C.primaryDark},cell:{fontSize:12,paddingHorizontal:9,paddingVertical:8,color:C.text},line:{flexDirection:'row',borderBottomWidth:1,borderColor:C.border},subtotal:{backgroundColor:'#E9F1EB'},numeric:{textAlign:'right'},bold:{fontWeight:'700'}});
