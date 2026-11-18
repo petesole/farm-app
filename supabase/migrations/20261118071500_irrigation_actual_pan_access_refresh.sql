@@ -22,7 +22,7 @@ create or replace function public.trg_refresh_irrigation_dashboard_after_pan()
 returns trigger
 language plpgsql
 security definer
-set search_path = pg_catalog, pg_temp
+set search_path = public, pg_temp
 as $$
 begin
   perform public.refresh_irrigation_dashboard_cache();
