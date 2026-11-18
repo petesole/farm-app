@@ -16,6 +16,9 @@ on:
       - 'utils/labour-period-report.ts'
       - 'lib/labour*'
       - 'tests/labour-reports.cjs'
+      - 'tests/labour-season-report.cjs'
+      - 'components/jspl/LabourSeasonReport.tsx'
+      - 'utils/labour-season-report.ts'
       - 'app/(tabs)/main-dashboard.tsx'
       - 'app/(tabs)/irrigation_main_dashboard.tsx'
       - 'app/(tabs)/home/irrigation/**'
@@ -41,6 +44,7 @@ jobs:
       - run: node tests/stock-workflow/equipment-fuel.cjs
       - run: node tests/stock-workflow/browser-deployment.cjs
       - run: node tests/labour-reports.cjs
+      - run: node tests/labour-season-report.cjs
       - run: node tests/irrigation-navigation.cjs
       - run: npx tsc --noEmit
       - run: npm run build:web
