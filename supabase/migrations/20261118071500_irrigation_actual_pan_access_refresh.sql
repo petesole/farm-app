@@ -21,7 +21,8 @@ create policy irrigation_pan_add on public.irrigation_pan
 create or replace function public.trg_refresh_irrigation_dashboard_after_pan()
 returns trigger
 language plpgsql
-set search_path = public, pg_temp
+security definer
+set search_path = pg_catalog, pg_temp
 as $$
 begin
   perform public.refresh_irrigation_dashboard_cache();
