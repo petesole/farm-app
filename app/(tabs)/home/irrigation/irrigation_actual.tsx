@@ -1,534 +1,141 @@
 import { supabase } from "@/supabase";
-import {verifiedIrrigationRoles,irrigationRole} from '@/utils/irrigation-access';
-import {JsplModuleHeader} from '@/components/jspl/JsplModuleHeader';
-import {jsplColors as C} from '@/constants/jspl-design';
-import {fuelDateISO} from "../fuel_admin_dates";
+import { verifiedIrrigationRoles } from "@/utils/irrigation-access";
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
+import { jsplColors as C } from "@/constants/jspl-design";
 import { useFocusEffect } from "@react-navigation/native";
 import { router, useLocalSearchParams } from "expo-router";
-import { useCallback, useMemo, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { useCallback, useState } from "react";
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
-type ScheduleInfo = {
-  irrigation_schedule_id: number;
-  tracecode_id: number;
-  tracecode_name: string | null;
-  crop_name: string | null;
-  scheduled_date: string; // YYYY-MM-DD
-  planned_mm: number;
-  status: string;
-};
-
-type ActiveCycle = {
+type Application = {
   irrigation_applied_id: number;
-  tracecode_id: number;
-  irrigation_schedule_id: number | null;
-  start_at: string;
-  end_at: string | null;
+  applied_date: string;
   mm_applied: number;
+  effective_mm: number | null;
+  notes: string | null;
 };
-
-function normRole(x: any) {
-  return String(x ?? "").trim().toLowerCase();
+const pad = (v: number) => String(v).padStart(2, "0");
+const isoDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const displayDate = (s: string) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : s;
+};
+function entryDate(raw: string): string | null {
+  const s = raw.trim();
+  const match = /^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?$/.exec(s);
+  if (!match) return null;
+  const d = Number(match[1]), m = Number(match[2]), y = match[3] ? Number(match[3]) : new Date().getFullYear();
+  const candidate = new Date(y, m - 1, d);
+  if (candidate.getFullYear() !== y || candidate.getMonth() + 1 !== m || candidate.getDate() !== d) return null;
+  return isoDate(candidate);
 }
-
-function pad2(n: number) {
-  return String(n).padStart(2, "0");
+function dateAllowed(iso: string): boolean {
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 9);
+  const end = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const date = new Date(iso + "T12:00:00");
+  return date >= start && date < new Date(end.getFullYear(), end.getMonth(), end.getDate() + 1);
 }
-
-function todayDmy() {
-  const d = new Date();
-  return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
-}
-
-function nowHm() {
-  const d = new Date();
-  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-}
-
-function isoToDmy(iso: string) {
-  if (!iso) return "";
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim());
-  if (!m) return iso;
-  return `${m[3]}/${m[2]}/${m[1]}`;
-}
-
-function normalizeDmy(input: string) {
- const iso=fuelDateISO(input);
- if(!iso)return input.trim();
- const [y,m,d]=iso.split("-");
- return d+"/"+m+"/"+y;
-}
-
-function normalizeHm(input: string) {
-  const s = input.trim();
-  if (!s) return "";
-  const parts = s.split(/[:\.\s]+/).filter(Boolean);
-  if (parts.length !== 2) return s;
-
-  const h = Number(parts[0]);
-  const m = Number(parts[1]);
-
-  if (!Number.isFinite(h) || !Number.isFinite(m)) return s;
-  if (h < 0 || h > 23 || m < 0 || m > 59) return s;
-
-  return `${pad2(h)}:${pad2(m)}`;
-}
-
-function parseLocalDateTime(dmy: string, hm: string): Date | null {
-  const dmyN = normalizeDmy(dmy);
-  const hmN = normalizeHm(hm);
-
-  const dm = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(dmyN);
-  const tm = /^(\d{2}):(\d{2})$/.exec(hmN);
-  if (!dm || !tm) return null;
-
-  const dd = Number(dm[1]);
-  const mm = Number(dm[2]);
-  const yy = Number(dm[3]);
-  const hh = Number(tm[1]);
-  const mi = Number(tm[2]);
-
-  const dt = new Date(yy, mm - 1, dd, hh, mi, 0, 0);
-
-  if (
-    dt.getFullYear() !== yy ||
-    dt.getMonth() !== mm - 1 ||
-    dt.getDate() !== dd ||
-    dt.getHours() !== hh ||
-    dt.getMinutes() !== mi
-  ) return null;
-
-  return dt;
-}
-
 export default function IrrigationActual() {
-  const { irrigation_schedule_id, tracecode_id } = useLocalSearchParams<{
-    irrigation_schedule_id?: string;
-    tracecode_id?: string;
-  }>();
-
-  const scheduleIdParam = irrigation_schedule_id ? Number(irrigation_schedule_id) : NaN;
-  const tracecodeIdParam = tracecode_id ? Number(tracecode_id) : NaN;
-
+  const { tracecode_id } = useLocalSearchParams<{ tracecode_id?: string }>();
+  const traceId = Number(tracecode_id);
+  const [roleAllowed, setRoleAllowed] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [roleLoading, setRoleLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-
-  const [roleName, setRoleName] = useState("unknown");
-  const canEdit = roleName === "irrigation" || roleName === "admin";
-
-  const [scheduleOptions, setScheduleOptions] = useState<ScheduleInfo[]>([]);
-  const [selectedScheduleId, setSelectedScheduleId] = useState<number | null>(null);
-
-  const selectedSchedule = useMemo(
-    () => scheduleOptions.find((s) => s.irrigation_schedule_id === selectedScheduleId) ?? null,
-    [scheduleOptions, selectedScheduleId]
-  );
-
-  const [active, setActive] = useState<ActiveCycle | null>(null);
-  const inCycle = !!active;
-
-  const selectableOptions = useMemo(() => {
-    if (inCycle) return scheduleOptions;
-    return scheduleOptions.filter((s) => ["planned", "scheduled"].includes(String(s.status)));
-  }, [inCycle, scheduleOptions]);
-
-  const plannedMmLocked = selectedSchedule ? Math.round(Number(selectedSchedule.planned_mm)) : null;
-
-  const [startDate, setStartDate] = useState<string>(todayDmy());
-  const [startTime, setStartTime] = useState<string>(nowHm());
-  const [endDate, setEndDate] = useState<string>(todayDmy());
-  const [endTime, setEndTime] = useState<string>(nowHm());
-
-  const initRef = useRef(false);
-
-  // ---------- DEBUG (always visible, web-safe) ----------
-  const [debugMsg, setDebugMsg] = useState<string>("");
-
-  function dbg(msg: string) {
-    console.log("[IrrigationActual]", msg);
-    setDebugMsg(`${new Date().toLocaleTimeString()}  ${msg}`);
-  }
-
-  const goBack = useCallback(() => {
-    router.replace("/(tabs)/irrigation_main_dashboard");
-  }, []);
-
-  const fetchRole = useCallback(async () => {
-    setRoleLoading(true);
-    setRoleName(irrigationRole(await verifiedIrrigationRoles(supabase)));
-    setRoleLoading(false);
-  }, []);
-
-  const load = useCallback(async () => {
+  const [error, setError] = useState("");
+  const [traceName, setTraceName] = useState("");
+  const [rows, setRows] = useState<Application[]>([]);
+  const [date, setDate] = useState(displayDate(isoDate(new Date())));
+  const [mm, setMm] = useState("");
+  const [notes, setNotes] = useState("");
+  const back = () => router.replace("/(tabs)/irrigation_main_dashboard");
+  const refresh = useCallback(async () => {
     setLoading(true);
+    setError("");
     try {
-      let tcId: number | null = Number.isFinite(tracecodeIdParam) ? tracecodeIdParam : null;
-
-      if (!tcId && Number.isFinite(scheduleIdParam)) {
-        const { data: s, error: se } = await supabase
-          .from("vw_irrigation_schedule_list")
-          .select(
-            "irrigation_schedule_id, tracecode_id, tracecode_name, crop_name, scheduled_date, planned_mm, status"
-          )
-          .eq("irrigation_schedule_id", scheduleIdParam)
-          .single();
-
-        if (se || !s) throw new Error(se?.message || "Schedule not found");
-
-        tcId = (s as any).tracecode_id as number;
-        setSelectedScheduleId((s as any).irrigation_schedule_id as number);
-      }
-
-      if (!tcId) throw new Error("Missing tracecode_id / irrigation_schedule_id");
-
-      const { data: opts, error: oe } = await supabase
-        .from("vw_irrigation_schedule_list")
-        .select(
-          "irrigation_schedule_id, tracecode_id, tracecode_name, crop_name, scheduled_date, planned_mm, status"
-        )
-        .eq("tracecode_id", tcId)
-        .order("scheduled_date", { ascending: true })
-        .order("irrigation_schedule_id", { ascending: true });
-
-      if (oe) throw new Error(oe.message);
-
-      const list = (opts ?? []) as ScheduleInfo[];
-      setScheduleOptions(list);
-
-      if (!initRef.current && !Number.isFinite(scheduleIdParam)) {
-        const startable = list.filter((s) => ["planned", "scheduled"].includes(String(s.status)));
-        setSelectedScheduleId(startable.length ? startable[0].irrigation_schedule_id : null);
-      }
-
-      const { data: a, error: ae } = await supabase
-        .from("irrigation_applied")
-        .select("irrigation_applied_id, tracecode_id, irrigation_schedule_id, start_at, end_at, mm_applied")
-        .eq("tracecode_id", tcId)
-        .is("end_at", null)
-        .order("start_at", { ascending: false })
-        .limit(1);
-
-      if (ae) throw new Error(ae.message);
-
-      const running = (a ?? [])[0] as ActiveCycle | undefined;
-      setActive(running ?? null);
-
-      if (running?.irrigation_schedule_id) setSelectedScheduleId(running.irrigation_schedule_id);
-
-      if (!initRef.current) {
-        setStartDate(todayDmy());
-        setStartTime(nowHm());
-        setEndDate(todayDmy());
-        setEndTime(nowHm());
-      }
-
-      initRef.current = true;
-      setDebugMsg('');
-    } catch (e: any) {
-      dbg(`Load failed: ${e?.message ?? String(e)}`);
-    } finally {
-      setLoading(false);
-    }
-  }, [scheduleIdParam, tracecodeIdParam]);
-
-  useFocusEffect(
-    useCallback(() => {
-      initRef.current = false;
-      fetchRole();
-      load();
-    }, [fetchRole, load])
-  );
-
-  const startCycle = useCallback(async () => {
-    dbg("Start pressed");
-
-    if (!canEdit) return dbg(`Not allowed: role=${roleName}`);
-    if (inCycle) return dbg("Already running");
-    if (!selectedScheduleId || !selectedSchedule) return dbg("No schedule selected");
-
-    if (!["planned", "scheduled"].includes(String(selectedSchedule.status))) {
-      return dbg(`Bad schedule status=${selectedSchedule.status}`);
-    }
-
-    const dt = parseLocalDateTime(startDate, startTime);
-    if (!dt) return dbg("Bad start date/time");
-    if (dt > new Date()) return dbg("Start is in the future");
-
-    const mm = Math.round(Number(selectedSchedule.planned_mm));
-    if (!Number.isFinite(mm) || mm <= 0) return dbg("Invalid planned_mm");
-
-    setSaving(true);
-    try {
-      const { error } = await supabase.from("irrigation_applied").insert([
-        {
-          tracecode_id: selectedSchedule.tracecode_id,
-          irrigation_schedule_id: selectedScheduleId,
-          start_at: dt.toISOString(),
-          end_at: null,
-          mm_applied: mm,
-        },
+      const roles = await verifiedIrrigationRoles(supabase);
+      const allowed = roles.includes("admin") || roles.includes("irrigation");
+      setRoleAllowed(allowed);
+      if (!allowed) throw new Error("Irrigation access is not assigned to this account.");
+      if (!Number.isInteger(traceId) || traceId <= 0) throw new Error("Invalid field selection.");
+      const [trace, history] = await Promise.all([
+        supabase.from("irrigation_dashboard_cache").select("trace,crop").eq("tracecode_id", traceId).single(),
+        supabase.from("irrigation_applied").select("irrigation_applied_id,applied_date,mm_applied,effective_mm,notes").eq("tracecode_id", traceId).order("applied_date", { ascending: false }).order("irrigation_applied_id", { ascending: false }).limit(150),
       ]);
-
-      if (error) return dbg(`Start failed: ${error.message}`);
-
-      dbg("Start OK -> back to dashboard");
-      goBack();
-    } catch (e: any) {
-      dbg(`Start crashed: ${e?.message ?? String(e)}`);
-    } finally {
-      setSaving(false);
-    }
-  }, [canEdit, roleName, inCycle, selectedScheduleId, selectedSchedule, startDate, startTime, goBack]);
-
-  const finishCycle = useCallback(async () => {
-    dbg("Finish pressed");
-
-    if (!canEdit) return dbg(`Not allowed: role=${roleName}`);
-    if (!active) return dbg("No active irrigation loaded");
-
-    const dt = parseLocalDateTime(endDate, endTime);
-    if (!dt) return dbg("Bad end date/time");
-    if (dt > new Date()) return dbg("End is in the future");
-
-    const start = new Date(active.start_at);
-    if (dt <= start) return dbg("End must be after start");
-
+      if (trace.error) throw trace.error;
+      if (history.error) throw history.error;
+      setTraceName(`${trace.data?.trace ?? ""} · ${trace.data?.crop ?? ""}`);
+      setRows((history.data ?? []) as Application[]);
+    } catch (e: any) { setError(e?.message || "Unable to load irrigation history."); }
+    finally { setLoading(false); }
+  }, [traceId]);
+  useFocusEffect(useCallback(() => { void refresh(); }, [refresh]));
+  const save = async () => {
+    if (!roleAllowed || saving) return;
+    const day = entryDate(date);
+    const amount = Number(mm);
+    if (!day || !dateAllowed(day)) return Alert.alert("Invalid date", "Choose a valid date within the last 10 calendar days, including today.");
+    if (!Number.isFinite(amount) || amount <= 0 || amount > 200) return Alert.alert("Invalid amount", "Enter actual irrigation in millimetres (greater than 0 and up to 200).");
     setSaving(true);
-    dbg(`Attempting update id=${active.irrigation_applied_id}`);
-
     try {
-      const { data, error } = await supabase
-        .from("irrigation_applied")
-        .update({ end_at: dt.toISOString() })
-        .eq("irrigation_applied_id", active.irrigation_applied_id)
-        .select("irrigation_applied_id, end_at");
-
-      if (error) return dbg(`Finish failed: ${error.message}`);
-
-      if (!data || data.length === 0) {
-        return dbg("Finish failed: 0 rows updated (RLS or wrong id)");
-      }
-
-      dbg(`Finish OK: end_at saved for id=${data[0].irrigation_applied_id}`);
-      goBack();
-    } catch (e: any) {
-      dbg(`Finish crashed: ${e?.message ?? String(e)}`);
-    } finally {
-      setSaving(false);
-    }
-  }, [canEdit, roleName, active, endDate, endTime, goBack]);
-
-  if (loading || roleLoading) return <View style={{padding:16,flex:1,backgroundColor:C.background}}><JsplModuleHeader title="Applied Irrigation" backLabel="Back to Irrigation" onBack={goBack}/><ActivityIndicator style={{ marginTop: 30 }} /></View>;
-
-  const titleTrace =
-    scheduleOptions[0]?.tracecode_name ?? (selectedSchedule ? selectedSchedule.tracecode_name : "Tracecode");
-  const titleCrop =
-    scheduleOptions[0]?.crop_name ?? (selectedSchedule ? selectedSchedule.crop_name : "");
-
+      // End the recorded event immediately; this is an actual application, not a running cycle.
+      // Database triggers calculate applied_date, effective_mm and rebuild the field dashboard.
+      const { error: saveError } = await supabase.from("irrigation_applied").insert({
+        tracecode_id: traceId,
+        irrigation_schedule_id: null,
+        start_at: `${day}T12:00:00+02:00`,
+        end_at: `${day}T12:01:00+02:00`,
+        mm_applied: amount,
+        notes: notes.trim() || null,
+      });
+      if (saveError) throw saveError;
+      setMm(""); setNotes("");
+      await refresh();
+      Alert.alert("Saved", "Actual irrigation recorded.");
+    } catch (e: any) { Alert.alert("Not saved", e?.message || "Please retry."); }
+    finally { setSaving(false); }
+  };
   return (
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, paddingBottom: 24 }}>
-      <JsplModuleHeader title="Applied Irrigation" subtitle={titleTrace+' · '+titleCrop} backLabel="Back to Irrigation" onBack={goBack}/>
-
-      {/* DEBUG BANNER */}
-      {debugMsg ? (
-        <View style={styles.debugBox}>
-          <Text style={{ fontWeight: "900" }}>Irrigation status</Text>
-          <Text selectable>{debugMsg}</Text>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.body}>
+      <JsplModuleHeader title="Irrigation History" subtitle={traceName} backLabel="Back to Irrigation" onBack={back} />
+      {loading ? <ActivityIndicator size="large" /> : error ? <Text style={styles.error}>{error}</Text> : <>
+        {roleAllowed ? <View style={styles.card}>
+          <Text style={styles.heading}>Record actual irrigation</Text>
+          <Text style={styles.help}>Entries are allowed for the last 10 calendar days. Enter the actual millimetres applied, not the planned amount.</Text>
+          <Text style={styles.label}>Date (DD/MM/YYYY)</Text>
+          <TextInput style={styles.input} value={date} onChangeText={setDate} placeholder="DD/MM/YYYY" />
+          <Text style={styles.label}>Actual mm applied</Text>
+          <TextInput style={styles.input} value={mm} onChangeText={setMm} keyboardType="decimal-pad" placeholder="mm" />
+          <Text style={styles.label}>Notes (optional)</Text>
+          <TextInput style={styles.input} value={notes} onChangeText={setNotes} placeholder="Notes" />
+          <Pressable style={[styles.button, saving && styles.disabled]} disabled={saving} onPress={save}><Text style={styles.buttonText}>{saving ? "Saving…" : "Save Irrigation"}</Text></Pressable>
+        </View> : null}
+        <View style={styles.card}>
+          <Text style={styles.heading}>Field irrigation history</Text>
+          {rows.length === 0 ? <Text>No irrigation recorded for this field.</Text> : rows.map(x =>
+            <View key={x.irrigation_applied_id} style={styles.history}>
+              <Text style={styles.bold}>{displayDate(x.applied_date)} · {Number(x.mm_applied).toFixed(1)} mm</Text>
+              {x.notes ? <Text>{x.notes}</Text> : null}
+            </View>
+          )}
+          <Text style={styles.help}>Historical records are read-only in the phone app.</Text>
         </View>
-      ) : null}
-
-      {/* Schedule required */}
-      <View style={styles.box}>
-        <Text style={styles.boxTitle}>Schedule (required)</Text>
-
-        {selectableOptions.length === 0 ? (
-          <Text style={{ color: "crimson", fontWeight: "900" }}>
-            {inCycle
-              ? "Running irrigation found, but no schedule rows returned."
-              : "No planned/scheduled schedules found for this tracecode."}
-          </Text>
-        ) : (
-          selectableOptions.map((s) => {
-            const selected = s.irrigation_schedule_id === selectedScheduleId;
-            const label = `${isoToDmy(s.scheduled_date)} • ${Math.round(Number(s.planned_mm))}mm • ${s.status}`;
-
-            const locked = inCycle && active?.irrigation_schedule_id != null;
-
-            return (
-              <Pressable
-                key={s.irrigation_schedule_id}
-                onPress={() => {
-                  if (locked) return;
-                  setSelectedScheduleId(s.irrigation_schedule_id);
-                }}
-                style={[styles.option, selected && styles.optionSelected, locked && { opacity: 0.6 }]}
-              >
-                <Text style={{ fontWeight: selected ? "900" : "800" }}>
-                  {selected ? "● " : "○ "} {label}
-                </Text>
-              </Pressable>
-            );
-          })
-        )}
-      </View>
-
-      <View style={styles.box}>
-        <Text style={styles.boxTitle}>{inCycle ? "Finish irrigation" : "Start irrigation"}</Text>
-
-        <Text style={styles.label}>mm (locked to schedule)</Text>
-        <View style={styles.locked}>
-          <Text style={{ fontWeight: "900" }}>
-            {plannedMmLocked == null ? "-" : String(plannedMmLocked)}
-          </Text>
-        </View>
-
-        {!inCycle ? (
-          <>
-            <Text style={styles.label}>Start Date (DD/MM/YYYY)</Text>
-            <TextInput
-              value={startDate}
-              onChangeText={setStartDate}
-              onBlur={() => setStartDate((v) => normalizeDmy(v))}
-              editable={canEdit && !saving}
-              style={styles.input}
-              placeholder="DD/MM/YYYY"
-            />
-
-            <Text style={styles.label}>Start Time (HH:MM)</Text>
-            <TextInput
-              value={startTime}
-              onChangeText={setStartTime}
-              onBlur={() => setStartTime((v) => normalizeHm(v))}
-              editable={canEdit && !saving}
-              style={styles.input}
-              placeholder="HH:MM"
-              keyboardType="numbers-and-punctuation"
-            />
-
-            <Pressable
-              onPress={startCycle}
-              disabled={!canEdit || saving || !selectedScheduleId}
-              style={[styles.primaryBtn, (!canEdit || saving || !selectedScheduleId) && styles.disabledBtn]}
-            >
-              <Text style={styles.primaryText}>{saving ? "Saving…" : "Save Start"}</Text>
-            </Pressable>
-          </>
-        ) : (
-          <>
-            <Text style={{ color: "#666", marginBottom: 6 }}>
-              Started: {new Date(active.start_at).toLocaleString()}
-            </Text>
-
-            <Text style={styles.label}>End Date (DD/MM/YYYY)</Text>
-            <TextInput
-              value={endDate}
-              onChangeText={setEndDate}
-              onBlur={() => setEndDate((v) => normalizeDmy(v))}
-              editable={canEdit && !saving}
-              style={styles.input}
-              placeholder="DD/MM/YYYY"
-            />
-
-            <Text style={styles.label}>End Time (HH:MM)</Text>
-            <TextInput
-              value={endTime}
-              onChangeText={setEndTime}
-              onBlur={() => setEndTime((v) => normalizeHm(v))}
-              editable={canEdit && !saving}
-              style={styles.input}
-              placeholder="HH:MM"
-              keyboardType="numbers-and-punctuation"
-            />
-
-            <Pressable
-              onPress={finishCycle}
-              disabled={!canEdit || saving}
-              style={[styles.primaryBtn, (!canEdit || saving) && styles.disabledBtn]}
-            >
-              <Text style={styles.primaryText}>{saving ? "Saving…" : "Save Finish"}</Text>
-            </Pressable>
-          </>
-        )}
-      </View>
+      </>}
     </ScrollView>
   );
 }
-
 const styles = StyleSheet.create({
-  topRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  cancelBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#ddd",
-    backgroundColor: "#fff",
-  },
-  cancelText: { fontWeight: "900" },
-
-  debugBox: {
-    marginTop: 10,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: "#f0c",
-    borderRadius: 10,
-    backgroundColor: "#fff",
-  },
-
-  box: {
-    marginTop: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "#e6e6e6",
-    borderRadius: 12,
-    backgroundColor: "#fff",
-  },
-  boxTitle: { fontWeight: "900", fontSize: 16, marginBottom: 10 },
-
-  option: {
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#eee",
-    marginBottom: 8,
-    backgroundColor: "#fafafa",
-  },
-  optionSelected: { borderColor: "#111", backgroundColor: "#f0f0f0" },
-
-  label: { fontWeight: "900", marginTop: 8, marginBottom: 6 },
-  input: {
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 10,
-    padding: 10,
-    backgroundColor: "#fff",
-    fontWeight: "900",
-  },
-  locked: {
-    borderWidth: 1,
-    borderColor: "#eee",
-    borderRadius: 10,
-    padding: 10,
-    backgroundColor: "#f5f5f5",
-  },
-
-  primaryBtn: {
-    marginTop: 12,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: C.primaryDark,
-    alignItems: "center",
-  },
-  primaryText: { color: "#fff", fontWeight: "900" },
-  disabledBtn: { opacity: 0.4 },
+  screen: { flex: 1, backgroundColor: C.background },
+  body: { padding: 16, paddingBottom: 40 },
+  card: { backgroundColor: C.surface, borderWidth: 1, borderColor: C.border, borderRadius: 12, padding: 16, marginTop: 12 },
+  heading: { color: C.primaryDark, fontSize: 18, fontWeight: "800", marginBottom: 8 },
+  label: { color: C.text, fontWeight: "700", marginTop: 12, marginBottom: 5 },
+  help: { color: C.textSecondary, marginVertical: 7 },
+  input: { backgroundColor: "#fff", borderWidth: 1, borderColor: C.border, borderRadius: 8, padding: 11, color: C.text },
+  history: { borderBottomWidth: 1, borderBottomColor: C.border, paddingVertical: 11 },
+  bold: { fontWeight: "700", color: C.text },
+  button: { marginTop: 18, backgroundColor: C.primaryDark, borderRadius: 8, padding: 14, alignItems: "center" },
+  buttonText: { color: "#fff", fontWeight: "800" },
+  disabled: { opacity: 0.5 },
+  error: { color: "#b00020", marginTop: 16 },
 });
