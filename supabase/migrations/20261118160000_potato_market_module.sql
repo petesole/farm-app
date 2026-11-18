@@ -51,7 +51,7 @@ revoke all on public.potato_market_sale,public.potato_market_sale_line,public.po
 
 create or replace function potato_market_private.is_admin()
 returns boolean language sql stable security definer set search_path=''
-as $ select auth.uid() is not null and 'admin'=any(public.my_farm_app_roles()) $;
+as $func$ select auth.uid() is not null and 'admin'=any(public.my_farm_app_roles()) $func$;
 revoke all on function potato_market_private.is_admin() from public,anon,authenticated;
 
 create or replace function public.potato_market_context()
