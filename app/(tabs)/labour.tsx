@@ -55,7 +55,8 @@ export default function LabourMain(){
  const tiles=[
  {title:"Labour Input",description:"Enter daily Labour records",path:"/labour-entry"},
  {title:"Labour Reports",description:"Choose Season, Farm, Crop or Trace. Group daily, weekly or monthly.",path:"/labour-reports?mode=daily"},
-
+ {title:"Weekly Report",description:"Select a week, then print or export the report.",path:"/labour-date-report?mode=weekly"},
+ {title:"AO Weekly",description:"Agri Orange weekly Labour report.",path:"/labour-date-report?mode=ao"},
  {title:"Daily Report",description:"Select an individual date",path:"/labour-date-report"},
  {title:"Input History",description:"Look up historical Labour records",path:"/labour-history"},
 
