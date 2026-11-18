@@ -69,7 +69,7 @@ export default function TabsLayout() {
     return <Redirect href="/login" />;
   }
 
-  if (canIrrigation && !isAdmin && !canFuel && !canLabour && !canStock && pathname !== "/irrigation_main_dashboard") {
+  if (canIrrigation && !isAdmin && !canFuel && !canLabour && !canStock && pathname !== "/irrigation_main_dashboard" && !pathname.startsWith("/home/irrigation/")) {
     return <Redirect href="/irrigation_main_dashboard" />;
   }
 
