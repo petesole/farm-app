@@ -1,4 +1,3 @@
-Attempting to perform the InitializeDefaultDrives operation on the 'FileSystem' provider failed.
 import {WbAdminSignIn} from "../components/jspl/WbAdminSignIn";
 import {wbParseDate,wbFormatDate,wbToday} from "../utils/wb-date";
 import {useEffect,useMemo,useState} from "react";
@@ -32,15 +31,15 @@ export default function WeighbridgeAdmin(){
  const visible=useMemo(()=>rows.filter(x=>[x.dnote_number,x.customer_dnote_number,x.slip_number,x.registration_text,x.weigh_date].join(" ").toLowerCase().includes(filter.toLowerCase())),[rows,filter]);
  const outCustomerWb=rows.filter(x=>!x.receiving_wb_number).length,outDnote=rows.filter(x=>!x.customer_dnote_number?.trim()).length,outGrv=rows.filter(x=>!x.grv_number).length;
  if(Platform.OS!=="web")return <Text>Weighbridge Admin is desktop only.</Text>;
- if(allowed===null)return <Text style={{padding:20}}>Checking Admin access.</Text>;
+ if(allowed===null)return <Text style={{padding:20}}>Checking Admin access…</Text>;
  if(!allowed)return <WbAdminSignIn onAuthenticated={()=>{setError("");setAllowed(true)}}/>;
  return <ScrollView style={{flex:1,backgroundColor:C.background}} contentContainerStyle={{padding:S.xl,minWidth:980}}>
  <View style={{backgroundColor:C.primaryDark,borderRadius:R.lg,padding:S.xl,flexDirection:"row",alignItems:"center",marginBottom:S.lg}}>
  <Image source={require("../assets/images/jspl_farm_logo.png")} resizeMode="contain" style={{width:80,height:80,marginRight:S.lg,borderRadius:R.md,backgroundColor:C.surface}}/>
- <View style={{flex:1}}><Text style={{color:C.surface,fontSize:29,fontWeight:"800"}}>Weighbridge Management</Text><Text style={{color:"#dce9dc",marginTop:4}}>John Sole (Private) Limited � Customer documents and dispatches</Text></View>
+ <View style={{flex:1}}><Text style={{color:C.surface,fontSize:29,fontWeight:"800"}}>Weighbridge Management</Text><Text style={{color:"#dce9dc",marginTop:4}}>John Sole (Private) Limited · Customer documents and dispatches</Text></View>
  <Pressable accessibilityRole="button" onPress={()=>router.replace("/(tabs)/main-dashboard")} style={{borderWidth:1,borderColor:"#9cbbaa",borderRadius:R.sm,padding:12,marginRight:S.sm}}><Text style={{color:C.surface,fontWeight:"700"}}>Main</Text></Pressable>
  <WbLastSync refreshKey={syncRefresh}/>
- <Pressable onPress={load} disabled={busy} style={{borderWidth:1,borderColor:"#9cbbaa",borderRadius:R.sm,padding:12}}><Text style={{color:C.surface,fontWeight:"700"}}>{busy?"Loading.":"Refresh"}</Text></Pressable></View>
+ <Pressable onPress={load} disabled={busy} style={{borderWidth:1,borderColor:"#9cbbaa",borderRadius:R.sm,padding:12}}><Text style={{color:C.surface,fontWeight:"700"}}>{busy?"Loading…":"Refresh"}</Text></Pressable></View>
  <View style={{flexDirection:"row",marginBottom:S.xl}}>
  {([["Out Customer WB",outCustomerWb,"Customer WB receipt outstanding"],["Out DNote",outDnote,"Customer Delivery Note outstanding"],["Out GRV",outGrv,"GRV information outstanding"],["Dispatched loads",rows.length,"WB computer + manual"]] as [string,number,string][]).map(([label,value,note])=><View key={label} style={{flex:1,padding:S.lg,marginRight:S.md,backgroundColor:C.surface,borderWidth:1,borderColor:C.border,borderRadius:R.md}}>
  <Text style={{color:C.textSecondary,fontWeight:"700"}}>{label}</Text><Text style={{fontSize:34,color:C.primaryDark,fontWeight:"800",marginVertical:5}}>{value}</Text><Text style={{color:C.textSecondary,fontSize:12}}>{note}</Text></View>)}</View>
@@ -51,10 +50,9 @@ export default function WeighbridgeAdmin(){
  <View style={{flexDirection:"row",alignItems:"center",marginBottom:S.md}}><Text style={{fontSize:19,fontWeight:"800",color:C.primaryDark,flex:1}}>Delivery document status</Text><TextInput placeholder="Search Field / Customer DNote, slip or truck" value={filter} onChangeText={setFilter} style={{width:280,padding:10,borderWidth:1,borderColor:C.border,borderRadius:R.sm,color:C.text}}/></View>
  <View style={{flexDirection:"row",backgroundColor:C.successTint,padding:10}}>{([["Field DNote",125],["Customer DNote",145],["Slip",95],["Date",105],["Truck",120],["Weight",105],["Customer WB",135],["GRV",115]] as [string,number][]).map(([s,w])=><Text key={s} style={{width:w,color:C.primaryDark,fontWeight:"800"}}>{s}</Text>)}</View>
  {visible.map(row=><Pressable key={row.source_type+":"+row.source_id} onPress={()=>router.push("/weighbridge-delivery-report")} style={{flexDirection:"row",padding:10,borderBottomWidth:1,borderColor:C.border}}>
- {([ [row.dnote_number||"-",125],[row.customer_dnote_number||"Outstanding",145],[row.slip_number,95],[wbFormatDate(row.weigh_date),105],[row.registration_text||"-",120],[tonnes(row.net_kg),105],[row.receiving_wb_number||"Outstanding",135],[row.grv_number||"Outstanding",115]] as [string,number][]).map(([v,w],i)=><Text key={i} style={{width:w,color:i>=1&&[1,6,7].includes(i)&&v==="Outstanding"?C.danger:C.text}}>{v}</Text>)}
+ {([ [row.dnote_number||"—",125],[row.customer_dnote_number||"Outstanding",145],[row.slip_number,95],[wbFormatDate(row.weigh_date),105],[row.registration_text||"—",120],[tonnes(row.net_kg),105],[row.receiving_wb_number||"Outstanding",135],[row.grv_number||"Outstanding",115]] as [string,number][]).map(([v,w],i)=><Text key={i} style={{width:w,color:i>=1&&[1,6,7].includes(i)&&v==="Outstanding"?C.danger:C.text}}>{v}</Text>)}
  </Pressable>)}
  {!busy&&!visible.length?<Text style={{padding:14,color:C.textSecondary}}>No matching dispatch records.</Text>:null}
  <Text style={{color:C.textSecondary,marginTop:S.md,fontSize:12}}>Out Customer WB, Out DNote and Out GRV are independent. Out DNote means the customer-facing delivery note is missing; the Field DNote is retained separately. Returning grain to stock does not clear required customer paperwork. Open the Delivery Report to enter or match customer documents.</Text>
  </View></ScrollView>;
 }
-
