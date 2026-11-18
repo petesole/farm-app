@@ -4,6 +4,7 @@ import { Picker } from "@react-native-picker/picker";
 import { router } from "expo-router";
 import { supabase } from "@/supabase";
 import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
+import { JsplSearchCombo } from "@/components/jspl/JsplSearchCombo";
 import { jsplColors as C } from "@/constants/jspl-design";
 
 type Dispatch={dispatch_id:string;dnote_number:string;counts:Record<string,number>};
@@ -48,8 +49,11 @@ export default function PotatoMarket(){
    <TextInput style={input} value={saleDate} onChangeText={setSaleDate} placeholder="DD/MM/YYYY"/>
    {dispatch&&sizes.filter(([c])=>Number(dispatch.counts?.[c]||0)>0).map(([code,name])=><View key={code} style={{flexDirection:"row",alignItems:"center",gap:8}}><Text style={{flex:1}}>{name}: {dispatch.counts[code]} pockets</Text><TextInput style={input} keyboardType="decimal-pad" value={prices[code]||""} onChangeText={v=>setPrices(x=>({...x,[code]:v}))} placeholder="Price / pocket"/></View>)}
    <Text style={{fontWeight:"700",marginVertical:8}}>Select live potato fields, then split each size so the totals match the D-Note.</Text>
-   {traces.map(t=><View key={t.id}><Pressable onPress={()=>setChosen(x=>x.includes(t.id)?x.filter(i=>i!==t.id):[...x,t.id])} style={{paddingVertical:7}}><Text>{chosen.includes(t.id)?"☑":"☐"} {t.name}</Text></Pressable>{chosen.includes(t.id)&&dispatch&&sizes.filter(([c])=>Number(dispatch.counts?.[c]||0)>0).map(([code,name])=><View key={code} style={{flexDirection:"row",alignItems:"center",gap:8}}><Text style={{flex:1,marginLeft:20}}>{name}</Text><TextInput style={input} keyboardType="number-pad" value={alloc[t.id+":"+code]||""} onChangeText={v=>setA(t.id,code,v)} placeholder="Pockets"/></View>)}</View>)}
-   {editingSale&&<TextInput style={input} value={saleReason} onChangeText={setSaleReason} placeholder="Reason for editing this sale"/>}
+   <JsplSearchCombo label="Add live potato field" selector="trace" options={traces.filter(t=>!chosen.includes(t.id)).map(t=>({id:t.id,label:t.name,active:true}))} value={null} onChange={v=>{if(v!==null)setChosen(x=>[...x,Number(v)])}} placeholder="Search live fields…"/>
+   {chosen.map(id=><View key={id} style={{padding:8,marginTop:8,borderWidth:1,borderColor:"#d7ded9",borderRadius:7}}>
+    <View style={{flexDirection:"row",alignItems:"center",justifyContent:"space-between"}}><Text style={{fontWeight:"700"}}>{label(String(id))}</Text><Btn label="Remove field" onPress={()=>{setChosen(x=>x.filter(v=>v!==id));setAlloc(x=>Object.fromEntries(Object.entries(x).filter(([k])=>!k.startsWith(id+":"))))}}/></View>
+    {dispatch&&sizes.filter(([code])=>Number(dispatch.counts?.[code]||0)>0).map(([code,name])=><View key={code} style={{flexDirection:"row",alignItems:"center",gap:8}}><Text style={{flex:1,marginLeft:12}}>{name}</Text><TextInput style={input} keyboardType="number-pad" value={alloc[id+":"+code]||""} onChangeText={v=>setA(id,code,v)} placeholder="Pockets"/></View>)}
+   </View>)}{editingSale&&<TextInput style={input} value={saleReason} onChangeText={setSaleReason} placeholder="Reason for editing this sale"/>}
    <Btn label={busy?"Saving…":editingSale?"Save sale edit":"Save sale"} onPress={saveSale} disabled={busy||!dispatchId}/>
   </View>:null}
   {tab==="payment"?<View style={{backgroundColor:"white",padding:14,borderRadius:8}}>
