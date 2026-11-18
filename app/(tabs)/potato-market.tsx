@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View 
 import { Picker } from "@react-native-picker/picker";
 import { router } from "expo-router";
 import { supabase } from "@/supabase";
+import { parseJsplDateInput, displayJsplDate } from "@/utils/jspl-input";
 import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
 import { JsplSearchCombo } from "@/components/jspl/JsplSearchCombo";
 import { jsplColors as C } from "@/constants/jspl-design";
@@ -13,8 +14,8 @@ type Sale={sale_id:string;dispatch_id:string;dnote_number:string;sale_date:strin
 type Payment={payment_id:string;sale_id:string;dnote_number:string;payment_date:string;amount:number;note:string|null;market_reference:string|null};
 const sizes:[string,string][]=[["LARGE","Large"],["MEDIUM","Medium"],["SMEDIUM","Small-Medium"],["SMALL","Small"],["CHATS","Chats"],["CUTS","Cuts"],["GREENS","Greens"],["BULLETS","Bullets"]];
 const today=()=>{const d=new Date();return String(d.getDate()).padStart(2,"0")+"/"+String(d.getMonth()+1).padStart(2,"0")+"/"+d.getFullYear()};
-const iso=(v:string)=>{const m=v.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);if(!m)return null;const d=new Date(+m[3],+m[2]-1,+m[1]);return d.getFullYear()===+m[3]&&d.getMonth()===+m[2]-1&&d.getDate()===+m[1]?m[3]+"-"+m[2].padStart(2,"0")+"-"+m[1].padStart(2,"0"):null};
-const display=(v:string)=>{if(!v)return "";const [y,m,d]=v.slice(0,10).split("-");return d+"/"+m+"/"+y};
+const iso=(v:string)=>parseJsplDateInput(v);
+const display=(v:string)=>displayJsplDate(v.slice(0,10));
 const input={borderWidth:1,borderColor:"#aeb9b4",borderRadius:6,padding:9,backgroundColor:"white",minWidth:110,marginBottom:8} as const;
 function Btn({label,onPress,disabled=false}:any){return <Pressable onPress={onPress} disabled={disabled} style={{padding:11,backgroundColor:disabled?"#9aa8a0":C.primaryDark,borderRadius:6,marginRight:8,marginVertical:5}}><Text style={{color:"white",fontWeight:"700"}}>{label}</Text></Pressable>}
 export default function PotatoMarket(){
