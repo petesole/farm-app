@@ -11,8 +11,6 @@ type Application = {
   irrigation_applied_id: number;
   applied_date: string;
   mm_applied: number;
-  effective_mm: number | null;
-  notes: string | null;
 };
 type PendingPlan = { irrigation_schedule_id:number; scheduled_date:string; planned_mm:number; status:string };
 const pad = (v: number) => String(v).padStart(2, "0");
@@ -63,7 +61,7 @@ export default function IrrigationActual() {
       if (!Number.isInteger(traceId) || traceId <= 0) throw new Error("Invalid field selection.");
       const [trace, history, upcoming] = await Promise.all([
         supabase.from("tracecode").select("tracecode_name,crop:crop_id(crop_name)").eq("tracecode_id", traceId).single(),
-        supabase.from("irrigation_applied").select("irrigation_applied_id,applied_date,mm_applied,effective_mm,notes").eq("tracecode_id", traceId).order("applied_date", { ascending: false }).order("irrigation_applied_id", { ascending: false }).limit(150),
+        supabase.from("irrigation_applied").select("irrigation_applied_id,applied_date,mm_applied").eq("tracecode_id", traceId).order("applied_date", { ascending: false }).order("irrigation_applied_id", { ascending: false }).limit(150),
         supabase.from("irrigation_schedule").select("irrigation_schedule_id,scheduled_date,planned_mm,status").eq("tracecode_id", traceId).in("status",["planned","scheduled"]).order("scheduled_date",{ascending:true}),
       ]);
       if (trace.error) throw trace.error;
@@ -130,14 +128,17 @@ export default function IrrigationActual() {
           <Pressable style={[styles.button, saving && styles.disabled]} disabled={saving} onPress={save}><Text style={styles.buttonText}>{saving ? "Saving…" : "Save Irrigation"}</Text></Pressable>
         </View> : null}
         <View style={styles.card}>
-          <Text style={styles.heading}>Field irrigation history</Text>
-          {rows.length === 0 ? <Text>No irrigation recorded for this field.</Text> : rows.map(x =>
+          <Text style={styles.heading}>Field History</Text>
+          <View style={styles.history}>
+            <Text style={styles.historyDate}>Date</Text>
+            <Text style={styles.historyMm}>mm</Text>
+          </View>
+          {rows.length === 0 ? <Text>No records</Text> : rows.map(x =>
             <View key={x.irrigation_applied_id} style={styles.history}>
-              <Text style={styles.bold}>{displayDate(x.applied_date)} · {Number(x.mm_applied).toFixed(1)} mm</Text>
-              {x.notes ? <Text>{x.notes}</Text> : null}
+              <Text style={styles.historyDate}>{displayDate(x.applied_date)}</Text>
+              <Text style={styles.historyMm}>{Number(x.mm_applied).toFixed(1)}</Text>
             </View>
           )}
-          <Text style={styles.help}>Historical records are read-only in the phone app.</Text>
         </View>
       </>}
     </ScrollView>
@@ -153,8 +154,9 @@ const styles = StyleSheet.create({
   input: { backgroundColor: "#fff", borderWidth: 1, borderColor: C.border, borderRadius: 8, padding: 11, color: C.text },
   option: { borderWidth:1, borderColor:C.border, borderRadius:8, padding:10, marginTop:6 },
   chosen: { backgroundColor:C.successTint, borderColor:C.primary },
-  history: { borderBottomWidth: 1, borderBottomColor: C.border, paddingVertical: 11 },
-  bold: { fontWeight: "700", color: C.text },
+  history: { flexDirection: "row", justifyContent: "space-between", borderBottomWidth: 1, borderBottomColor: C.border, paddingVertical: 9 },
+  historyDate: { color: C.text, fontWeight: "700" },
+  historyMm: { color: C.text, fontWeight: "700", textAlign: "right" },
   button: { marginTop: 18, backgroundColor: C.primaryDark, borderRadius: 8, padding: 14, alignItems: "center" },
   buttonText: { color: "#fff", fontWeight: "800" },
   disabled: { opacity: 0.5 },
