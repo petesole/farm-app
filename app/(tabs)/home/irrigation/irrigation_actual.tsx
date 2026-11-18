@@ -14,6 +14,7 @@ type Application = {
   effective_mm: number | null;
   notes: string | null;
 };
+type PendingPlan = { irrigation_schedule_id:number; scheduled_date:string; planned_mm:number; status:string };
 const pad = (v: number) => String(v).padStart(2, "0");
 const isoDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const displayDate = (s: string) => {
@@ -45,6 +46,8 @@ export default function IrrigationActual() {
   const [error, setError] = useState("");
   const [traceName, setTraceName] = useState("");
   const [rows, setRows] = useState<Application[]>([]);
+  const [plans, setPlans] = useState<PendingPlan[]>([]);
+  const [linkedSchedule, setLinkedSchedule] = useState<number|null>(null);
   const [date, setDate] = useState(displayDate(isoDate(new Date())));
   const [mm, setMm] = useState("");
   const [notes, setNotes] = useState("");
@@ -58,14 +61,17 @@ export default function IrrigationActual() {
       setRoleAllowed(allowed);
       if (!allowed) throw new Error("Irrigation access is not assigned to this account.");
       if (!Number.isInteger(traceId) || traceId <= 0) throw new Error("Invalid field selection.");
-      const [trace, history] = await Promise.all([
+      const [trace, history, upcoming] = await Promise.all([
         supabase.from("irrigation_dashboard_cache").select("trace,crop").eq("tracecode_id", traceId).single(),
         supabase.from("irrigation_applied").select("irrigation_applied_id,applied_date,mm_applied,effective_mm,notes").eq("tracecode_id", traceId).order("applied_date", { ascending: false }).order("irrigation_applied_id", { ascending: false }).limit(150),
+        supabase.from("irrigation_schedule").select("irrigation_schedule_id,scheduled_date,planned_mm,status").eq("tracecode_id", traceId).in("status",["planned","scheduled"]).order("scheduled_date",{ascending:true}),
       ]);
       if (trace.error) throw trace.error;
       if (history.error) throw history.error;
+      if (upcoming.error) throw upcoming.error;
       setTraceName(`${trace.data?.trace ?? ""} · ${trace.data?.crop ?? ""}`);
       setRows((history.data ?? []) as Application[]);
+      setPlans((upcoming.data ?? []) as PendingPlan[]);
     } catch (e: any) { setError(e?.message || "Unable to load irrigation history."); }
     finally { setLoading(false); }
   }, [traceId]);
@@ -82,14 +88,14 @@ export default function IrrigationActual() {
       // Database triggers calculate applied_date, effective_mm and rebuild the field dashboard.
       const { error: saveError } = await supabase.from("irrigation_applied").insert({
         tracecode_id: traceId,
-        irrigation_schedule_id: null,
+        irrigation_schedule_id: linkedSchedule,
         start_at: `${day}T12:00:00+02:00`,
         end_at: `${day}T12:01:00+02:00`,
         mm_applied: amount,
         notes: notes.trim() || null,
       });
       if (saveError) throw saveError;
-      setMm(""); setNotes("");
+      setMm(""); setNotes(""); setLinkedSchedule(null);
       await refresh();
       Alert.alert("Saved", "Actual irrigation recorded.");
     } catch (e: any) { Alert.alert("Not saved", e?.message || "Please retry."); }
@@ -106,6 +112,17 @@ export default function IrrigationActual() {
           <TextInput style={styles.input} value={date} onChangeText={setDate} placeholder="DD/MM/YYYY" />
           <Text style={styles.label}>Actual mm applied</Text>
           <TextInput style={styles.input} value={mm} onChangeText={setMm} keyboardType="decimal-pad" placeholder="mm" />
+          {plans.length ? <>
+            <Text style={styles.label}>Link to planned irrigation (optional)</Text>
+            <Text style={styles.help}>Select the matching plan to mark it completed. The actual mm is entered independently.</Text>
+            <Pressable onPress={()=>setLinkedSchedule(null)} style={[styles.option,linkedSchedule===null&&styles.chosen]}>
+              <Text>Unplanned irrigation</Text>
+            </Pressable>
+            {plans.map(p=><Pressable key={p.irrigation_schedule_id} onPress={()=>setLinkedSchedule(p.irrigation_schedule_id)}
+                style={[styles.option,linkedSchedule===p.irrigation_schedule_id&&styles.chosen]}>
+              <Text>{displayDate(p.scheduled_date)} · planned {Number(p.planned_mm).toFixed(1)} mm</Text>
+            </Pressable>)}
+          </> : null}
           <Text style={styles.label}>Notes (optional)</Text>
           <TextInput style={styles.input} value={notes} onChangeText={setNotes} placeholder="Notes" />
           <Pressable style={[styles.button, saving && styles.disabled]} disabled={saving} onPress={save}><Text style={styles.buttonText}>{saving ? "Saving…" : "Save Irrigation"}</Text></Pressable>
@@ -132,6 +149,8 @@ const styles = StyleSheet.create({
   label: { color: C.text, fontWeight: "700", marginTop: 12, marginBottom: 5 },
   help: { color: C.textSecondary, marginVertical: 7 },
   input: { backgroundColor: "#fff", borderWidth: 1, borderColor: C.border, borderRadius: 8, padding: 11, color: C.text },
+  option: { borderWidth:1, borderColor:C.border, borderRadius:8, padding:10, marginTop:6 },
+  chosen: { backgroundColor:C.successTint, borderColor:C.primary },
   history: { borderBottomWidth: 1, borderBottomColor: C.border, paddingVertical: 11 },
   bold: { fontWeight: "700", color: C.text },
   button: { marginTop: 18, backgroundColor: C.primaryDark, borderRadius: 8, padding: 14, alignItems: "center" },
