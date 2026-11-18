@@ -1,4 +1,3 @@
-Attempting to perform the InitializeDefaultDrives operation on the 'FileSystem' provider failed.
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { Picker } from "@react-native-picker/picker";
@@ -46,34 +45,33 @@ export default function PotatoMarket(){
   {!!error&&<Text style={{color:"#b42318",marginVertical:8}}>{error}</Text>}
   {tab==="sale"? <View style={{backgroundColor:"white",padding:14,borderRadius:8}}>
    <Text style={{fontSize:20,fontWeight:"700",marginBottom:8}}>{editingSale?"Edit posted sale":"Record sale from issued D-Note"}</Text>
-   <Text>Sale to edit / new</Text><Picker selectedValue={saleEdit} onValueChange={setSaleEdit}><Picker.Item label="New sale" value="new"/>{sales.map(s=><Picker.Item key={s.sale_id} label={s.dnote_number+" � "+display(s.sale_date)} value={s.sale_id}/>)}</Picker>
+   <Text>Sale to edit / new</Text><Picker selectedValue={saleEdit} onValueChange={setSaleEdit}><Picker.Item label="New sale" value="new"/>{sales.map(s=><Picker.Item key={s.sale_id} label={s.dnote_number+" · "+display(s.sale_date)} value={s.sale_id}/>)}</Picker>
    <Text>D-Note (issued D-Notes only)</Text><Picker selectedValue={dispatchId} onValueChange={setDispatchId}><Picker.Item label={editingSale?.dnote_number||"Choose D-Note"} value={editingSale?.dispatch_id||""}/>{activeDispatches.map(d=><Picker.Item key={d.dispatch_id} label={d.dnote_number} value={d.dispatch_id}/>)}</Picker>
    <TextInput style={input} value={saleDate} onChangeText={setSaleDate} placeholder="DD/MM/YYYY"/>
    {dispatch&&sizes.filter(([c])=>Number(dispatch.counts?.[c]||0)>0).map(([code,name])=><View key={code} style={{flexDirection:"row",alignItems:"center",gap:8}}><Text style={{flex:1}}>{name}: {dispatch.counts[code]} pockets</Text><TextInput style={input} keyboardType="decimal-pad" value={prices[code]||""} onChangeText={v=>setPrices(x=>({...x,[code]:v}))} placeholder="Price / pocket"/></View>)}
    <Text style={{fontWeight:"700",marginVertical:8}}>Select live potato fields, then split each size so the totals match the D-Note.</Text>
-   <JsplSearchCombo label="Add live potato field" selector="trace" options={traces.filter(t=>!chosen.includes(t.id)).map(t=>({id:t.id,label:t.name,active:true}))} value={null} onChange={v=>{if(v!==null)setChosen(x=>[...x,Number(v)])}} placeholder="Search live fields."/>
+   <JsplSearchCombo label="Add live potato field" selector="trace" options={traces.filter(t=>!chosen.includes(t.id)).map(t=>({id:t.id,label:t.name,active:true}))} value={null} onChange={v=>{if(v!==null)setChosen(x=>[...x,Number(v)])}} placeholder="Search live fields…"/>
    {chosen.map(id=><View key={id} style={{padding:8,marginTop:8,borderWidth:1,borderColor:"#d7ded9",borderRadius:7}}>
     <View style={{flexDirection:"row",alignItems:"center",justifyContent:"space-between"}}><Text style={{fontWeight:"700"}}>{label(String(id))}</Text><Btn label="Remove field" onPress={()=>{setChosen(x=>x.filter(v=>v!==id));setAlloc(x=>Object.fromEntries(Object.entries(x).filter(([k])=>!k.startsWith(id+":"))))}}/></View>
     {dispatch&&sizes.filter(([code])=>Number(dispatch.counts?.[code]||0)>0).map(([code,name])=><View key={code} style={{flexDirection:"row",alignItems:"center",gap:8}}><Text style={{flex:1,marginLeft:12}}>{name}</Text><TextInput style={input} keyboardType="number-pad" value={alloc[id+":"+code]||""} onChangeText={v=>setA(id,code,v)} placeholder="Pockets"/></View>)}
    </View>)}{editingSale&&<TextInput style={input} value={saleReason} onChangeText={setSaleReason} placeholder="Reason for editing this sale"/>}
-   <Btn label={busy?"Saving.":editingSale?"Save sale edit":"Save sale"} onPress={saveSale} disabled={busy||!dispatchId}/>
+   <Btn label={busy?"Saving…":editingSale?"Save sale edit":"Save sale"} onPress={saveSale} disabled={busy||!dispatchId}/>
   </View>:null}
   {tab==="payment"?<View style={{backgroundColor:"white",padding:14,borderRadius:8}}>
    <Text style={{fontSize:20,fontWeight:"700"}}>{editingPayment?"Edit posted payment":"Record market payment"}</Text>
-   <Text>Payment to edit / new</Text><Picker selectedValue={paymentEdit} onValueChange={setPaymentEdit}><Picker.Item label="New payment" value="new"/>{payments.map(p=><Picker.Item key={p.payment_id} label={p.dnote_number+" � "+Number(p.amount).toFixed(2)} value={p.payment_id}/>)}</Picker>
-   <Text>Sale / D-Note</Text><Picker selectedValue={paymentSale} onValueChange={setPaymentSale}><Picker.Item label="Choose sale" value=""/>{sales.map(s=><Picker.Item key={s.sale_id} label={s.dnote_number+" � balance "+(Number(s.total)-Number(s.paid)).toFixed(2)} value={s.sale_id}/>)}</Picker>
+   <Text>Payment to edit / new</Text><Picker selectedValue={paymentEdit} onValueChange={setPaymentEdit}><Picker.Item label="New payment" value="new"/>{payments.map(p=><Picker.Item key={p.payment_id} label={p.dnote_number+" · "+Number(p.amount).toFixed(2)} value={p.payment_id}/>)}</Picker>
+   <Text>Sale / D-Note</Text><Picker selectedValue={paymentSale} onValueChange={setPaymentSale}><Picker.Item label="Choose sale" value=""/>{sales.map(s=><Picker.Item key={s.sale_id} label={s.dnote_number+" · balance "+(Number(s.total)-Number(s.paid)).toFixed(2)} value={s.sale_id}/>)}</Picker>
    <TextInput style={input} value={paymentDate} onChangeText={setPaymentDate} placeholder="DD/MM/YYYY"/>
    <TextInput style={input} value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="Amount received"/>
    <TextInput style={input} value={reference} onChangeText={setReference} placeholder="Market payment reference (optional)"/>
    <TextInput style={input} value={note} onChangeText={setNote} placeholder="Payment note"/>
    {editingPayment&&<TextInput style={input} value={paymentReason} onChangeText={setPaymentReason} placeholder="Reason for editing this payment"/>}
-   <Btn label={busy?"Saving.":editingPayment?"Save payment edit":"Save payment"} onPress={savePayment} disabled={busy||!paymentSale}/>
+   <Btn label={busy?"Saving…":editingPayment?"Save payment edit":"Save payment"} onPress={savePayment} disabled={busy||!paymentSale}/>
   </View>:null}
   {tab==="report"?<View style={{backgroundColor:"white",padding:14,borderRadius:8}}><Text style={{fontSize:20,fontWeight:"700",marginBottom:10}}>Transaction Report</Text>
-   {report.map((r,i)=><View key={i} style={{paddingVertical:9,borderBottomWidth:1,borderColor:"#e6e9e7"}}><Text style={{fontWeight:"700"}}>{r.type} � {r.dnote} � {display(r.date)}</Text><Text>Amount: {Number(r.amount).toFixed(2)}</Text>{r.note?<Text>Note: {r.note}</Text>:null}</View>)}
+   {report.map((r,i)=><View key={i} style={{paddingVertical:9,borderBottomWidth:1,borderColor:"#e6e9e7"}}><Text style={{fontWeight:"700"}}>{r.type} · {r.dnote} · {display(r.date)}</Text><Text>Amount: {Number(r.amount).toFixed(2)}</Text>{r.note?<Text>Note: {r.note}</Text>:null}</View>)}
    {!report.length?<Text>No potato market transactions yet.</Text>:null}
-   <Text style={{marginTop:12,fontWeight:"700"}}>Sales balances</Text>{sales.map(s=><Text key={s.sale_id}>{s.dnote_number}: Sale {Number(s.total).toFixed(2)} � Paid {Number(s.paid).toFixed(2)} � Balance {(Number(s.total)-Number(s.paid)).toFixed(2)}</Text>)}
+   <Text style={{marginTop:12,fontWeight:"700"}}>Sales balances</Text>{sales.map(s=><Text key={s.sale_id}>{s.dnote_number}: Sale {Number(s.total).toFixed(2)} · Paid {Number(s.paid).toFixed(2)} · Balance {(Number(s.total)-Number(s.paid)).toFixed(2)}</Text>)}
   </View>:null}
  </ScrollView>;
 }
-
