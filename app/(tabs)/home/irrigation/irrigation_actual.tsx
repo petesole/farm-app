@@ -62,14 +62,16 @@ export default function IrrigationActual() {
       if (!allowed) throw new Error("Irrigation access is not assigned to this account.");
       if (!Number.isInteger(traceId) || traceId <= 0) throw new Error("Invalid field selection.");
       const [trace, history, upcoming] = await Promise.all([
-        supabase.from("irrigation_dashboard_cache").select("trace,crop").eq("tracecode_id", traceId).single(),
+        supabase.from("tracecode").select("tracecode_name,crop:crop_id(crop_name)").eq("tracecode_id", traceId).single(),
         supabase.from("irrigation_applied").select("irrigation_applied_id,applied_date,mm_applied,effective_mm,notes").eq("tracecode_id", traceId).order("applied_date", { ascending: false }).order("irrigation_applied_id", { ascending: false }).limit(150),
         supabase.from("irrigation_schedule").select("irrigation_schedule_id,scheduled_date,planned_mm,status").eq("tracecode_id", traceId).in("status",["planned","scheduled"]).order("scheduled_date",{ascending:true}),
       ]);
       if (trace.error) throw trace.error;
       if (history.error) throw history.error;
       if (upcoming.error) throw upcoming.error;
-      setTraceName(`${trace.data?.trace ?? ""} · ${trace.data?.crop ?? ""}`);
+      const cropRel = (trace.data as any)?.crop;
+      const cropName = Array.isArray(cropRel) ? cropRel[0]?.crop_name : cropRel?.crop_name;
+      setTraceName(`${(trace.data as any)?.tracecode_name ?? ""} · ${cropName ?? ""}`);
       setRows((history.data ?? []) as Application[]);
       setPlans((upcoming.data ?? []) as PendingPlan[]);
     } catch (e: any) { setError(e?.message || "Unable to load irrigation history."); }
