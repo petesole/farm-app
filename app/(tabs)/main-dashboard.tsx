@@ -29,7 +29,6 @@ export default function MainDashboard() {
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: S.lg }}>
         <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Trace" description="TraceCode management" onPress={() => router.push("/(tabs)/field-dashboard")} /></View>
         <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Weighbridge" description="Weighbridge management" onPress={() => router.push("/weighbridge")} /></View>
-        <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Potato Market" description="D-Note sales, field allocation and payments" onPress={() => router.push("/(tabs)/potato-market")} /></View>
         <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Fuel" description="Fuel management" onPress={() => router.push("/(tabs)/fuel")} /></View>
         <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Stock" description="Purchase orders, receiving, issues and balances" onPress={() => router.push("/stock")} /></View>
         <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Labour" description="Daily labour entry and costing" onPress={() => router.push("/(tabs)/labour")} /></View>

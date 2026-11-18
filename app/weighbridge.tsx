@@ -11,6 +11,7 @@ import {WbLastSync} from "../components/jspl/WbLastSync";
 type Dispatch={customer_dnote_number?:string|null;linked_manual_slips?:string;source_type:string;source_id:string;slip_number:string;dnote_number:string|null;weigh_date:string;net_kg:number;registration_text:string|null;receiving_wb_number:string|null;grv_number:string|null};
 const tonnes=(kg:number)=>(Number(kg)/1000).toFixed(3)+" t";
 const routes=[
+ {title:"Potato Market",description:"D-Note sales, field allocation and payments",path:"/(tabs)/potato-market"},
  {title:"Manual WB Entry",description:"Create and allocate manual slips",path:"/weighbridge-manual"},
  {title:"Crop Report",description:"Harvest production by TraceCode",path:"/weighbridge-crop-report"},
  {title:"Delivery Report",description:"Customer WB and GRV records",path:"/weighbridge-delivery-report"},

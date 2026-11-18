@@ -40,7 +40,7 @@ export default function PotatoMarket(){
  if(!admin)return <View style={{padding:24}}><Text>Admin access required.</Text></View>;
  const label=(s:string)=>traces.find(t=>t.id===Number(s))?.name||s;
  return <ScrollView style={{flex:1,backgroundColor:C.background}} contentContainerStyle={{padding:18}}>
-  <JsplModuleHeader title="Potato Market" subtitle="Sales, field allocations and market payments" backLabel="Back to Main" backHref="/(tabs)/main-dashboard"/>
+  <JsplModuleHeader title="Potato Market" subtitle="Sales, field allocations and market payments" backLabel="Back to Weighbridge Dashboard" backHref="/weighbridge"/>
   <View style={{flexDirection:"row",flexWrap:"wrap"}}><Btn label="Sales" onPress={()=>setTab("sale")}/><Btn label="Payments" onPress={()=>setTab("payment")}/><Btn label="Transaction Report" onPress={()=>setTab("report")}/><Btn label="Refresh" onPress={()=>load().catch((e:any)=>setError(e.message))}/></View>
   {!!error&&<Text style={{color:"#b42318",marginVertical:8}}>{error}</Text>}
   {tab==="sale"? <View style={{backgroundColor:"white",padding:14,borderRadius:8}}>
