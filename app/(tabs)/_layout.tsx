@@ -12,6 +12,7 @@ export default function TabsLayout() {
   const [canFuel, setCanFuel] = useState(false);
   const [canLabour, setCanLabour] = useState(false);
   const [canStock, setCanStock] = useState(false);
+  const [canIrrigation, setCanIrrigation] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -31,6 +32,7 @@ export default function TabsLayout() {
         const admin = assigned.includes('admin');
         const fuelAccess = admin || assigned.includes('manager') || assigned.includes('fuel');
         const labourAccess = admin || assigned.includes('manager') || assigned.includes('labour');
+        const irrigationAccess = admin || assigned.includes('irrigation');
         let stockAccess=false;
         try { stockAccess=!!(await stockRequest("?stock_access=1")).access?.is_stock; } catch { /* Fail closed for Stock only. */ }
         if(!alive)return;
@@ -38,7 +40,8 @@ export default function TabsLayout() {
         setIsAdmin(admin);
         setCanFuel(fuelAccess);
         setCanLabour(labourAccess);
-        setLoggedIn(admin || fuelAccess || labourAccess || stockAccess);
+        setCanIrrigation(irrigationAccess);
+        setLoggedIn(admin || fuelAccess || labourAccess || irrigationAccess || stockAccess);
       } catch {
         if (!alive) return;
         setLoggedIn(false);
@@ -66,12 +69,16 @@ export default function TabsLayout() {
     return <Redirect href="/login" />;
   }
 
-  if (canLabour && !isAdmin && !canFuel && !canStock && pathname !== "/labour") {
+  if (canIrrigation && !isAdmin && !canFuel && !canLabour && !canStock && pathname !== "/irrigation_main_dashboard") {
+    return <Redirect href="/irrigation_main_dashboard" />;
+  }
+
+  if (canLabour && !isAdmin && !canFuel && !canStock && !canIrrigation && pathname !== "/labour") {
     return <Redirect href="/labour" />;
   }
 
   return (
-    <Tabs initialRouteName={isAdmin ? "main-dashboard" : canFuel ? "fuel" : canLabour ? "labour" : "stock-test"} screenOptions={{ headerShown: false, tabBarStyle: { display: "none" } }}>
+    <Tabs initialRouteName={isAdmin ? "main-dashboard" : canFuel ? "fuel" : canLabour ? "labour" : canIrrigation ? "irrigation_main_dashboard" : "stock-test"} screenOptions={{ headerShown: false, tabBarStyle: { display: "none" } }}>
       <Tabs.Screen name="home" options={{ href: null }} />
       <Tabs.Screen name="control-panel" options={{ href: null }} />
       <Tabs.Screen name="vehicle-management" options={{ href: null }} />
@@ -90,7 +97,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="cashbook" options={{ href: null }} />
       <Tabs.Screen
         name="irrigation_main_dashboard"
-        options={{ href: null }}
+        options={{ href: canIrrigation && !isAdmin ? "/irrigation_main_dashboard" : null }}
       />
       <Tabs.Screen name="scouting" options={{ href: null }} />
     </Tabs>
