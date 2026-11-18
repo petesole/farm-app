@@ -6,9 +6,9 @@ create policy irrigation_applied_add on public.irrigation_applied
   with check (
     (select auth.uid()) is not null
     and (
-      'admin' = any((select public.my_farm_app_roles()))
+      array_position((select public.my_farm_app_roles()), 'admin') is not null
       or (
-        'irrigation' = any((select public.my_farm_app_roles()))
+        array_position((select public.my_farm_app_roles()), 'irrigation') is not null
         and (start_at at time zone 'Africa/Harare')::date between
           (now() at time zone 'Africa/Harare')::date - 9 and
           (now() at time zone 'Africa/Harare')::date
@@ -22,9 +22,9 @@ create policy irrigation_pan_add on public.irrigation_pan
   with check (
     (select auth.uid()) is not null
     and (
-      'admin' = any((select public.my_farm_app_roles()))
+      array_position((select public.my_farm_app_roles()), 'admin') is not null
       or (
-        'irrigation' = any((select public.my_farm_app_roles()))
+        array_position((select public.my_farm_app_roles()), 'irrigation') is not null
         and irrigation_pan_date between
           (now() at time zone 'Africa/Harare')::date - 9 and
           (now() at time zone 'Africa/Harare')::date
