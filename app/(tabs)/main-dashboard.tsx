@@ -1,4 +1,3 @@
-Attempting to perform the InitializeDefaultDrives operation on the 'FileSystem' provider failed.
 import { useEffect, useState } from "react";
 import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import { Redirect, router } from "expo-router";
@@ -25,7 +24,7 @@ export default function MainDashboard() {
   if (!verified) return <Redirect href="/(tabs)/fuel" />;
   return (
     <ScrollView contentContainerStyle={{ flexGrow: 1, backgroundColor: C.background, padding: S.xl }}>
-      <JsplModuleHeader title="Main Dashboard" subtitle="John Sole (Private) Limited � Farm Management" />
+      <JsplModuleHeader title="Main Dashboard" subtitle="John Sole (Private) Limited · Farm Management" />
       <Text style={{ fontSize: 19, fontWeight: "700", color: C.text, marginBottom: S.xl }}>Select a module</Text>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: S.lg }}>
         <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Trace" description="TraceCode management" onPress={() => router.push("/(tabs)/field-dashboard")} /></View>
@@ -40,4 +39,3 @@ export default function MainDashboard() {
     </ScrollView>
   );
 }
-
