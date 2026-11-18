@@ -136,7 +136,22 @@ export default function IrrigationMainDashboard() {
       if(appliedError)throw appliedError;
       const latest=new Map<number,number>();
       for(const a of applied??[]){const id=Number(a.tracecode_id);if(!latest.has(id))latest.set(id,Number(a.mm_applied));}
-      setRows(((data??[]) as DashRow[]).map(r=>({...r,last_mm:latest.get(r.tracecode_id)??null})));
+      // Cache can contain finished crops. Show only current irrigated traces.
+      const ids = ((data ?? []) as DashRow[]).map(r => r.tracecode_id);
+      let eligible = new Set<number>();
+      if (ids.length) {
+        const {data: traces,error:traceError} = await supabase.from("tracecode")
+          .select("tracecode_id,start_date,end_date,irrigation_type_id")
+          .in("tracecode_id",ids);
+        if (traceError) throw traceError;
+        const today = new Date();
+        const iso = today.getFullYear()+"-"+String(today.getMonth()+1).padStart(2,"0")+"-"+String(today.getDate()).padStart(2,"0");
+        eligible = new Set((traces ?? [])
+          .filter(t => t.start_date && t.start_date <= iso && (!t.end_date || t.end_date >= iso) && Number(t.irrigation_type_id) !== 4)
+          .map(t => Number(t.tracecode_id)));
+      }
+      setRows(((data??[]) as DashRow[]).filter(r=>eligible.has(r.tracecode_id))
+        .map(r=>({...r,last_mm:latest.get(r.tracecode_id)??null})));
       const {data:pan}=await supabase.from("irrigation_pan")
         .select("irrigation_pan_date,irrigation_pan_reading")
         .order("irrigation_pan_date",{ascending:false}).limit(7);
