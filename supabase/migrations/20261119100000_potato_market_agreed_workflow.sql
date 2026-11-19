@@ -24,8 +24,8 @@ begin
     where d.status='issued'
       and not exists(select 1 from public.potato_market_sale s where s.dispatch_id=d.dispatch_id)),'[]'::jsonb),
   'traces',coalesce((select jsonb_agg(jsonb_build_object('id',t.tracecode_id,'name',t.tracecode_name) order by t.tracecode_name)
-    from public.tracecode t join public.crop c using(crop_id)
-    where lower(btrim(c.crop_name))='potatoes' and t.end_date is null),'[]'::jsonb),
+    from public.v_active_tracecodes t
+    where lower(btrim(t.crop_name))='potatoes'),'[]'::jsonb),
   'markets',coalesce((select jsonb_agg(jsonb_build_object('id',m.market_id,'name',m.market_name) order by m.market_name)
     from public.market m where m.market_active is true),'[]'::jsonb),
   'sales',coalesce((select jsonb_agg(jsonb_build_object(
@@ -155,8 +155,8 @@ begin
  for size,trace_id,qty in
    select a->>'size_code',(a->>'tracecode_id')::bigint,(a->>'pockets')::integer from jsonb_array_elements(p_allocations) a
  loop
-   if qty<=0 or not exists(select 1 from public.tracecode t join public.crop c using(crop_id)
-       where t.tracecode_id=trace_id and t.end_date is null and lower(btrim(c.crop_name))='potatoes') then
+   if qty<=0 or not exists(select 1 from public.v_active_tracecodes t
+       where t.tracecode_id=trace_id and lower(btrim(t.crop_name))='potatoes') then
      raise exception 'Choose live potato fields only';
    end if;
    insert into public.potato_market_field_allocation values(sid,trace_id,size,qty);
