@@ -53,7 +53,7 @@ begin
       join public.wb_scale_transaction w on w.transaction_id=d.wb_transaction_id
     union all
     select jsonb_build_object('type','Payment','date',p.payment_date,'reference',coalesce(c.customer_name,'Unassigned market'),
-      'amount',p.amount,'note',concat_ws(' � ',nullif(p.market_reference,''),nullif(p.note,''))) as x,p.payment_date as sort_date
+      'amount',p.amount,'note',concat_ws('; ',nullif(p.market_reference,''),nullif(p.note,''))) as x,p.payment_date as sort_date
       from public.potato_market_payment p left join public.wb_customer c using(customer_id)
   ) q),'[]'::jsonb),
   'field_report',coalesce((select jsonb_agg(jsonb_build_object(
@@ -130,7 +130,7 @@ begin
  end if;
  for k in select size_code from public.wb_potato_dispatch_line where dispatch_id=p_dispatch_id loop
    select pockets into expected from public.wb_potato_dispatch_line where dispatch_id=p_dispatch_id and size_code=k;
-   if coalesce(p_lines->k->>'price','') !~ '^([0-9]+)(\.[0-9]{1,2})?$'
+   if coalesce(p_lines->k->>'price','') !~ '^[0-9]+([.][0-9]{1,2})?$'
       or coalesce((p_lines->k->>'pockets')::integer,-1)<>expected then
      raise exception 'Enter a price for every D-Note size';
    end if;
@@ -219,9 +219,9 @@ $func$;
 
 revoke all on function public.potato_market_save_sale(uuid,uuid,date,jsonb,jsonb,text) from public,anon,authenticated;
 revoke all on function public.potato_market_save_payment(uuid,uuid,date,numeric,text,text,text) from public,anon,authenticated;
-revoke all on function public.potato_market_save_sale(uuid,uuid,jsonb,jsonb,text) from public,anon;
-revoke all on function public.potato_market_save_payment(uuid,bigint,date,numeric,text,text,text) from public,anon;
-revoke all on function public.potato_market_add_market(text) from public,anon;
+revoke all on function public.potato_market_save_sale(uuid,uuid,jsonb,jsonb,text) from public,anon,authenticated;
+revoke all on function public.potato_market_save_payment(uuid,bigint,date,numeric,text,text,text) from public,anon,authenticated;
+revoke all on function public.potato_market_add_market(text) from public,anon,authenticated;
 grant execute on function public.potato_market_context(),public.potato_market_save_sale(uuid,uuid,jsonb,jsonb,text),
   public.potato_market_save_payment(uuid,bigint,date,numeric,text,text,text),public.potato_market_add_market(text) to authenticated;
 
