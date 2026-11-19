@@ -9,9 +9,9 @@ import { jsplColors as C } from "@/constants/jspl-design";
 
 type Dispatch = { dispatch_id: string; dnote_number: string; dnote_date: string; counts: Record<string, number> };
 type Trace = { id: number; name: string };
-type Customer = { id: number; name: string };
+type Market = { id: number; name: string };
 type Sale = { sale_id: string; dispatch_id: string; dnote_number: string; dnote_date: string; lines: Record<string, { pockets: number; price: number }>; allocations: { tracecode_id: number; size_code: string; pockets: number }[]; total: number };
-type Payment = { payment_id: string; customer_id: number; customer_name: string; payment_date: string; amount: number; note: string | null; market_reference: string | null };
+type Payment = { payment_id: string; market_id: number | null; market_name: string; payment_date: string; amount: number; note: string | null; market_reference: string | null };
 type FieldReport = { tracecode_id: number; tracecode_name: string; incoming_slips: number; incoming_kg: number; sold_pockets: number; sold_kg: number; sold_value: number };
 type StockRow = { season_name: string; size_name: string; available_pockets: number; pocket_weight_kg: number };
 
@@ -30,7 +30,7 @@ export default function PotatoMarket() {
   const [error, setError] = useState("");
   const [dispatches, setDispatches] = useState<Dispatch[]>([]);
   const [traces, setTraces] = useState<Trace[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [markets, setMarkets] = useState<Market[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [fieldReport, setFieldReport] = useState<FieldReport[]>([]);
@@ -45,7 +45,7 @@ export default function PotatoMarket() {
   const [saleReason, setSaleReason] = useState("");
 
   const [paymentEdit, setPaymentEdit] = useState("new");
-  const [customerId, setCustomerId] = useState("");
+  const [marketId, setMarketId] = useState("");
   const [newMarketName, setNewMarketName] = useState("");
   const [addingMarket, setAddingMarket] = useState(false);
   const [paymentDate, setPaymentDate] = useState(today());
@@ -59,7 +59,7 @@ export default function PotatoMarket() {
     if (loadError) throw loadError;
     setDispatches(data.dispatches || []);
     setTraces(data.traces || []);
-    setCustomers(data.customers || []);
+    setMarkets(data.markets || []);
     setSales(data.sales || []);
     setPayments(data.payments || []);
     setFieldReport(data.field_report || []);
@@ -103,13 +103,13 @@ export default function PotatoMarket() {
 
   useEffect(() => {
     if (editingPayment) {
-      setCustomerId(String(editingPayment.customer_id));
+      setMarketId(editingPayment.market_id == null ? "" : String(editingPayment.market_id));
       setPaymentDate(showDate(editingPayment.payment_date));
       setAmount(String(editingPayment.amount));
       setNote(editingPayment.note || "");
       setReference(editingPayment.market_reference || "");
     } else if (paymentEdit === "new") {
-      setCustomerId(""); setPaymentDate(today()); setAmount(""); setNote(""); setReference("");
+      setMarketId(""); setPaymentDate(today()); setAmount(""); setNote(""); setReference("");
     }
     setPaymentReason("");
   }, [paymentEdit]);
@@ -157,12 +157,12 @@ export default function PotatoMarket() {
   async function savePayment() {
     setError("");
     const date = dateIso(paymentDate), value = Number(amount);
-    if (!customerId || !date || !Number.isFinite(value) || value <= 0) { setError("Choose a market and enter a valid date and payment amount."); return; }
+    if (!marketId || !date || !Number.isFinite(value) || value <= 0) { setError("Choose a market and enter a valid date and payment amount."); return; }
     if (editingPayment && !paymentReason.trim()) { setError("Enter a reason for editing this payment."); return; }
     setBusy(true);
-    const { error: saveError } = await supabase.rpc("potato_market_save_payment", {
+    const { error: saveError } = await supabase.rpc("potato_market_save_market_payment", {
       p_payment_id: editingPayment?.payment_id || null,
-      p_customer_id: Number(customerId),
+      p_market_id: Number(marketId),
       p_payment_date: date,
       p_amount: value,
       p_note: note,
@@ -178,11 +178,11 @@ export default function PotatoMarket() {
     setError("");
     if (!newMarketName.trim()) { setError("Enter the market name to add it to the customer list."); return; }
     setBusy(true);
-    const { data, error: addError } = await supabase.rpc("potato_market_add_market", { p_market_name: newMarketName.trim() });
+    const { data, error: addError } = await supabase.rpc("potato_market_add_market_master", { p_market_name: newMarketName.trim() });
     setBusy(false);
     if (addError) { setError(addError.message); return; }
     await load();
-    setCustomerId(String(data));
+    setMarketId(String(data));
     setNewMarketName("");
     setAddingMarket(false);
   }
@@ -247,15 +247,15 @@ export default function PotatoMarket() {
       <Text>Payment record</Text>
       <Picker selectedValue={paymentEdit} onValueChange={setPaymentEdit}>
         <Picker.Item label="New payment" value="new" />
-        {payments.map(payment => <Picker.Item key={payment.payment_id} label={`${payment.customer_name} � ${showDate(payment.payment_date)} � ${Number(payment.amount).toFixed(2)}`} value={payment.payment_id} />)}
+        {payments.map(payment => <Picker.Item key={payment.payment_id} label={`${payment.market_name} � ${showDate(payment.payment_date)} � ${Number(payment.amount).toFixed(2)}`} value={payment.payment_id} />)}
       </Picker>
       <Text>Market</Text>
-      <Picker selectedValue={customerId} onValueChange={setCustomerId}>
+      <Picker selectedValue={marketId} onValueChange={setMarketId}>
         <Picker.Item label="Choose market" value="" />
-        {customers.map(customer => <Picker.Item key={customer.id} label={customer.name} value={String(customer.id)} />)}
+        {markets.map(market => <Picker.Item key={market.id} label={market.name} value={String(market.id)} />)}
       </Picker>
-      {!customers.length && <Text style={{ color: C.danger, marginVertical: 6 }}>No active customer records are available for the market dropdown.</Text>}
-      <Button label={addingMarket ? "Cancel add market" : "Add market to customer list"} onPress={() => { setAddingMarket(value => !value); setNewMarketName(""); }} />
+      {!markets.length && <Text style={{ color: C.danger, marginVertical: 6 }}>The market list is empty. Add the market before recording its payment.</Text>}
+      <Button label={addingMarket ? "Cancel add market" : "Add market to list"} onPress={() => { setAddingMarket(value => !value); setNewMarketName(""); }} />
       {addingMarket && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
         <TextInput style={inputStyle} value={newMarketName} onChangeText={setNewMarketName} placeholder="New market name" />
         <Button label={busy ? "Adding." : "Add to list"} onPress={addMarket} disabled={busy || !newMarketName.trim()} />
@@ -265,13 +265,13 @@ export default function PotatoMarket() {
       <TextInput style={inputStyle} value={reference} onChangeText={setReference} placeholder="Market reference (optional)" />
       <TextInput style={inputStyle} value={note} onChangeText={setNote} placeholder="Payment note (optional)" />
       {editingPayment && <TextInput style={inputStyle} value={paymentReason} onChangeText={setPaymentReason} placeholder="Reason for editing this payment" />}
-      <Button label={busy ? "Saving." : editingPayment ? "Save payment edit" : "Save market payment"} onPress={savePayment} disabled={busy || !customerId} />
+      <Button label={busy ? "Saving." : editingPayment ? "Save payment edit" : "Save market payment"} onPress={savePayment} disabled={busy || !marketId} />
     </View>}
 
     {tab === "transactions" && <View style={{ backgroundColor: "white", padding: 14, borderRadius: 8 }}>
       <Text style={{ fontSize: 20, fontWeight: "700", marginBottom: 10 }}>Transaction Report</Text>
       {sales.map(sale => <View key={sale.sale_id} style={{ paddingVertical: 9, borderBottomWidth: 1, borderColor: C.border }}><Text style={{ fontWeight: "700" }}>Sale � {sale.dnote_number} � {showDate(sale.dnote_date)}</Text><Text>Sale total: {Number(sale.total).toFixed(2)}</Text></View>)}
-      {payments.map(payment => <View key={payment.payment_id} style={{ paddingVertical: 9, borderBottomWidth: 1, borderColor: C.border }}><Text style={{ fontWeight: "700" }}>Payment � {payment.customer_name} � {showDate(payment.payment_date)}</Text><Text>Amount: {Number(payment.amount).toFixed(2)}</Text>{payment.market_reference && <Text>Reference: {payment.market_reference}</Text>}{payment.note && <Text>Note: {payment.note}</Text>}</View>)}
+      {payments.map(payment => <View key={payment.payment_id} style={{ paddingVertical: 9, borderBottomWidth: 1, borderColor: C.border }}><Text style={{ fontWeight: "700" }}>Payment � {payment.market_name} � {showDate(payment.payment_date)}</Text><Text>Amount: {Number(payment.amount).toFixed(2)}</Text>{payment.market_reference && <Text>Reference: {payment.market_reference}</Text>}{payment.note && <Text>Note: {payment.note}</Text>}</View>)}
       {!sales.length && !payments.length && <Text>No potato market transactions recorded yet.</Text>}
     </View>}
 
