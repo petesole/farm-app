@@ -45,7 +45,7 @@ begin
       'payment_date',p.payment_date,'amount',p.amount,'note',p.note,'market_reference',p.market_reference)
     order by p.payment_date desc,p.created_at desc)
     from public.potato_market_payment p left join public.wb_customer c using(customer_id)),'[]'::jsonb),
-  'transactions',coalesce((select jsonb_agg(x order by x.sort_date desc) from (
+  'transactions',coalesce((select jsonb_agg(q.x order by q.sort_date desc) from (
     select jsonb_build_object('type','Sale','date',(coalesce(w.first_at,w.local_created_at) at time zone 'Africa/Harare')::date,
       'reference',d.dnote_number,'amount',coalesce((select sum(l.pockets*l.price_per_pocket) from public.potato_market_sale_line l where l.sale_id=s.sale_id),0),
       'note','') as x, (coalesce(w.first_at,w.local_created_at) at time zone 'Africa/Harare')::date as sort_date
@@ -53,7 +53,7 @@ begin
       join public.wb_scale_transaction w on w.transaction_id=d.wb_transaction_id
     union all
     select jsonb_build_object('type','Payment','date',p.payment_date,'reference',coalesce(c.customer_name,'Unassigned market'),
-      'amount',p.amount,'note',concat_ws(' · ',nullif(p.market_reference,''),nullif(p.note,''))) as x,p.payment_date as sort_date
+      'amount',p.amount,'note',concat_ws(' � ',nullif(p.market_reference,''),nullif(p.note,''))) as x,p.payment_date as sort_date
       from public.potato_market_payment p left join public.wb_customer c using(customer_id)
   ) q),'[]'::jsonb),
   'field_report',coalesce((select jsonb_agg(jsonb_build_object(
@@ -224,3 +224,4 @@ revoke all on function public.potato_market_save_payment(uuid,bigint,date,numeri
 revoke all on function public.potato_market_add_market(text) from public,anon;
 grant execute on function public.potato_market_context(),public.potato_market_save_sale(uuid,uuid,jsonb,jsonb,text),
   public.potato_market_save_payment(uuid,bigint,date,numeric,text,text,text),public.potato_market_add_market(text) to authenticated;
+
