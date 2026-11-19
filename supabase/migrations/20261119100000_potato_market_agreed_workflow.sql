@@ -1,7 +1,7 @@
 -- Potato Market follow-up: derive sale dates from the D-Note, record market
 -- payments independently, and expose field receipt / sale attribution reports.
 alter table public.potato_market_payment
-  add column if not exists market_id bigint references public.market(market_id);
+  add column if not exists customer_id bigint references public.wb_customer(customer_id);
 alter table public.potato_market_payment
   alter column sale_id drop not null;
 
@@ -26,8 +26,8 @@ begin
   'traces',coalesce((select jsonb_agg(jsonb_build_object('id',t.tracecode_id,'name',t.tracecode_name) order by t.tracecode_name)
     from public.v_active_tracecodes t
     where lower(btrim(t.crop_name))='potatoes'),'[]'::jsonb),
-  'markets',coalesce((select jsonb_agg(jsonb_build_object('id',m.market_id,'name',m.market_name) order by m.market_name)
-    from public.market m where m.market_active is true),'[]'::jsonb),
+  'customers',coalesce((select jsonb_agg(jsonb_build_object('id',c.customer_id,'name',c.customer_name) order by c.customer_name)
+    from public.wb_customer c where c.active is true),'[]'::jsonb),
   'sales',coalesce((select jsonb_agg(jsonb_build_object(
       'sale_id',s.sale_id,'dispatch_id',s.dispatch_id,'dnote_number',d.dnote_number,
       'dnote_date',(coalesce(w.first_at,w.local_created_at) at time zone 'Africa/Harare')::date,
@@ -41,10 +41,10 @@ begin
     join public.wb_potato_dispatch d using(dispatch_id)
     join public.wb_scale_transaction w on w.transaction_id=d.wb_transaction_id),'[]'::jsonb),
   'payments',coalesce((select jsonb_agg(jsonb_build_object(
-      'payment_id',p.payment_id,'market_id',p.market_id,'market_name',coalesce(m.market_name,'Unassigned market'),
+      'payment_id',p.payment_id,'customer_id',p.customer_id,'customer_name',coalesce(c.customer_name,'Unassigned market'),
       'payment_date',p.payment_date,'amount',p.amount,'note',p.note,'market_reference',p.market_reference)
     order by p.payment_date desc,p.created_at desc)
-    from public.potato_market_payment p left join public.market m using(market_id)),'[]'::jsonb),
+    from public.potato_market_payment p left join public.wb_customer c using(customer_id)),'[]'::jsonb),
   'transactions',coalesce((select jsonb_agg(x order by x.sort_date desc) from (
     select jsonb_build_object('type','Sale','date',(coalesce(w.first_at,w.local_created_at) at time zone 'Africa/Harare')::date,
       'reference',d.dnote_number,'amount',coalesce((select sum(l.pockets*l.price_per_pocket) from public.potato_market_sale_line l where l.sale_id=s.sale_id),0),
@@ -52,9 +52,9 @@ begin
       from public.potato_market_sale s join public.wb_potato_dispatch d using(dispatch_id)
       join public.wb_scale_transaction w on w.transaction_id=d.wb_transaction_id
     union all
-    select jsonb_build_object('type','Payment','date',p.payment_date,'reference',coalesce(m.market_name,'Unassigned market'),
+    select jsonb_build_object('type','Payment','date',p.payment_date,'reference',coalesce(c.customer_name,'Unassigned market'),
       'amount',p.amount,'note',concat_ws(' · ',nullif(p.market_reference,''),nullif(p.note,''))) as x,p.payment_date as sort_date
-      from public.potato_market_payment p left join public.market m using(market_id)
+      from public.potato_market_payment p left join public.wb_customer c using(customer_id)
   ) q),'[]'::jsonb),
   'field_report',coalesce((select jsonb_agg(jsonb_build_object(
       'tracecode_id',t.tracecode_id,'tracecode_name',t.tracecode_name,
@@ -166,26 +166,26 @@ end
 $func$;
 
 create or replace function public.potato_market_save_payment(
-  p_payment_id uuid,p_market_id bigint,p_payment_date date,p_amount numeric,
+  p_payment_id uuid,p_customer_id bigint,p_payment_date date,p_amount numeric,
   p_note text,p_market_reference text,p_reason text default null)
 returns uuid language plpgsql security definer set search_path=''
 as $func$
 declare pid uuid:=coalesce(p_payment_id,gen_random_uuid()); old jsonb;
 begin
  if not potato_market_private.is_admin() then raise exception 'Admin access required' using errcode='42501'; end if;
- if not exists(select 1 from public.market where market_id=p_market_id and market_active is true)
+ if not exists(select 1 from public.wb_customer where customer_id=p_customer_id and active is true)
     or p_payment_date is null or p_amount is null or p_amount<=0 then
-   raise exception 'Choose a market and enter a valid date and amount';
+   raise exception 'Choose an active customer or market and enter a valid date and amount';
  end if;
  if p_payment_id is null then
-   insert into public.potato_market_payment(payment_id,sale_id,market_id,payment_date,amount,note,market_reference)
-   values(pid,null,p_market_id,p_payment_date,p_amount,nullif(btrim(p_note),''),nullif(btrim(p_market_reference),''));
+   insert into public.potato_market_payment(payment_id,sale_id,customer_id,payment_date,amount,note,market_reference)
+   values(pid,null,p_customer_id,p_payment_date,p_amount,nullif(btrim(p_note),''),nullif(btrim(p_market_reference),''));
  else
    select to_jsonb(p) into old from public.potato_market_payment p where p.payment_id=p_payment_id for update;
    if old is null then raise exception 'Payment not found'; end if;
    if nullif(btrim(p_reason),'') is null then raise exception 'Enter a reason for this change'; end if;
    insert into public.potato_market_audit(record_type,record_id,before_data,change_reason) values('payment',pid,old,btrim(p_reason));
-   update public.potato_market_payment set sale_id=null,market_id=p_market_id,payment_date=p_payment_date,
+   update public.potato_market_payment set sale_id=null,customer_id=p_customer_id,payment_date=p_payment_date,
      amount=p_amount,note=nullif(btrim(p_note),''),market_reference=nullif(btrim(p_market_reference),''),updated_at=now()
      where payment_id=pid;
  end if;
@@ -193,9 +193,34 @@ begin
 end
 $func$;
 
+create or replace function public.potato_market_add_market(p_market_name text)
+returns bigint language plpgsql security definer set search_path=''
+as $func$
+declare market_name text:=regexp_replace(btrim(coalesce(p_market_name,'')),'\s+',' ','g');
+  market_key text;
+  existing_id bigint;
+  existing_active boolean;
+  created_id bigint;
+begin
+ if not potato_market_private.is_admin() then raise exception 'Admin access required' using errcode='42501'; end if;
+ if market_name='' then raise exception 'Enter a market name'; end if;
+ market_key:=upper(market_name);
+ select customer_id,active into existing_id,existing_active
+   from public.wb_customer where customer_name_key=market_key;
+ if found then
+   if not existing_active then raise exception 'This customer exists but is inactive; activate it before using it as a market'; end if;
+   return existing_id;
+ end if;
+ insert into public.wb_customer(customer_name,customer_name_key,active)
+   values(market_name,market_key,true) returning customer_id into created_id;
+ return created_id;
+end
+$func$;
+
 revoke all on function public.potato_market_save_sale(uuid,uuid,date,jsonb,jsonb,text) from public,anon,authenticated;
 revoke all on function public.potato_market_save_payment(uuid,uuid,date,numeric,text,text,text) from public,anon,authenticated;
 revoke all on function public.potato_market_save_sale(uuid,uuid,jsonb,jsonb,text) from public,anon;
 revoke all on function public.potato_market_save_payment(uuid,bigint,date,numeric,text,text,text) from public,anon;
+revoke all on function public.potato_market_add_market(text) from public,anon;
 grant execute on function public.potato_market_context(),public.potato_market_save_sale(uuid,uuid,jsonb,jsonb,text),
-  public.potato_market_save_payment(uuid,bigint,date,numeric,text,text,text) to authenticated;
+  public.potato_market_save_payment(uuid,bigint,date,numeric,text,text,text),public.potato_market_add_market(text) to authenticated;
