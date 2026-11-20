@@ -56,6 +56,9 @@ begin
   select * into cpos from public.potato_presale_position_v where presale_id=cid and size_code='LARGE';
   if cpos.allocated_to_contract<>500 or cpos.awaiting_grading<>0 or cpos.reserved_in_storage<>400
    then raise exception 'Future grading did not replenish contract %',row_to_json(cpos); end if;
+  if (select coalesce(sum(a.pockets),0) from public.potato_stock_allocation a
+      where a.grading_id=grading_id and a.kind='reserve' and a.presale_id=cid)<>150
+   then raise exception 'Later grading was not reserved from the incoming batch'; end if;
   if exists(select 1 from public.potato_grade_pool_v where normal_available<0 or reserved_available<0)
    then raise exception 'Negative stock after additional grading'; end if;
 end $test$;
