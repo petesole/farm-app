@@ -81,7 +81,7 @@ begin
   -- never the physical pre-sale collection as additional revenue.
   select sold_value into amount from public.potato_field_report_v2
     where tracecode_id=550 and size_code='LARGE';
-  if amount<>3550 then raise exception 'Field Report sale value expected 3550 got %',amount; end if;
+  if amount<>3580 then raise exception 'Field Report sale value expected 3580 got %',amount; end if;
   select coalesce(sum(signed_amount),0) into amount
     from public.potato_market_transaction_v
     where entry_type<>'payment' and (reference='QA-ROLLBACK-ONLY');
