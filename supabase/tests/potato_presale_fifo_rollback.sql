@@ -2,7 +2,7 @@
 -- Test helper changes ONLY exist inside rollback transaction.
 create or replace function potato_market_private.is_admin() returns boolean language sql stable as $test$select true$test$;
 do $test$
-declare cid uuid; did uuid:=gen_random_uuid(); wid uuid; cpos record; amount numeric; admin_id uuid;
+declare cid uuid; did uuid:=gen_random_uuid(); collection_id uuid:=gen_random_uuid(); grading_id uuid:=gen_random_uuid(); wid uuid; second_wid uuid; cpos record; amount numeric; admin_id uuid;
 begin
   select user_id into admin_id from public.app_user_role where role_name='admin' limit 1;
   perform set_config('request.jwt.claim.sub',admin_id::text,true);
@@ -32,6 +32,32 @@ begin
   if amount<>1050 then raise exception 'Third party revenue expected 1050 got %',amount; end if;
   if exists(select 1 from public.potato_grade_pool_v where normal_available<0 or reserved_available<0)
    then raise exception 'Negative stock pool'; end if;
+  -- Collect 100 already-sold pockets without recording a second sale.
+  select w.transaction_id into second_wid from public.wb_scale_transaction w
+  where w.status='completed' and w.transaction_id<>wid
+  and not exists(select 1 from public.wb_potato_dispatch d where d.wb_transaction_id=w.transaction_id)
+  limit 1;
+  if second_wid is null then raise exception 'No second WB transaction available for test'; end if;
+  insert into public.wb_potato_dispatch(dispatch_id,wb_transaction_id,season_id,dnote_number,status)
+    values(collection_id,second_wid,17,'QA-COLLECTION-ONLY','issued');
+  insert into public.wb_potato_dispatch_line(dispatch_id,size_code,pockets)
+    values(collection_id,'LARGE',100);
+  perform public.potato_market_allocate_and_price(collection_id,'presale',cid,'{}'::jsonb,null);
+  select * into cpos from public.potato_presale_position_v where presale_id=cid and size_code='LARGE';
+  if cpos.allocated_to_contract<>350 or cpos.collected_pockets<>100 or cpos.reserved_in_storage<>250
+   then raise exception 'Pre-sale collection balance wrong %',row_to_json(cpos); end if;
+  if exists(select 1 from public.potato_market_sale where dispatch_id=collection_id)
+   then raise exception 'Pre-sale collection was counted as second sale'; end if;
+  -- Later grading from contracted field replenishes the diverted quantity first.
+  insert into public.wb_potato_grading_batch(grading_id,grading_date,season_id,batch_reference,status,tracecode_id)
+    values(grading_id,current_date,17,'QA-GRADING-ROLLBACK','posted',550);
+  insert into public.wb_potato_grading_line(grading_id,size_code,pockets)
+    values(grading_id,'LARGE',150);
+  select * into cpos from public.potato_presale_position_v where presale_id=cid and size_code='LARGE';
+  if cpos.allocated_to_contract<>500 or cpos.awaiting_grading<>0 or cpos.reserved_in_storage<>400
+   then raise exception 'Future grading did not replenish contract %',row_to_json(cpos); end if;
+  if exists(select 1 from public.potato_grade_pool_v where normal_available<0 or reserved_available<0)
+   then raise exception 'Negative stock after additional grading'; end if;
 end $test$;
-select 'PASS: FIFO historic dispatch + reserve 500 at $5 + divert 150 at $7, contract outstanding 150' as result;
+select 'PASS: FIFO, pre-sale reserve, diversion, collection without double sales, future grading replenishment' as result;
 ROLLBACK;
