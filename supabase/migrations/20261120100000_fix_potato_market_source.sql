@@ -13,21 +13,23 @@ $old$;
 $new$;
 begin
   function_sql := pg_get_functiondef('public.potato_market_context_customer_legacy()'::regprocedure);
-  if position('join public.wb_potato_size sz using(size_code)' in function_sql) = 0 then
+  if position('join public.wb_potato_size sz using(size_code)' in function_sql) > 0 then
+    function_sql := replace(
+      function_sql,
+      'join public.wb_potato_size sz using(size_code)',
+      'join public.wb_potato_size sz on sz.size_code=a.size_code'
+    );
+  elsif position('join public.wb_potato_size sz on sz.size_code=a.size_code' in function_sql) = 0 then
     raise exception 'Expected potato field report size join was not found; migration stopped';
   end if;
-  function_sql := replace(
-    function_sql,
-    'join public.wb_potato_size sz using(size_code)',
-    'join public.wb_potato_size sz on sz.size_code=a.size_code'
-  );
   execute function_sql;
 
   function_sql := pg_get_functiondef('public.potato_market_context()'::regprocedure);
-  if position(old_market_query in function_sql) = 0 then
+  if position(old_market_query in function_sql) > 0 then
+    function_sql := replace(function_sql, old_market_query, new_market_query);
+  elsif position(new_market_query in function_sql) = 0 then
     raise exception 'Expected Potato Market dropdown query was not found; migration stopped';
   end if;
-  function_sql := replace(function_sql, old_market_query, new_market_query);
   execute function_sql;
 end
 $migration$;
