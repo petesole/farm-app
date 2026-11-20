@@ -30,6 +30,9 @@ function Button({ label, onPress, disabled = false }: { label: string; onPress: 
   return <Pressable onPress={onPress} disabled={disabled} style={{ padding: 11, backgroundColor: disabled ? "#9aa8a0" : C.primaryDark, borderRadius: 6, marginRight: 8, marginVertical: 5 }}><Text style={{ color: "white", fontWeight: "700" }}>{label}</Text></Pressable>;
 }
 
+function ReportCell({value,width=90,bold=false}:{value:string;width?:number;bold?:boolean}){
+ return <Text style={{width,flexShrink:0,padding:6,fontWeight:bold?"700":"400"}}>{value}</Text>;
+}
 export default function PotatoMarket() {
   const [admin, setAdmin] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
@@ -320,33 +323,77 @@ export default function PotatoMarket() {
       <Button label={busy ? "Saving…" : editingPayment ? "Save payment edit" : "Save market payment"} onPress={savePayment} disabled={busy || !marketId} />
     </View>}
 
-    {tab === "transactions" && <View style={{ backgroundColor: "white", padding: 14, borderRadius: 8 }}>
-      <Text style={{ fontSize: 20, fontWeight: "700", marginBottom: 10 }}>Transaction Report</Text>
-      {sales.map(sale => <View key={sale.sale_id} style={{ paddingVertical: 9, borderBottomWidth: 1, borderColor: C.border }}><Text style={{ fontWeight: "700" }}>Sale · {sale.dnote_number} · {showDate(sale.dnote_date)}</Text><Text>Sale total: {Number(sale.total).toFixed(2)}</Text></View>)}
-      {payments.map(payment => <View key={payment.payment_id} style={{ paddingVertical: 9, borderBottomWidth: 1, borderColor: C.border }}><Text style={{ fontWeight: "700" }}>Payment · {payment.market_name} · {showDate(payment.payment_date)}</Text><Text>Amount: {Number(payment.amount).toFixed(2)}</Text>{payment.market_reference && <Text>Reference: {payment.market_reference}</Text>}{payment.note && <Text>Note: {payment.note}</Text>}</View>)}
-      {!sales.length && !payments.length && <Text>No potato market transactions recorded yet.</Text>}
-    </View>}
 
-    {tab === "field" && <View style={{ backgroundColor: "white", padding: 14, borderRadius: 8 }}>
-      <Text style={{ fontSize: 20, fontWeight: "700", marginBottom: 10 }}>Potato Field Report</Text>
-      <JsplSearchCombo label="Field" selector="trace" options={traces.map(trace => ({ id: trace.id, label: trace.name, active: true }))} value={selectedReportField} onChange={value => setSelectedReportField(value == null ? null : Number(value))} placeholder="Choose a live potato field" />
-      {!selectedReportField && <Text style={{ color: C.textSecondary, marginVertical: 8 }}>Choose a field to view its report.</Text>}
-      {selectedReportField && <>
-        <Text style={{ fontWeight: "700", marginTop: 12 }}>Processed</Text>
-        <Text>Incoming WB slips: {Number(fieldReport.find(row => row.tracecode_id === selectedReportField)?.incoming_slips || 0).toLocaleString()}</Text>
-        <Text>Incoming weight: {Number(fieldReport.find(row => row.tracecode_id === selectedReportField)?.incoming_kg || 0).toLocaleString()} kg</Text>
-        <Text style={{ fontWeight: "700", marginTop: 12 }}>Stock</Text>
-        <Text style={{ color: C.textSecondary }}>Graded stock is shared by season; grading batches are not linked to individual fields.</Text>
-        {stock.map((row, index) => <Text key={`${row.season_name}:${row.size_name}:${index}`}>{row.season_name} · {row.size_name}: {Number(row.available_pockets).toLocaleString()} pockets ({(Number(row.available_pockets) * Number(row.pocket_weight_kg)).toLocaleString()} kg)</Text>)}
-        {!stock.length && <Text>No available graded potato stock.</Text>}
-        <Text style={{ fontWeight: "700", marginTop: 14 }}>Sold</Text>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", backgroundColor: "#e7eee9", padding: 8, marginTop: 6 }}>
-          {["Sale pockets", "Sale kg", "Sale value"].map(label => <Text key={label} style={{ fontWeight: "800", width: 125 }}>{label}</Text>)}
-        </View>
-        {fieldReport.filter(row => row.tracecode_id === selectedReportField).map(row => <View key={row.tracecode_id} style={{ flexDirection: "row", flexWrap: "wrap", padding: 8, borderBottomWidth: 1, borderColor: C.border }}>
-          {[Number(row.sold_pockets).toLocaleString(), Number(row.sold_kg).toLocaleString(), Number(row.sold_value).toFixed(2)].map((value, index) => <Text key={index} style={{ width: 125 }}>{value}</Text>)}
+    {tab==="transactions"&&<View style={{backgroundColor:"white",padding:14,borderRadius:8}}>
+      <Text style={{fontSize:20,fontWeight:"700",marginBottom:8}}>Transaction Report</Text>
+      {dispatches.map(d=><View key={d.dispatch_id} style={{borderBottomWidth:1,borderColor:C.border,paddingVertical:8}}>
+        <Text style={{fontWeight:"700"}}>D-Note {d.dnote_number} · {showDate(d.dnote_date)}</Text>
+        <Text>Dispatched — awaiting stock allocation and pricing</Text>
+      </View>)}
+      {[...transactionRows].sort((a,b)=>String(b.entry_date).localeCompare(String(a.entry_date))).map(r=>
+        <View key={r.entry_type+":"+r.entry_id} style={{borderBottomWidth:1,borderColor:C.border,paddingVertical:8}}>
+          <Text style={{fontWeight:"700"}}>{r.entry_type.replace(/_/g," ")} · {r.reference} · {showDate(r.entry_date)}</Text>
+          <Text>{r.market_name} · {money(r.signed_amount)}</Text>
+          {!!r.notes&&<Text style={{color:C.textSecondary}}>{r.notes}</Text>}
         </View>)}
-        {!fieldReport.some(row => row.tracecode_id === selectedReportField) && <Text>No field receipts or sales recorded for this field.</Text>}
+      {!transactionRows.length&&!dispatches.length&&<Text>No market transactions recorded yet.</Text>}
+    </View>}
+    {tab==="field"&&<View style={{backgroundColor:"white",padding:14,borderRadius:8}}>
+      <Text style={{fontSize:20,fontWeight:"700"}}>Potato Field Report</Text>
+      <JsplSearchCombo label="Field" selector="trace" options={reportFields.map(f=>({id:f.id,label:f.name,active:true}))}
+        value={selectedReportField} onChange={v=>setSelectedReportField(v==null?null:Number(v))} placeholder="Choose field with potato receipts"/>
+      {!!selectedRows.length&&<>
+        <Text style={{fontWeight:"700",fontSize:19,marginTop:8}}>{selectedRows[0].tracecode_name}</Text>
+        <Text>{num(reportHa)} Ha</Text>
+        <Text>Raw Product: {num(rawKg)} kg</Text>
+        <View style={{flexDirection:"row",flexWrap:"wrap",gap:15,marginVertical:8}}>
+          <Text>Yield/Ha Raw: {num(reportHa?rawKg/reportHa:0)} kg</Text>
+          <Text>Yield/Ha Processed: {num(reportHa?processKg/reportHa:0)} kg</Text>
+          <Text>Yield/Ha Sold: {num(reportHa?soldKg/reportHa:0)} kg</Text>
+          <Text>Price/Ha Sold: {money(reportHa?soldValue/reportHa:0)}</Text>
+        </View>
+        <ScrollView horizontal>
+          <View>
+            <View style={{flexDirection:"row",padding:7,backgroundColor:"#e7eee9"}}>
+              <Text style={{width:375,fontWeight:"800"}}>Processed</Text>
+              <Text style={{width:265,fontWeight:"800"}}>Stock</Text>
+              <Text style={{width:525,fontWeight:"800"}}>Sold</Text>
+            </View>
+            <View style={{flexDirection:"row",borderBottomWidth:1,borderColor:C.border}}>
+              <ReportCell bold width={110} value="Grading"/><ReportCell bold width={85} value="Pockets"/><ReportCell bold width={90} value="Kgs"/><ReportCell bold width={90} value="%"/>
+              <ReportCell bold width={105} value="Size"/><ReportCell bold width={80} value="Pockets"/><ReportCell bold width={80} value="Kgs"/>
+              <ReportCell bold width={105} value="Size"/><ReportCell bold width={85} value="Pockets"/><ReportCell bold width={90} value="Kgs"/><ReportCell bold width={105} value="Value"/><ReportCell bold width={140} value="Return/Kg"/>
+            </View>
+            {selectedRows.map(r=><View key={r.size_code} style={{flexDirection:"row",borderBottomWidth:1,borderColor:"#e3e6e3"}}>
+              <ReportCell width={110} value={r.size_name}/><ReportCell width={85} value={num(r.processed_pockets)}/><ReportCell width={90} value={num(r.processed_kg)}/>
+              <ReportCell width={90} value={processedTotal?(100*Number(r.processed_kg||0)/processedTotal).toFixed(1)+"%":"0%"}/>
+              <ReportCell width={105} value={r.size_name}/><ReportCell width={80} value={num(r.stock_pockets)}/><ReportCell width={80} value={num(r.stock_kg)}/>
+              <ReportCell width={105} value={r.size_name}/><ReportCell width={85} value={num(r.sold_pockets)}/><ReportCell width={90} value={num(r.sold_kg)}/>
+              <ReportCell width={105} value={money(r.sold_value)}/><ReportCell width={140} value={Number(r.sold_kg)?money(Number(r.sold_value)/Number(r.sold_kg)):"0.00"}/>
+            </View>)}
+            <View style={{flexDirection:"row",backgroundColor:"#f1f3f0"}}>
+              <ReportCell bold width={110} value="Waste"/><ReportCell width={85} value=""/><ReportCell width={90} value={num(wasteKg)}/>
+              <ReportCell width={90} value={processedTotal?(100*wasteKg/processedTotal).toFixed(1)+"%":"0%"}/>
+              <ReportCell width={105} value=""/><ReportCell width={80} value=""/><ReportCell width={80} value=""/>
+              <ReportCell width={105} value=""/><ReportCell width={85} value=""/><ReportCell width={90} value=""/><ReportCell width={105} value=""/><ReportCell width={140} value=""/>
+            </View>
+            <View style={{flexDirection:"row",backgroundColor:"#e7eee9"}}>
+              <ReportCell bold width={110} value="Total"/>
+              <ReportCell bold width={85} value={num(selectedRows.reduce((v,r)=>v+Number(r.processed_pockets||0),0))}/>
+              <ReportCell bold width={90} value={num(processedTotal)}/><ReportCell bold width={90} value={processedTotal?"100%":"0%"}/>
+              <ReportCell bold width={105} value="Total"/>
+              <ReportCell bold width={80} value={num(selectedRows.reduce((v,r)=>v+Number(r.stock_pockets||0),0))}/>
+              <ReportCell bold width={80} value={num(selectedRows.reduce((v,r)=>v+Number(r.stock_kg||0),0))}/>
+              <ReportCell bold width={105} value="Total"/>
+              <ReportCell bold width={85} value={num(selectedRows.reduce((v,r)=>v+Number(r.sold_pockets||0),0))}/>
+              <ReportCell bold width={90} value={num(soldKg)}/><ReportCell bold width={105} value={money(soldValue)}/>
+              <ReportCell bold width={140} value={soldKg?money(soldValue/soldKg):"0.00"}/>
+            </View>
+          </View>
+        </ScrollView>
+        <Text style={{color:C.textSecondary,marginTop:8}}>Pre-sold stock counts as sold at contract price when allocated; customer collection does not record a second sale.</Text>
       </>}
-    </View>}  </ScrollView>;
+      {selectedReportField!==null&&!selectedRows.length&&<Text>No potato records for this field.</Text>}
+    </View>}
+  </ScrollView>;
 }
