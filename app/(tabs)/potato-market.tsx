@@ -270,9 +270,10 @@ export default function PotatoMarket() {
 
     {tab === "transactions" && <View style={{ backgroundColor: "white", padding: 14, borderRadius: 8 }}>
       <Text style={{ fontSize: 20, fontWeight: "700", marginBottom: 10 }}>Transaction Report</Text>
+      {dispatches.map(item => <View key={item.dispatch_id} style={{ paddingVertical: 9, borderBottomWidth: 1, borderColor: C.border }}><Text style={{ fontWeight: "700" }}>D-Note · {item.dnote_number} · {showDate(item.dnote_date)}</Text><Text style={{ color: C.textSecondary }}>Issued — awaiting saved sale pricing</Text><Text>{Object.entries(item.counts).filter(([, pockets]) => Number(pockets) > 0).map(([code, pockets]) => `${sizes.find(([key]) => key === code)?.[1] || code}: ${pockets}`).join(" · ")}</Text></View>)}
       {sales.map(sale => <View key={sale.sale_id} style={{ paddingVertical: 9, borderBottomWidth: 1, borderColor: C.border }}><Text style={{ fontWeight: "700" }}>Sale · {sale.dnote_number} · {showDate(sale.dnote_date)}</Text><Text>Sale total: {Number(sale.total).toFixed(2)}</Text></View>)}
       {payments.map(payment => <View key={payment.payment_id} style={{ paddingVertical: 9, borderBottomWidth: 1, borderColor: C.border }}><Text style={{ fontWeight: "700" }}>Payment · {payment.market_name} · {showDate(payment.payment_date)}</Text><Text>Amount: {Number(payment.amount).toFixed(2)}</Text>{payment.market_reference && <Text>Reference: {payment.market_reference}</Text>}{payment.note && <Text>Note: {payment.note}</Text>}</View>)}
-      {!sales.length && !payments.length && <Text>No potato market transactions recorded yet.</Text>}
+      {!dispatches.length && !sales.length && !payments.length && <Text>No potato market transactions recorded yet.</Text>}
     </View>}
 
     {tab === "field" && <View style={{ backgroundColor: "white", padding: 14, borderRadius: 8 }}>
