@@ -96,7 +96,7 @@ begin
     select 1 from public.wb_potato_dispatch d
      where d.status='issued'
        and not exists(select 1 from public.potato_stock_allocation a where a.dispatch_id=d.dispatch_id)
-  ) then raise exception 'Allocate pending potato D-Notes before reserving stock'; end if;
+  ) then return; end if;
   select * into c from public.potato_presale where presale_id=p_presale_id and status='active' for update;
   if not found then raise exception 'Active pre-sale not found'; end if;
   for ln in select * from public.potato_presale_position_v where presale_id=p_presale_id loop
@@ -122,6 +122,10 @@ returns trigger language plpgsql security definer set search_path=''
 as $fn$
 declare c record;
 begin
+ if exists (
+   select 1 from public.wb_potato_dispatch d where d.status='issued'
+   and not exists(select 1 from public.potato_stock_allocation a where a.dispatch_id=d.dispatch_id)
+ ) then return new; end if;
  for c in select distinct s.presale_id,s.contract_date,s.created_at
     from public.potato_presale s
     join public.potato_presale_line l using(presale_id)
@@ -202,6 +206,17 @@ begin
     end if;
     if remaining_qty>0 then raise exception 'Insufficient % stock: short by % pockets',line.size_code,remaining_qty; end if;
   end loop;
+  -- Once the final unclassified D-Note is allocated, honour any existing pre-sales.
+  if not exists (
+   select 1 from public.wb_potato_dispatch d where d.status='issued'
+    and not exists(select 1 from public.potato_stock_allocation a where a.dispatch_id=d.dispatch_id)
+  ) then
+    for contract_line in select presale_id from public.potato_presale
+      where status='active' and season_id=d.season_id order by contract_date,created_at,presale_id
+    loop
+      perform public.potato_reserve_newly_available(contract_line.presale_id);
+    end loop;
+  end if;
 end $fn$;
 
 -- Restrict callable operations to application admins. Helper can run from the trigger.
