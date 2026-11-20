@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { supabase } from "@/supabase";
@@ -10,10 +10,7 @@ import { jsplColors as C } from "@/constants/jspl-design";
 type Dispatch = { dispatch_id: string; dnote_number: string; dnote_date: string; counts: Record<string, number> };
 type Trace = { id: number; name: string };
 type Market = { id: number; name: string };
-type Sale = { sale_id: string; dispatch_id: string; dnote_number: string; dnote_date: string; lines: Record<string, { pockets: number; price: number }>; allocations: { tracecode_id: number; size_code: string; pockets: number }[]; total: number };
 type Payment = { payment_id: string; market_id: number | null; customer_id?: number | null; market_name: string; payment_date: string; amount: number; note: string | null; market_reference: string | null };
-type FieldReport = { tracecode_id: number; tracecode_name: string; incoming_slips: number; incoming_kg: number; sold_pockets: number; sold_kg: number; sold_value: number };
-type StockRow={season_name:string;size_name:string;available_pockets:number;pocket_weight_kg:number};
 type PresaleSize={size_code:string;contracted:number;price:number;allocated:number;collected:number;awaiting:number;reserved:number;sold_value:number};
 type Presale={presale_id:string;reference:string;contract_date:string;customer_id:number;customer_name:string;tracecode_id:number;trace_name:string;status:string;lines:PresaleSize[]};
 type FieldV2={tracecode_id:number;tracecode_name:string;hectares:number;raw_kg:number;waste_kg:number;size_code:string;size_name:string;sort_order:number;processed_pockets:number;processed_kg:number;stock_pockets:number;stock_kg:number;sold_pockets:number;sold_kg:number;sold_value:number};
@@ -38,12 +35,8 @@ export default function PotatoMarket() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [dispatches, setDispatches] = useState<Dispatch[]>([]);
-  const [traces, setTraces] = useState<Trace[]>([]);
   const [markets, setMarkets] = useState<Market[]>([]);
-  const [sales, setSales] = useState<Sale[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
-  const [fieldReport, setFieldReport] = useState<FieldReport[]>([]);
-  const [stock, setStock] = useState<StockRow[]>([]);
   const [selectedReportField, setSelectedReportField] = useState<number | null>(null);
 
   const [tab, setTab] = useState<"sale"|"presale"|"payment"|"transactions"|"field">("sale");
@@ -77,13 +70,9 @@ export default function PotatoMarket() {
     const { data, error: loadError } = await supabase.rpc("potato_market_full_context");
     if (loadError) throw loadError;
     setDispatches(data.dispatches || []);
-    setTraces(data.traces || []);
     // Use the existing Weighbridge customer list as agreed for Market.
     setMarkets(data.customers || []);
-    setSales(data.sales || []);
     setPayments(data.payments || []);
-    setFieldReport(data.field_report || []);
-    setStock(data.stock_by_size || []);
     setPresales(data.presales || []);
     setReportV2(data.field_report_v2 || []);
     setTransactionRows(data.transaction_rows || []);
@@ -228,7 +217,6 @@ export default function PotatoMarket() {
   if (admin === null) return <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}><ActivityIndicator /></View>;
   if (!admin) return <View style={{ padding: 24 }}><Text>Admin access required.</Text></View>;
 
-  const lineSizes = dispatch ? sizes.filter(([code]) => Number(dispatch.counts?.[code] || 0) > 0) : [];
   return <ScrollView style={{ flex: 1, backgroundColor: C.background }} contentContainerStyle={{ padding: 18 }}>
     <JsplModuleHeader title="Potato Market" subtitle="Normal FIFO, pre-sales, dispatches and market payments" backLabel="Back to Weighbridge Dashboard" backHref="/weighbridge" />
     <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
