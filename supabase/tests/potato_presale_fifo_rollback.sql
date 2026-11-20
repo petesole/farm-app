@@ -2,7 +2,7 @@
 -- Test helper changes ONLY exist inside rollback transaction.
 create or replace function potato_market_private.is_admin() returns boolean language sql stable as $test$select true$test$;
 do $test$
-declare cid uuid; did uuid:=gen_random_uuid(); collection_id uuid:=gen_random_uuid(); grading_id uuid:=gen_random_uuid(); wid uuid; second_wid uuid; cpos record; amount numeric; admin_id uuid;
+declare cid uuid; did uuid:=gen_random_uuid(); collection_id uuid:=gen_random_uuid(); new_grading_id uuid:=gen_random_uuid(); wid uuid; second_wid uuid; cpos record; amount numeric; admin_id uuid;
 begin
   select user_id into admin_id from public.app_user_role where role_name='admin' limit 1;
   perform set_config('request.jwt.claim.sub',admin_id::text,true);
@@ -50,14 +50,14 @@ begin
    then raise exception 'Pre-sale collection was counted as second sale'; end if;
   -- Later grading from contracted field replenishes the diverted quantity first.
   insert into public.wb_potato_grading_batch(grading_id,grading_date,season_id,batch_reference,status,tracecode_id)
-    values(grading_id,current_date,17,'QA-GRADING-ROLLBACK','posted',550);
+    values(new_grading_id,current_date,17,'QA-GRADING-ROLLBACK','posted',550);
   insert into public.wb_potato_grading_line(grading_id,size_code,pockets)
-    values(grading_id,'LARGE',150);
+    values(new_grading_id,'LARGE',150);
   select * into cpos from public.potato_presale_position_v where presale_id=cid and size_code='LARGE';
   if cpos.allocated_to_contract<>500 or cpos.awaiting_grading<>0 or cpos.reserved_in_storage<>400
    then raise exception 'Future grading did not replenish contract %',row_to_json(cpos); end if;
   if (select coalesce(sum(a.pockets),0) from public.potato_stock_allocation a
-      where a.grading_id=grading_id and a.kind='reserve' and a.presale_id=cid)<>150
+      where a.grading_id=new_grading_id and a.kind='reserve' and a.presale_id=cid)<>150
    then raise exception 'Later grading was not reserved from the incoming batch'; end if;
   if exists(select 1 from public.potato_grade_pool_v where normal_available<0 or reserved_available<0)
    then raise exception 'Negative stock after additional grading'; end if;
