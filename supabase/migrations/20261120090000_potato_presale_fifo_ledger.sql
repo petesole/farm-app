@@ -120,23 +120,37 @@ end $fn$;
 create or replace function public.potato_grading_reservation_trigger()
 returns trigger language plpgsql security definer set search_path=''
 as $fn$
-declare c record;
+declare c record; needed integer; available integer; take_qty integer;
 begin
- if exists (
-   select 1 from public.wb_potato_dispatch d where d.status='issued'
-   and not exists(select 1 from public.potato_stock_allocation a where a.dispatch_id=d.dispatch_id)
- ) then return new; end if;
- for c in select distinct s.presale_id,s.contract_date,s.created_at
+  -- An already-dispatched D-Note must be classified before stock can be reserved.
+  if exists(
+    select 1 from public.wb_potato_dispatch d where d.status='issued'
+    and not exists(select 1 from public.potato_stock_allocation a where a.dispatch_id=d.dispatch_id)
+  ) then return new; end if;
+  perform pg_catalog.pg_advisory_xact_lock(742219,1);
+  -- Reserve ONLY the incoming grading batch. Do not silently relabel old normal
+  -- stock as pre-sale stock when replenishing a diverted contract requirement.
+  for c in select s.presale_id,s.contract_date,s.created_at
     from public.potato_presale s
     join public.potato_presale_line l using(presale_id)
     join public.wb_potato_grading_batch b on b.grading_id=new.grading_id
     where s.tracecode_id=b.tracecode_id and s.season_id=b.season_id
-      and s.status='active' and l.size_code=new.size_code
+      and b.status='posted' and s.status='active' and l.size_code=new.size_code
     order by s.contract_date,s.created_at,s.presale_id
- loop
-   perform public.potato_reserve_newly_available(c.presale_id);
- end loop;
- return new;
+  loop
+    select greatest(awaiting_grading,0) into needed
+     from public.potato_presale_position_v
+     where presale_id=c.presale_id and size_code=new.size_code;
+    select greatest(normal_available,0) into available
+     from public.potato_grade_pool_v
+     where grading_id=new.grading_id and size_code=new.size_code;
+    take_qty:=least(coalesce(needed,0),coalesce(available,0));
+    if take_qty>0 then
+      insert into public.potato_stock_allocation(grading_id,size_code,kind,pockets,presale_id)
+      values(new.grading_id,new.size_code,'reserve',take_qty,c.presale_id);
+    end if;
+  end loop;
+  return new;
 end $fn$;
 drop trigger if exists potato_grading_reserve on public.wb_potato_grading_line;
 create trigger potato_grading_reserve after insert on public.wb_potato_grading_line
