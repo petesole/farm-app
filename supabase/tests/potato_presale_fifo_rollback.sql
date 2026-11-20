@@ -2,7 +2,7 @@
 -- Test helper changes ONLY exist inside rollback transaction.
 create or replace function potato_market_private.is_admin() returns boolean language sql stable as $test$select true$test$;
 do $test$
-declare cid uuid; did uuid:=gen_random_uuid(); collection_id uuid:=gen_random_uuid(); new_grading_id uuid:=gen_random_uuid(); wid uuid; second_wid uuid; cpos record; amount numeric; admin_id uuid;
+declare cid uuid; did uuid:=gen_random_uuid(); collection_id uuid:=gen_random_uuid(); normal_id uuid:=gen_random_uuid(); new_grading_id uuid:=gen_random_uuid(); wid uuid; second_wid uuid; third_wid uuid; cpos record; amount numeric; admin_id uuid;
 begin
   select user_id into admin_id from public.app_user_role where role_name='admin' limit 1;
   perform set_config('request.jwt.claim.sub',admin_id::text,true);
@@ -61,6 +61,22 @@ begin
    then raise exception 'Later grading was not reserved from the incoming batch'; end if;
   if exists(select 1 from public.potato_grade_pool_v where normal_available<0 or reserved_available<0)
    then raise exception 'Negative stock after additional grading'; end if;
+  -- Normal third-party dispatch: price entry and field FIFO must be committed together.
+  select w.transaction_id into third_wid from public.wb_scale_transaction w
+   where w.status='completed' and w.transaction_id not in (wid,second_wid)
+     and not exists(select 1 from public.wb_potato_dispatch d where d.wb_transaction_id=w.transaction_id)
+   limit 1;
+  if third_wid is null then raise exception 'No third WB transaction available for normal sale test'; end if;
+  insert into public.wb_potato_dispatch(dispatch_id,wb_transaction_id,season_id,dnote_number,status)
+    values(normal_id,third_wid,17,'QA-NORMAL-ROLLBACK','issued');
+  insert into public.wb_potato_dispatch_line(dispatch_id,size_code,pockets)
+    values(normal_id,'LARGE',10);
+  perform public.potato_market_allocate_and_price(normal_id,'normal',null,
+    '{"LARGE":{"price":3.00}}'::jsonb,null);
+  select sum(l.pockets*l.price_per_pocket) into amount
+   from public.potato_market_sale_line l
+   join public.potato_market_sale s using(sale_id) where s.dispatch_id=normal_id;
+  if amount<>30 then raise exception 'Normal D-Note price was not saved correctly'; end if;
   -- Both reports must reflect contract-priced allocation and third-party sale,
   -- never the physical pre-sale collection as additional revenue.
   select sold_value into amount from public.potato_field_report_v2
@@ -71,5 +87,5 @@ begin
     where entry_type<>'payment' and (reference='QA-ROLLBACK-ONLY');
   if amount<>3550 then raise exception 'Market Transaction Report value expected 3550 got %',amount; end if;
 end $test$;
-select 'PASS: FIFO, pre-sale reserve, diversion, collection without double sales, future grading replenishment' as result;
+select 'PASS: FIFO, pre-sale, diversion, collection, normal-sale price save, later grading and reports' as result;
 ROLLBACK;
