@@ -126,6 +126,17 @@ begin
    from public.potato_presale c
    join public.wb_customer cust on cust.customer_id=c.customer_id
    join public.tracecode t on t.tracecode_id=c.tracecode_id),'[]'::jsonb),true);
+ result:=jsonb_set(result,'{pending_stock_by_size}',coalesce((
+   select jsonb_agg(jsonb_build_object('size_code',p.size_code,'pockets',p.pockets)
+     order by p.size_code)
+   from (
+    select l.size_code,sum(l.pockets)::bigint pockets
+    from public.wb_potato_dispatch d
+    join public.wb_potato_dispatch_line l using(dispatch_id)
+    where d.status='issued'
+      and not exists(select 1 from public.potato_stock_allocation a where a.dispatch_id=d.dispatch_id)
+    group by l.size_code having sum(l.pockets)>0
+   ) p),'[]'::jsonb),true);
  result:=jsonb_set(result,'{stock_pools}',coalesce((
   select jsonb_agg(jsonb_build_object(
     'season_id',g.season_id,'tracecode_id',g.tracecode_id,
