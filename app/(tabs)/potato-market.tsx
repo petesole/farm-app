@@ -48,6 +48,7 @@ export default function PotatoMarket() {
   const [presales,setPresales]=useState<Presale[]>([]);
   const [reportV2,setReportV2]=useState<FieldV2[]>([]);
   const [transactionRows,setTransactionRows]=useState<TransactionRow[]>([]);
+  const [pendingSizes,setPendingSizes]=useState<{size_code:string;pockets:number}[]>([]);
   const [contractFields,setContractFields]=useState<Trace[]>([]);
   const [contractReference,setContractReference]=useState("");
   const [contractDate,setContractDate]=useState(today());
@@ -76,6 +77,7 @@ export default function PotatoMarket() {
     setPresales(data.presales || []);
     setReportV2(data.field_report_v2 || []);
     setTransactionRows(data.transaction_rows || []);
+    setPendingSizes(data.pending_stock_by_size || []);
     setContractFields(data.contract_fields || []);
     return data;
   }
@@ -314,6 +316,7 @@ export default function PotatoMarket() {
 
     {tab==="transactions"&&<View style={{backgroundColor:"white",padding:14,borderRadius:8}}>
       <Text style={{fontSize:20,fontWeight:"700",marginBottom:8}}>Transaction Report</Text>
+      {!!pendingSizes.length&&<Text style={{color:C.danger}}>Unallocated physical dispatches: {pendingSizes.map(p=>p.size_code+" "+num(p.pockets)).join(" · ")}. These pockets are not available to sell again.</Text>}
       {dispatches.map(d=><View key={d.dispatch_id} style={{borderBottomWidth:1,borderColor:C.border,paddingVertical:8}}>
         <Text style={{fontWeight:"700"}}>D-Note {d.dnote_number} · {showDate(d.dnote_date)}</Text>
         <Text>Dispatched — awaiting stock allocation and pricing</Text>
@@ -328,6 +331,7 @@ export default function PotatoMarket() {
     </View>}
     {tab==="field"&&<View style={{backgroundColor:"white",padding:14,borderRadius:8}}>
       <Text style={{fontSize:20,fontWeight:"700"}}>Potato Field Report</Text>
+      {!!pendingSizes.length&&<Text style={{color:C.danger,fontWeight:"700"}}>Provisional stock: outgoing D-Notes still require allocation. {pendingSizes.map(p=>p.size_code+" "+num(p.pockets)).join(" · ")}</Text>}
       <JsplSearchCombo label="Field" selector="trace" options={reportFields.map(f=>({id:f.id,label:f.name,active:true}))}
         value={selectedReportField} onChange={v=>setSelectedReportField(v==null?null:Number(v))} placeholder="Choose field with potato receipts"/>
       {!!selectedRows.length&&<>
