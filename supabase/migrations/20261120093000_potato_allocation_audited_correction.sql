@@ -65,3 +65,40 @@ begin
 end $fn$;
 revoke all on function public.potato_market_correct_latest(uuid,text,uuid,jsonb,text) from public,anon,authenticated;
 grant execute on function public.potato_market_correct_latest(uuid,text,uuid,jsonb,text) to authenticated;
+
+-- App context: expose only the safely correctable latest dispatch.
+create or replace function public.potato_market_extended_context()
+returns jsonb language plpgsql security definer set search_path=''
+as $fn$
+declare ctx jsonb; latest public.potato_stock_allocation;
+begin
+ if not potato_market_private.is_admin() then raise exception 'Admin access required' using errcode='42501'; end if;
+ ctx:=public.potato_market_full_context();
+ select * into latest from public.potato_stock_allocation order by allocation_id desc limit 1;
+ if latest.dispatch_id is null then
+   return jsonb_set(ctx,'{latest_allocated}','null'::jsonb,true);
+ end if;
+ return jsonb_set(ctx,'{latest_allocated}',coalesce((
+   select jsonb_build_object(
+    'dispatch_id',d.dispatch_id,'dnote_number',d.dnote_number,
+    'dnote_date',(coalesce(w.first_at,w.local_created_at) at time zone 'Africa/Harare')::date,
+    'counts',(select coalesce(jsonb_object_agg(l.size_code,l.pockets),'{}'::jsonb)
+       from public.wb_potato_dispatch_line l where l.dispatch_id=d.dispatch_id),
+    'source',(case
+       when exists(select 1 from public.potato_stock_allocation a
+         where a.dispatch_id=d.dispatch_id and a.kind='divert') then 'divert'
+       when exists(select 1 from public.potato_stock_allocation a
+         where a.dispatch_id=d.dispatch_id and a.kind='presale_dispatch') then 'presale'
+       else 'normal' end),
+    'presale_id',(select a.presale_id from public.potato_stock_allocation a
+       where a.dispatch_id=d.dispatch_id and a.presale_id is not null limit 1),
+    'prices',coalesce((select jsonb_object_agg(l.size_code,l.price_per_pocket)
+       from public.potato_market_sale_line l join public.potato_market_sale s using(sale_id)
+       where s.dispatch_id=d.dispatch_id),'{}'::jsonb))
+   from public.wb_potato_dispatch d
+   join public.wb_scale_transaction w on w.transaction_id=d.wb_transaction_id
+   where d.dispatch_id=latest.dispatch_id
+ ),'null'::jsonb),true);
+end $fn$;
+revoke all on function public.potato_market_extended_context() from public,anon,authenticated;
+grant execute on function public.potato_market_extended_context() to authenticated;
