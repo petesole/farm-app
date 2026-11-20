@@ -15,6 +15,7 @@ type PresaleSize={size_code:string;contracted:number;price:number;allocated:numb
 type Presale={presale_id:string;reference:string;contract_date:string;customer_id:number;customer_name:string;tracecode_id:number;trace_name:string;status:string;lines:PresaleSize[]};
 type FieldV2={tracecode_id:number;tracecode_name:string;hectares:number;raw_kg:number;waste_kg:number;size_code:string;size_name:string;sort_order:number;processed_pockets:number;processed_kg:number;stock_pockets:number;stock_kg:number;sold_pockets:number;sold_kg:number;sold_value:number};
 type TransactionRow={entry_type:string;entry_id:string;entry_date:string;reference:string;market_name:string;signed_amount:number;notes?:string|null};
+type Correctable = Dispatch & {source:"normal"|"presale"|"divert";presale_id:string|null;prices:Record<string,number>};
 
 const sizes: [string, string][] = [["LARGE", "Large"], ["MEDIUM", "Medium"], ["SMEDIUM", "Small-Medium"], ["SMALL", "Small"], ["CHATS", "Chats"], ["CUTS", "Cuts"], ["BULLETS", "Bullets"], ["GREENS", "Greens"]];
 const today = () => { const d = new Date(); return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`; };
@@ -46,6 +47,9 @@ export default function PotatoMarket() {
   const [presaleChoice,setPresaleChoice]=useState("");
   const [diversionReason,setDiversionReason]=useState("");
   const [presales,setPresales]=useState<Presale[]>([]);
+  const [latestAllocated,setLatestAllocated]=useState<Correctable|null>(null);
+  const [correctionMode,setCorrectionMode]=useState(false);
+  const [correctionReason,setCorrectionReason]=useState("");
   const [reportV2,setReportV2]=useState<FieldV2[]>([]);
   const [transactionRows,setTransactionRows]=useState<TransactionRow[]>([]);
   const [pendingSizes,setPendingSizes]=useState<{size_code:string;pockets:number}[]>([]);
@@ -68,13 +72,14 @@ export default function PotatoMarket() {
   const [paymentReason, setPaymentReason] = useState("");
 
   async function load() {
-    const { data, error: loadError } = await supabase.rpc("potato_market_full_context");
+    const { data, error: loadError } = await supabase.rpc("potato_market_extended_context");
     if (loadError) throw loadError;
     setDispatches(data.dispatches || []);
     // Use the existing Weighbridge customer list as agreed for Market.
     setMarkets(data.customers || []);
     setPayments(data.payments || []);
     setPresales(data.presales || []);
+    setLatestAllocated(data.latest_allocated || null);
     setReportV2(data.field_report_v2 || []);
     setTransactionRows(data.transaction_rows || []);
     setPendingSizes(data.pending_stock_by_size || []);
@@ -96,7 +101,7 @@ export default function PotatoMarket() {
   }, []);
 
   const editingPayment=payments.find(p=>p.payment_id===paymentEdit);
-  const dispatch=dispatches.find(d=>d.dispatch_id===dispatchId);
+  const dispatch=correctionMode?latestAllocated:dispatches.find(d=>d.dispatch_id===dispatchId);
   const availableDNotes=dispatches;
   const eligibleContracts=presales.filter(c=>c.status==="active" && !!dispatch &&
     sizes.filter(([code])=>Number(dispatch?.counts[code]||0)>0).every(([code])=>
@@ -128,7 +133,8 @@ export default function PotatoMarket() {
     setError("");setNotice("");
     if(!dispatch){setError("Choose an issued D-Note.");return;}
     if(source!=="normal"&&!presaleChoice){setError("Select the customer pre-sale.");return;}
-    if(source==="divert"&&!diversionReason.trim()){setError("Enter the compulsory diversion reason.");return;}
+    if(source==="divert"&&!diversionReason.trim()&&!correctionMode){setError("Enter the compulsory diversion reason.");return;}
+    if(correctionMode&&!correctionReason.trim()){setError("Enter the mandatory audit reason.");return;}
     const lines:Record<string,{price:number}>={};
     if(source!=="presale")for(const [code,name] of sizes){
       if(Number(dispatch.counts?.[code]||0)<=0)continue;
@@ -138,16 +144,16 @@ export default function PotatoMarket() {
     }
     setBusy(true);
     try{
-      const {error:e}=await supabase.rpc("potato_market_allocate_and_price",{
+      const {error:e}=await supabase.rpc(correctionMode?"potato_market_correct_latest":"potato_market_allocate_and_price",{
         p_dispatch_id:dispatch.dispatch_id,p_source:source,p_presale_id:source==="normal"?null:presaleChoice,
-        p_lines:lines,p_reason:source==="divert"?diversionReason:null
+        p_lines:lines,p_reason:correctionMode?correctionReason:(source==="divert"?diversionReason:null)
       });
       if(e)throw new Error(e.message);
       const updated=await load();
       if((updated?.dispatches||[]).some((x:Dispatch)=>x.dispatch_id===dispatch.dispatch_id))
         throw new Error("D-Note still awaits allocation; verify before retrying.");
-      setDispatchId("");setPrices({});setPresaleChoice("");setDiversionReason("");
-      setNotice("D-Note allocation saved and verified.");
+      setDispatchId("");setPrices({});setPresaleChoice("");setDiversionReason("");setCorrectionMode(false);setCorrectionReason("");
+      setNotice(correctionMode?"Corrected D-Note with retained audit history.":"D-Note allocation saved and verified.");
     }catch(e:any){setError(e.message||"Allocation failed.");}
     finally{setBusy(false);}
   }
