@@ -173,6 +173,19 @@ begin
   if p_source not in ('normal','presale','divert') then raise exception 'Choose normal stock, pre-sale collection or authorised diversion'; end if;
   if exists(select 1 from public.potato_stock_allocation where dispatch_id=p_dispatch_id)
   then raise exception 'D-Note already allocated; use an audited correction'; end if;
+  -- Chronological allocation preserves FIFO. Newer D-Notes cannot consume stock
+  -- while an earlier physical dispatch is still awaiting classification.
+  if exists (
+    select 1 from public.wb_potato_dispatch older
+    join public.wb_scale_transaction ow on ow.transaction_id=older.wb_transaction_id
+    join public.wb_scale_transaction cw on cw.transaction_id=d.wb_transaction_id
+    where older.status='issued' and older.season_id=d.season_id
+      and older.dispatch_id<>d.dispatch_id
+      and not exists(select 1 from public.potato_stock_allocation oa
+                     where oa.dispatch_id=older.dispatch_id)
+      and (coalesce(ow.first_at,ow.local_created_at),older.created_at,older.dispatch_id)
+          < (coalesce(cw.first_at,cw.local_created_at),d.created_at,d.dispatch_id)
+  ) then raise exception 'Allocate the earlier unclassified D-Note first'; end if;
   if p_source in ('presale','divert') and
     not exists(select 1 from public.potato_presale s
      where s.presale_id=p_presale_id and s.season_id=d.season_id and s.status='active')
