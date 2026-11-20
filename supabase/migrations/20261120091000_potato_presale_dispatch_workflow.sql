@@ -22,6 +22,9 @@ begin
  if jsonb_typeof(p_lines)<>'object' or (select count(*) from jsonb_object_keys(p_lines))=0
    then raise exception 'Enter contracted pockets and a price for at least one potato size'; end if;
  perform pg_catalog.pg_advisory_xact_lock(742219,1);
+ if exists(select 1 from public.wb_potato_dispatch d where d.status='issued'
+    and not exists(select 1 from public.potato_stock_allocation a where a.dispatch_id=d.dispatch_id))
+ then raise exception 'Allocate the outstanding potato D-Notes before recording a pre-sale'; end if;
  insert into public.potato_presale(reference,contract_date,customer_id,tracecode_id,season_id,notes)
  values(btrim(p_reference),p_contract_date,p_customer_id,p_tracecode_id,season_key,nullif(btrim(p_notes),''))
  returning presale_id into cid;
