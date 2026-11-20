@@ -208,8 +208,8 @@ begin
   end loop;
   -- Once the final unclassified D-Note is allocated, honour any existing pre-sales.
   if not exists (
-   select 1 from public.wb_potato_dispatch d where d.status='issued'
-    and not exists(select 1 from public.potato_stock_allocation a where a.dispatch_id=d.dispatch_id)
+   select 1 from public.wb_potato_dispatch pending_note where pending_note.status='issued'
+    and not exists(select 1 from public.potato_stock_allocation a where a.dispatch_id=pending_note.dispatch_id)
   ) then
     for contract_line in select presale_id from public.potato_presale
       where status='active' and season_id=d.season_id order by contract_date,created_at,presale_id
