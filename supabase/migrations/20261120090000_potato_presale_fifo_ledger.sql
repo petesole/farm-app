@@ -206,17 +206,6 @@ begin
     end if;
     if remaining_qty>0 then raise exception 'Insufficient % stock: short by % pockets',line.size_code,remaining_qty; end if;
   end loop;
-  -- Once the final unclassified D-Note is allocated, honour any existing pre-sales.
-  if not exists (
-   select 1 from public.wb_potato_dispatch pending_note where pending_note.status='issued'
-    and not exists(select 1 from public.potato_stock_allocation a where a.dispatch_id=pending_note.dispatch_id)
-  ) then
-    for contract_line in select presale_id from public.potato_presale
-      where status='active' and season_id=d.season_id order by contract_date,created_at,presale_id
-    loop
-      perform public.potato_reserve_newly_available(contract_line.presale_id);
-    end loop;
-  end if;
 end $fn$;
 
 -- Restrict callable operations to application admins. Helper can run from the trigger.
