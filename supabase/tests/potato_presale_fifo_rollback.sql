@@ -77,11 +77,21 @@ begin
    from public.potato_market_sale_line l
    join public.potato_market_sale s using(sale_id) where s.dispatch_id=normal_id;
   if amount<>30 then raise exception 'Normal D-Note price was not saved correctly'; end if;
+  -- Admin corrects the latest allocation price with a mandatory, retained audit.
+  perform public.potato_market_correct_latest(normal_id,'normal',null,
+    '{"LARGE":{"price":4.00}}'::jsonb,'QA amend latest price');
+  select sum(l.pockets*l.price_per_pocket) into amount
+   from public.potato_market_sale_line l join public.potato_market_sale s using(sale_id)
+   where s.dispatch_id=normal_id;
+  if amount<>40 then raise exception 'Audited price correction failed'; end if;
+  if not exists(select 1 from public.potato_allocation_correction_audit
+   where dispatch_id=normal_id and replacement_state is not null)
+   then raise exception 'Correction audit record not persisted'; end if;
   -- Both reports must reflect contract-priced allocation and third-party sale,
   -- never the physical pre-sale collection as additional revenue.
   select sold_value into amount from public.potato_field_report_v2
     where tracecode_id=550 and size_code='LARGE';
-  if amount<>3580 then raise exception 'Field Report sale value expected 3580 got %',amount; end if;
+  if amount<>3590 then raise exception 'Field Report sale value expected 3590 got %',amount; end if;
   select coalesce(sum(signed_amount),0) into amount
     from public.potato_market_transaction_v
     where entry_type<>'payment' and (reference='QA-ROLLBACK-ONLY');
