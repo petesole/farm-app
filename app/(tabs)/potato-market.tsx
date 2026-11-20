@@ -239,46 +239,64 @@ export default function PotatoMarket() {
     {!!error && <Text style={{ color: "#b42318", marginVertical: 8 }}>{error}</Text>}
     {!!notice && <Text style={{color:C.primaryDark,marginVertical:8}}>{notice}</Text>}
 
-    {tab === "sale" && <View style={{ backgroundColor: "white", padding: 14, borderRadius: 8 }}>
-      <Text style={{ fontSize: 20, fontWeight: "700", marginBottom: 8 }}>{editingSale ? "Edit potato sale" : "Potato sale"}</Text>
-      <Text>Sale record</Text>
-      <Picker selectedValue={saleEdit} onValueChange={setSaleEdit}>
-        <Picker.Item label="New sale" value="new" />
-        {sales.map(sale => <Picker.Item key={sale.sale_id} label={`${sale.dnote_number} · ${showDate(sale.dnote_date)}`} value={sale.sale_id} />)}
-      </Picker>
-      <Text>D-Note</Text>
-      <Picker selectedValue={dispatchId} onValueChange={setDispatchId}>
-        <Picker.Item label={editingSale?.dnote_number || "Choose issued D-Note"} value={editingSale?.dispatch_id || ""} />
-        {availableDNotes.map(item => <Picker.Item key={item.dispatch_id} label={`${item.dnote_number} · ${showDate(item.dnote_date)}`} value={item.dispatch_id} />)}
-      </Picker>
-      {dispatch && <Text style={{ color: C.textSecondary, marginVertical: 7 }}>D-Note date: {showDate(dispatch.dnote_date)} (used for this sale)</Text>}
 
-      <Text style={{ fontWeight: "700", marginTop: 8 }}>1. Choose the live potato field(s)</Text>
-      <JsplSearchCombo label="Add live potato field" selector="trace" options={traces.filter(trace => !chosenFields.includes(trace.id)).map(trace => ({ id: trace.id, label: trace.name, active: true }))} value={null} onChange={value => { if (value !== null) setChosenFields(current => [...current, Number(value)]); }} placeholder="Search live potato fields…" />
-      <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-        {chosenFields.map(id => <View key={id} style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#e7eee9", borderRadius: 6, padding: 7, margin: 3 }}><Text style={{ fontWeight: "700", marginRight: 8 }}>{traceName(id)}</Text><Pressable onPress={() => { setChosenFields(current => current.filter(item => item !== id)); setAllocations(current => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${id}:`)))); }}><Text style={{ color: C.danger, fontWeight: "700" }}>Remove</Text></Pressable></View>)}
-      </View>
-
-      {dispatch && <>
-        <Text style={{ fontWeight: "700", marginTop: 12 }}>2. Allocate each D-Note size to the chosen fields and enter the price</Text>
-        <Text style={{ color: C.textSecondary, marginBottom: 8 }}>Enter each size price once per D-Note. Field pocket totals for each size must equal the D-Note.</Text>
-        {!chosenFields.length && <Text style={{ color: C.textSecondary, marginVertical: 8 }}>Choose fields above to enter size allocations.</Text>}
-        {chosenFields.length > 0 && lineSizes.map(([code, name]) => <View key={code} style={{ borderWidth: 1, borderColor: C.border, borderRadius: 7, padding: 10, marginVertical: 5 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
-            <Text style={{ fontWeight: "800", minWidth: 120 }}>{name}</Text>
-            <Text style={{ color: C.textSecondary }}>D-Note: {dispatch.counts[code]} pockets</Text>
-            <TextInput style={inputStyle} keyboardType="decimal-pad" value={prices[code] || ""} onChangeText={value => setPrices(current => ({ ...current, [code]: value }))} placeholder="Price / pocket" />
-          </View>
-          {chosenFields.map(id => <View key={id} style={{ flexDirection: "row", alignItems: "center", gap: 10, marginLeft: 12 }}>
-            <Text style={{ flex: 1 }}>{traceName(id)}</Text>
-            <TextInput style={inputStyle} keyboardType="number-pad" value={allocations[`${id}:${code}`] || ""} onChangeText={value => setFieldSize(id, code, value)} placeholder="Pockets" />
+    {tab==="sale"&&<View style={{backgroundColor:"white",padding:14,borderRadius:8}}>
+      <Text style={{fontSize:20,fontWeight:"700"}}>D-Note Stock Allocation</Text>
+      <Text style={{color:C.textSecondary}}>Normal stock uses FIFO. The WB computer remains unchanged.</Text>
+      <Picker selectedValue={dispatchId} onValueChange={v=>{setDispatchId(v);setPrices({});setPresaleChoice("");}}>
+        <Picker.Item label="Choose unallocated D-Note" value=""/>
+        {availableDNotes.map(d=><Picker.Item key={d.dispatch_id} value={d.dispatch_id} label={d.dnote_number+" · "+showDate(d.dnote_date)}/>)}
+      </Picker>
+      {dispatch&&<>
+        <Text>D-Note date: {showDate(dispatch.dnote_date)}</Text>
+        <Picker selectedValue={source} onValueChange={v=>{setSource(v);setPresaleChoice("");}}>
+          <Picker.Item label="Normal stock — FIFO" value="normal"/>
+          <Picker.Item label="Pre-sold customer collection" value="presale"/>
+          <Picker.Item label="Admin diversion of reserved stock" value="divert"/>
+        </Picker>
+        {source!=="normal"&&<>
+          <Picker selectedValue={presaleChoice} onValueChange={setPresaleChoice}>
+            <Picker.Item value="" label="Choose pre-sale with sufficient reserved stock"/>
+            {eligibleContracts.map(c=><Picker.Item key={c.presale_id} value={c.presale_id} label={c.reference+" · "+c.customer_name+" · "+c.trace_name}/>)}
+          </Picker>
+          {!eligibleContracts.length&&<Text style={{color:C.danger}}>No contract has enough reserved stock for every size on this D-Note.</Text>}
+        </>}
+        {source==="divert"&&<TextInput style={inputStyle} placeholder="Compulsory diversion reason" value={diversionReason} onChangeText={setDiversionReason}/>}
+        {sizes.filter(([code])=>Number(dispatch.counts[code]||0)>0).map(([code,name])=>
+          <View key={code} style={{flexDirection:"row",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+            <Text style={{width:115,fontWeight:"700"}}>{name}</Text>
+            <Text style={{width:120}}>{num(dispatch.counts[code])} pockets</Text>
+            {source!=="presale"&&<TextInput style={{...inputStyle,width:145}} placeholder="Price/pocket" keyboardType="decimal-pad" value={prices[code]||""} onChangeText={v=>setPrices(p=>({...p,[code]:v}))}/>}
           </View>)}
-        </View>)}
+        <Button label={busy?"Saving…":"Confirm stock allocation"} disabled={busy||(source!=="normal"&&!presaleChoice)} onPress={saveSale}/>
       </>}
-      {editingSale && <TextInput style={inputStyle} value={saleReason} onChangeText={setSaleReason} placeholder="Reason for editing this sale" />}
-      <Button label={busy ? "Saving…" : editingSale ? "Save sale edit" : "Save potato sale"} onPress={saveSale} disabled={busy || !dispatch} />
+      {!availableDNotes.length&&<Text>No D-Notes awaiting stock allocation.</Text>}
     </View>}
-
+    {tab==="presale"&&<View style={{backgroundColor:"white",padding:14,borderRadius:8}}>
+      <Text style={{fontSize:20,fontWeight:"700"}}>New pre-sale</Text>
+      <Text style={{color:C.textSecondary}}>Record the contract before grading if necessary. Grading from its field is reserved first, up to the contracted quantities.</Text>
+      <TextInput style={inputStyle} placeholder="Contract reference" value={contractReference} onChangeText={setContractReference}/>
+      <TextInput style={inputStyle} placeholder="Date DD/MM/YYYY" value={contractDate} onChangeText={setContractDate}/>
+      <JsplSearchCombo label="Customer" selector="crop" options={markets.map(m=>({id:m.id,label:m.name,active:true}))} value={contractCustomer} onChange={v=>setContractCustomer(v==null?null:Number(v))} placeholder="Choose customer"/>
+      <JsplSearchCombo label="Source field" selector="trace" options={contractFields.map(f=>({id:f.id,label:f.name,active:true}))} value={contractField} onChange={v=>setContractField(v==null?null:Number(v))} placeholder="Choose live potato field"/>
+      <Text style={{fontWeight:"700",marginTop:10}}>Pockets and price per 15 kg pocket</Text>
+      {sizes.map(([code,name])=><View key={code} style={{flexDirection:"row",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+        <Text style={{width:115}}>{name}</Text>
+        <TextInput style={{...inputStyle,width:130}} keyboardType="number-pad" placeholder="Pockets" value={contractLines[code]?.qty||""} onChangeText={v=>setContractLines(p=>({...p,[code]:{qty:v,price:p[code]?.price||""}}))}/>
+        <TextInput style={{...inputStyle,width:135}} keyboardType="decimal-pad" placeholder="Price/pocket" value={contractLines[code]?.price||""} onChangeText={v=>setContractLines(p=>({...p,[code]:{qty:p[code]?.qty||"",price:v}}))}/>
+      </View>)}
+      <TextInput style={inputStyle} placeholder="Contract note (optional)" value={contractNotes} onChangeText={setContractNotes}/>
+      <Button label={busy?"Saving…":"Save pre-sale"} disabled={busy} onPress={savePresale}/>
+      <Text style={{fontSize:18,fontWeight:"700",marginTop:14}}>Existing pre-sales</Text>
+      {presales.map(c=><View key={c.presale_id} style={{paddingVertical:8,borderBottomWidth:1,borderColor:C.border}}>
+        <Text style={{fontWeight:"700"}}>{c.reference} — {c.customer_name}</Text>
+        <Text>{c.trace_name} · {showDate(c.contract_date)} · {c.status}</Text>
+        {c.lines.map(l=><Text key={l.size_code} style={{color:C.textSecondary}}>
+          {l.size_code}: contracted {num(l.contracted)}, reserved {num(l.reserved)}, collected {num(l.collected)}, outstanding {num(l.awaiting)}, sold value {money(l.sold_value)}
+        </Text>)}
+      </View>)}
+      {!presales.length&&<Text>No pre-sales recorded.</Text>}
+    </View>}
     {tab === "payment" && <View style={{ backgroundColor: "white", padding: 14, borderRadius: 8 }}>
       <Text style={{ fontSize: 20, fontWeight: "700" }}>{editingPayment ? "Edit market payment" : "Market payment"}</Text>
       <Text>Payment record</Text>
