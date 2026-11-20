@@ -104,8 +104,8 @@ export default function PotatoMarket() {
   const dispatch=correctionMode?latestAllocated:dispatches.find(d=>d.dispatch_id===dispatchId);
   const availableDNotes=dispatches;
   const eligibleContracts=presales.filter(c=>c.status==="active" && !!dispatch &&
-    sizes.filter(([code])=>Number(dispatch?.counts[code]||0)>0).every(([code])=>
-      c.lines.some(l=>l.size_code===code && l.reserved>=Number(dispatch?.counts[code]||0))));
+    (correctionMode||sizes.filter(([code])=>Number(dispatch?.counts[code]||0)>0).every(([code])=>
+      c.lines.some(l=>l.size_code===code && l.reserved>=Number(dispatch?.counts[code]||0)))));
   const reportFields=[...new Map(reportV2.filter(r=>Number(r.raw_kg)>0||Number(r.processed_pockets)>0||Number(r.sold_pockets)>0).map(r=>[r.tracecode_id,{id:r.tracecode_id,name:r.tracecode_name}])).values()].sort((a,b)=>a.name.localeCompare(b.name));
   const selectedRows=reportV2.filter(r=>r.tracecode_id===selectedReportField).sort((a,b)=>a.sort_order-b.sort_order);
   const reportHa=Number(selectedRows[0]?.hectares||0);
@@ -242,10 +242,22 @@ export default function PotatoMarket() {
     {tab==="sale"&&<View style={{backgroundColor:"white",padding:14,borderRadius:8}}>
       <Text style={{fontSize:20,fontWeight:"700"}}>D-Note Stock Allocation</Text>
       <Text style={{color:C.textSecondary}}>Normal stock uses FIFO. The WB computer remains unchanged.</Text>
+      <Button label={correctionMode?"Cancel correction":"Correct latest allocation"} disabled={!correctionMode&&!latestAllocated}
+        onPress={()=>{
+          if(correctionMode){setCorrectionMode(false);setCorrectionReason("");setDispatchId("");setPrices({});setPresaleChoice("");}
+          else if(latestAllocated){
+            setCorrectionMode(true);setSource(latestAllocated.source);
+            setPresaleChoice(latestAllocated.presale_id||"");
+            setPrices(Object.fromEntries(Object.entries(latestAllocated.prices||{}).map(([k,v])=>[k,String(v)])));
+            setCorrectionReason("");
+          }
+        }}/>
+      {correctionMode&&<Text style={{color:C.danger}}>Correction is permitted only on the latest allocation, with a mandatory audit reason. Later movements may prevent older corrections.</Text>}
+      {correctionMode?<Text style={{fontWeight:"700",marginVertical:6}}>Correcting {latestAllocated?.dnote_number}</Text>:
       <Picker selectedValue={dispatchId} onValueChange={v=>{setDispatchId(v);setPrices({});setPresaleChoice("");}}>
         <Picker.Item label="Choose unallocated D-Note" value=""/>
         {availableDNotes.map(d=><Picker.Item key={d.dispatch_id} value={d.dispatch_id} label={d.dnote_number+" · "+showDate(d.dnote_date)}/>)}
-      </Picker>
+      </Picker>}
       {dispatch&&<>
         <Text>D-Note date: {showDate(dispatch.dnote_date)}</Text>
         <Picker selectedValue={source} onValueChange={v=>{setSource(v);setPresaleChoice("");}}>
@@ -260,14 +272,15 @@ export default function PotatoMarket() {
           </Picker>
           {!eligibleContracts.length&&<Text style={{color:C.danger}}>No contract has enough reserved stock for every size on this D-Note.</Text>}
         </>}
-        {source==="divert"&&<TextInput style={inputStyle} placeholder="Compulsory diversion reason" value={diversionReason} onChangeText={setDiversionReason}/>}
+        {source==="divert"&&!correctionMode&&<TextInput style={inputStyle} placeholder="Compulsory diversion reason" value={diversionReason} onChangeText={setDiversionReason}/>}
+        {correctionMode&&<TextInput style={inputStyle} placeholder="Compulsory correction reason — retained in audit" value={correctionReason} onChangeText={setCorrectionReason}/>}
         {sizes.filter(([code])=>Number(dispatch.counts[code]||0)>0).map(([code,name])=>
           <View key={code} style={{flexDirection:"row",alignItems:"center",gap:10,flexWrap:"wrap"}}>
             <Text style={{width:115,fontWeight:"700"}}>{name}</Text>
             <Text style={{width:120}}>{num(dispatch.counts[code])} pockets</Text>
             {source!=="presale"&&<TextInput style={{...inputStyle,width:145}} placeholder="Price/pocket" keyboardType="decimal-pad" value={prices[code]||""} onChangeText={v=>setPrices(p=>({...p,[code]:v}))}/>}
           </View>)}
-        <Button label={busy?"Saving…":"Confirm stock allocation"} disabled={busy||(source!=="normal"&&!presaleChoice)} onPress={saveSale}/>
+        <Button label={busy?"Saving…":correctionMode?"Save audited correction":"Confirm stock allocation"} disabled={busy||(source!=="normal"&&!presaleChoice)} onPress={saveSale}/>
       </>}
       {!availableDNotes.length&&<Text>No D-Notes awaiting stock allocation.</Text>}
     </View>}
