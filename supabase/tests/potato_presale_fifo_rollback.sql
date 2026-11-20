@@ -61,6 +61,15 @@ begin
    then raise exception 'Later grading was not reserved from the incoming batch'; end if;
   if exists(select 1 from public.potato_grade_pool_v where normal_available<0 or reserved_available<0)
    then raise exception 'Negative stock after additional grading'; end if;
+  -- Both reports must reflect contract-priced allocation and third-party sale,
+  -- never the physical pre-sale collection as additional revenue.
+  select sold_value into amount from public.potato_field_report_v2
+    where tracecode_id=550 and size_code='LARGE';
+  if amount<>3550 then raise exception 'Field Report sale value expected 3550 got %',amount; end if;
+  select coalesce(sum(signed_amount),0) into amount
+    from public.potato_market_transaction_v
+    where entry_type<>'payment' and (reference='QA-ROLLBACK-ONLY');
+  if amount<>3550 then raise exception 'Market Transaction Report value expected 3550 got %',amount; end if;
 end $test$;
 select 'PASS: FIFO, pre-sale reserve, diversion, collection without double sales, future grading replenishment' as result;
 ROLLBACK;
