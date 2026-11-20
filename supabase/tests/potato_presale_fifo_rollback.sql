@@ -2,8 +2,10 @@
 -- Test helper changes ONLY exist inside rollback transaction.
 create or replace function potato_market_private.is_admin() returns boolean language sql stable as $test$select true$test$;
 do $test$
-declare cid uuid; did uuid:=gen_random_uuid(); wid uuid; cpos record; amount numeric;
+declare cid uuid; did uuid:=gen_random_uuid(); wid uuid; cpos record; amount numeric; admin_id uuid;
 begin
+  select user_id into admin_id from public.app_user_role where role_name='admin' limit 1;
+  perform set_config('request.jwt.claim.sub',admin_id::text,true);
   perform public.potato_allocate_outgoing(d.dispatch_id,'normal',null,null)
   from (select dispatch_id from public.wb_potato_dispatch where status='issued' order by created_at,dispatch_id) d;
   cid:=public.potato_presale_create('QA-ROLLBACK-ONLY',current_date,1,550,
