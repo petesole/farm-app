@@ -13,12 +13,18 @@ type Market = { id: number; name: string };
 type Sale = { sale_id: string; dispatch_id: string; dnote_number: string; dnote_date: string; lines: Record<string, { pockets: number; price: number }>; allocations: { tracecode_id: number; size_code: string; pockets: number }[]; total: number };
 type Payment = { payment_id: string; market_id: number | null; customer_id?: number | null; market_name: string; payment_date: string; amount: number; note: string | null; market_reference: string | null };
 type FieldReport = { tracecode_id: number; tracecode_name: string; incoming_slips: number; incoming_kg: number; sold_pockets: number; sold_kg: number; sold_value: number };
-type StockRow = { season_name: string; size_name: string; available_pockets: number; pocket_weight_kg: number };
+type StockRow={season_name:string;size_name:string;available_pockets:number;pocket_weight_kg:number};
+type PresaleSize={size_code:string;contracted:number;price:number;allocated:number;collected:number;awaiting:number;reserved:number;sold_value:number};
+type Presale={presale_id:string;reference:string;contract_date:string;customer_id:number;customer_name:string;tracecode_id:number;trace_name:string;status:string;lines:PresaleSize[]};
+type FieldV2={tracecode_id:number;tracecode_name:string;hectares:number;raw_kg:number;waste_kg:number;size_code:string;size_name:string;sort_order:number;processed_pockets:number;processed_kg:number;stock_pockets:number;stock_kg:number;sold_pockets:number;sold_kg:number;sold_value:number};
+type TransactionRow={entry_type:string;entry_id:string;entry_date:string;reference:string;market_name:string;signed_amount:number;notes?:string|null};
 
-const sizes: [string, string][] = [["LARGE", "Large"], ["MEDIUM", "Medium"], ["SMEDIUM", "Small-Medium"], ["SMALL", "Small"], ["CHATS", "Chats"], ["CUTS", "Cuts"], ["GREENS", "Greens"], ["BULLETS", "Bullets"]];
+const sizes: [string, string][] = [["LARGE", "Large"], ["MEDIUM", "Medium"], ["SMEDIUM", "Small-Medium"], ["SMALL", "Small"], ["CHATS", "Chats"], ["CUTS", "Cuts"], ["BULLETS", "Bullets"], ["GREENS", "Greens"]];
 const today = () => { const d = new Date(); return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`; };
 const dateIso = (value: string) => parseJsplDateInput(value);
 const showDate = (value: string) => value ? displayJsplDate(value.slice(0, 10)) : "—";
+const money=(n:number)=>Number(n||0).toFixed(2);
+const num=(n:number)=>Number(n||0).toLocaleString("en-US",{maximumFractionDigits:2});
 const inputStyle = { borderWidth: 1, borderColor: "#aeb9b4", borderRadius: 6, padding: 9, backgroundColor: "white", minWidth: 105, marginBottom: 7 } as const;
 function Button({ label, onPress, disabled = false }: { label: string; onPress: () => void; disabled?: boolean }) {
   return <Pressable onPress={onPress} disabled={disabled} style={{ padding: 11, backgroundColor: disabled ? "#9aa8a0" : C.primaryDark, borderRadius: 6, marginRight: 8, marginVertical: 5 }}><Text style={{ color: "white", fontWeight: "700" }}>{label}</Text></Pressable>;
@@ -37,14 +43,23 @@ export default function PotatoMarket() {
   const [stock, setStock] = useState<StockRow[]>([]);
   const [selectedReportField, setSelectedReportField] = useState<number | null>(null);
 
-  const [tab, setTab] = useState<"sale" | "payment" | "transactions" | "field">("sale");
-  const [dispatchId, setDispatchId] = useState("");
-  const [saleEdit, setSaleEdit] = useState("new");
-  const [prices, setPrices] = useState<Record<string, string>>({});
-  const [chosenFields, setChosenFields] = useState<number[]>([]);
-  const [allocations, setAllocations] = useState<Record<string, string>>({});
-  const [saleReason, setSaleReason] = useState("");
-
+  const [tab, setTab] = useState<"sale"|"presale"|"payment"|"transactions"|"field">("sale");
+  const [dispatchId,setDispatchId]=useState("");
+  const [source,setSource]=useState<"normal"|"presale"|"divert">("normal");
+  const [prices,setPrices]=useState<Record<string,string>>({});
+  const [presaleChoice,setPresaleChoice]=useState("");
+  const [diversionReason,setDiversionReason]=useState("");
+  const [presales,setPresales]=useState<Presale[]>([]);
+  const [reportV2,setReportV2]=useState<FieldV2[]>([]);
+  const [transactionRows,setTransactionRows]=useState<TransactionRow[]>([]);
+  const [contractFields,setContractFields]=useState<Trace[]>([]);
+  const [contractReference,setContractReference]=useState("");
+  const [contractDate,setContractDate]=useState(today());
+  const [contractCustomer,setContractCustomer]=useState<number|null>(null);
+  const [contractField,setContractField]=useState<number|null>(null);
+  const [contractLines,setContractLines]=useState<Record<string,{qty:string;price:string}>>({});
+  const [contractNotes,setContractNotes]=useState("");
+  const [notice,setNotice]=useState("");
   const [paymentEdit, setPaymentEdit] = useState("new");
   const [marketId, setMarketId] = useState("");
   const [newMarketName, setNewMarketName] = useState("");
@@ -56,7 +71,7 @@ export default function PotatoMarket() {
   const [paymentReason, setPaymentReason] = useState("");
 
   async function load() {
-    const { data, error: loadError } = await supabase.rpc("potato_market_context");
+    const { data, error: loadError } = await supabase.rpc("potato_market_full_context");
     if (loadError) throw loadError;
     setDispatches(data.dispatches || []);
     setTraces(data.traces || []);
@@ -66,6 +81,11 @@ export default function PotatoMarket() {
     setPayments(data.payments || []);
     setFieldReport(data.field_report || []);
     setStock(data.stock_by_size || []);
+    setPresales(data.presales || []);
+    setReportV2(data.field_report_v2 || []);
+    setTransactionRows(data.transaction_rows || []);
+    setContractFields(data.contract_fields || []);
+    return data;
   }
 
   useEffect(() => {
@@ -81,28 +101,21 @@ export default function PotatoMarket() {
     return () => { mounted = false; };
   }, []);
 
-  const editingSale = sales.find(sale => sale.sale_id === saleEdit);
-  const editingPayment = payments.find(payment => payment.payment_id === paymentEdit);
-  const dispatch = dispatches.find(item => item.dispatch_id === dispatchId) || (editingSale ? {
-    dispatch_id: editingSale.dispatch_id,
-    dnote_number: editingSale.dnote_number,
-    dnote_date: editingSale.dnote_date,
-    counts: Object.fromEntries(Object.entries(editingSale.lines).map(([code, line]) => [code, line.pockets])),
-  } : undefined);
-  const availableDNotes = useMemo(() => dispatches.filter(item => saleEdit !== "new" || !sales.some(sale => sale.dispatch_id === item.dispatch_id)), [dispatches, sales, saleEdit]);
-
-  useEffect(() => {
-    if (editingSale) {
-      setDispatchId(editingSale.dispatch_id);
-      setPrices(Object.fromEntries(Object.entries(editingSale.lines).map(([code, line]) => [code, String(line.price)])));
-      setChosenFields([...new Set(editingSale.allocations.map(item => item.tracecode_id))]);
-      setAllocations(Object.fromEntries(editingSale.allocations.map(item => [`${item.tracecode_id}:${item.size_code}`, String(item.pockets)])));
-    } else if (saleEdit === "new") {
-      setDispatchId(""); setPrices({}); setChosenFields([]); setAllocations({});
-    }
-    setSaleReason("");
-  }, [saleEdit]);
-
+  const editingPayment=payments.find(p=>p.payment_id===paymentEdit);
+  const dispatch=dispatches.find(d=>d.dispatch_id===dispatchId);
+  const availableDNotes=dispatches;
+  const eligibleContracts=presales.filter(c=>c.status==="active" && !!dispatch &&
+    sizes.filter(([code])=>Number(dispatch?.counts[code]||0)>0).every(([code])=>
+      c.lines.some(l=>l.size_code===code && l.reserved>=Number(dispatch?.counts[code]||0))));
+  const reportFields=[...new Map(reportV2.map(r=>[r.tracecode_id,{id:r.tracecode_id,name:r.tracecode_name}])).values()];
+  const selectedRows=reportV2.filter(r=>r.tracecode_id===selectedReportField).sort((a,b)=>a.sort_order-b.sort_order);
+  const reportHa=Number(selectedRows[0]?.hectares||0);
+  const rawKg=Number(selectedRows[0]?.raw_kg||0);
+  const wasteKg=Number(selectedRows[0]?.waste_kg||0);
+  const processKg=selectedRows.reduce((v,r)=>v+Number(r.processed_kg||0),0);
+  const soldKg=selectedRows.reduce((v,r)=>v+Number(r.sold_kg||0),0);
+  const soldValue=selectedRows.reduce((v,r)=>v+Number(r.sold_value||0),0);
+  const processedTotal=processKg+wasteKg;
   useEffect(() => {
     if (editingPayment) {
       const paymentMarketId = editingPayment.customer_id ?? editingPayment.market_id;
@@ -117,46 +130,65 @@ export default function PotatoMarket() {
     setPaymentReason("");
   }, [paymentEdit]);
 
-  const traceName = (id: number) => traces.find(trace => trace.id === id)?.name || String(id);
-  const setFieldSize = (id: number, code: string, value: string) => setAllocations(current => ({ ...current, [`${id}:${code}`]: value }));
-
-  async function saveSale() {
-    setError("");
-    if (!dispatch) { setError("Choose an issued D-Note."); return; }
-    if (!chosenFields.length) { setError("Choose at least one live potato field."); return; }
-    const lines: Record<string, { pockets: number; price: number }> = {};
-    for (const [code] of sizes) {
-      const pockets = Number(dispatch.counts?.[code] || 0);
-      if (!pockets) continue;
-      const price = Number(prices[code]);
-      if (!Number.isFinite(price) || price <= 0) { setError(`Enter a price per pocket for ${code}.`); return; }
-      lines[code] = { pockets, price };
+  async function saveSale(){
+    setError("");setNotice("");
+    if(!dispatch){setError("Choose an issued D-Note.");return;}
+    if(source!=="normal"&&!presaleChoice){setError("Select the customer pre-sale.");return;}
+    if(source==="divert"&&!diversionReason.trim()){setError("Enter the compulsory diversion reason.");return;}
+    const lines:Record<string,{price:number}>={};
+    if(source!=="presale")for(const [code,name] of sizes){
+      if(Number(dispatch.counts?.[code]||0)<=0)continue;
+      const price=Number(prices[code]),raw=(prices[code]||"").trim();
+      if(!raw||!Number.isFinite(price)||price<=0){setError("Enter positive price per pocket for "+name);return;}
+      lines[code]={price};
     }
-    const allocationRows: { tracecode_id: number; size_code: string; pockets: number }[] = [];
-    for (const fieldId of chosenFields) for (const [code] of sizes) {
-      const pockets = Number(allocations[`${fieldId}:${code}`] || 0);
-      if (pockets > 0) allocationRows.push({ tracecode_id: fieldId, size_code: code, pockets });
-    }
-    for (const [code, name] of sizes) {
-      const expected = Number(dispatch.counts?.[code] || 0);
-      if (expected && allocationRows.filter(row => row.size_code === code).reduce((sum, row) => sum + row.pockets, 0) !== expected) {
-        setError(`${name} field allocations must total ${expected} pockets from the D-Note.`); return;
-      }
-    }
-    if (editingSale && !saleReason.trim()) { setError("Enter a reason for editing this sale."); return; }
     setBusy(true);
-    const { error: saveError } = await supabase.rpc("potato_market_save_sale", {
-      p_sale_id: editingSale?.sale_id || null,
-      p_dispatch_id: dispatch.dispatch_id,
-      p_lines: lines,
-      p_allocations: allocationRows,
-      p_reason: saleReason || null,
-    });
-    setBusy(false);
-    if (saveError) { setError(saveError.message); return; }
-    setSaleEdit("new"); setDispatchId(""); await load();
+    try{
+      const {error:e}=await supabase.rpc("potato_market_allocate_and_price",{
+        p_dispatch_id:dispatch.dispatch_id,p_source:source,p_presale_id:source==="normal"?null:presaleChoice,
+        p_lines:lines,p_reason:source==="divert"?diversionReason:null
+      });
+      if(e)throw new Error(e.message);
+      const updated=await load();
+      if((updated?.dispatches||[]).some((x:Dispatch)=>x.dispatch_id===dispatch.dispatch_id))
+        throw new Error("D-Note still awaits allocation; verify before retrying.");
+      setDispatchId("");setPrices({});setPresaleChoice("");setDiversionReason("");
+      setNotice("D-Note allocation saved and verified.");
+    }catch(e:any){setError(e.message||"Allocation failed.");}
+    finally{setBusy(false);}
   }
-
+  async function savePresale(){
+    setError("");setNotice("");
+    const date=dateIso(contractDate);
+    if(!date||!contractReference.trim()||contractCustomer===null||contractField===null){
+      setError("Enter contract reference, date, customer and field.");return;
+    }
+    const lines:Record<string,{pockets:number;price:number}>={};
+    for(const [code,name] of sizes){
+      const row=contractLines[code];if(!row||(!row.qty.trim()&&!row.price.trim()))continue;
+      const pockets=Number(row.qty),price=Number(row.price);
+      if(!Number.isInteger(pockets)||pockets<=0||!row.price.trim()||!Number.isFinite(price)||price<=0){
+        setError("Enter valid pockets and price for "+name);return;
+      }
+      lines[code]={pockets,price};
+    }
+    if(!Object.keys(lines).length){setError("Enter at least one contracted size.");return;}
+    setBusy(true);
+    try{
+      const {data:id,error:e}=await supabase.rpc("potato_presale_create",{
+        p_reference:contractReference.trim(),p_contract_date:date,p_customer_id:contractCustomer,
+        p_tracecode_id:contractField,p_lines:lines,p_notes:contractNotes||null
+      });
+      if(e)throw new Error(e.message);
+      const updated=await load();
+      if(!(updated?.presales||[]).some((c:Presale)=>c.presale_id===id))
+        throw new Error("Contract not verified; check records before retry.");
+      setContractReference("");setContractDate(today());setContractCustomer(null);
+      setContractField(null);setContractLines({});setContractNotes("");
+      setNotice("Pre-sale saved; graded stock reserved at contract prices.");
+    }catch(e:any){setError(e.message||"Pre-sale save failed.");}
+    finally{setBusy(false);}
+  }
   async function savePayment() {
     setError("");
     const date = dateIso(paymentDate), value = Number(amount);
@@ -195,15 +227,17 @@ export default function PotatoMarket() {
 
   const lineSizes = dispatch ? sizes.filter(([code]) => Number(dispatch.counts?.[code] || 0) > 0) : [];
   return <ScrollView style={{ flex: 1, backgroundColor: C.background }} contentContainerStyle={{ padding: 18 }}>
-    <JsplModuleHeader title="Potato Market" subtitle="D-Note sales, field allocations and market payments" backLabel="Back to Weighbridge Dashboard" backHref="/weighbridge" />
+    <JsplModuleHeader title="Potato Market" subtitle="Normal FIFO, pre-sales, dispatches and market payments" backLabel="Back to Weighbridge Dashboard" backHref="/weighbridge" />
     <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-      <Button label="Potato Sale" onPress={() => setTab("sale")} />
+      <Button label="D-Note Allocation" onPress={() => setTab("sale")} />
+      <Button label="Pre-Sales" onPress={() => setTab("presale")} />
       <Button label="Market Payment" onPress={() => setTab("payment")} />
       <Button label="Transaction Report" onPress={() => setTab("transactions")} />
       <Button label="Field Report" onPress={() => setTab("field")} />
       <Button label="Refresh" onPress={() => load().catch((e: any) => setError(e.message))} />
     </View>
     {!!error && <Text style={{ color: "#b42318", marginVertical: 8 }}>{error}</Text>}
+    {!!notice && <Text style={{color:C.primaryDark,marginVertical:8}}>{notice}</Text>}
 
     {tab === "sale" && <View style={{ backgroundColor: "white", padding: 14, borderRadius: 8 }}>
       <Text style={{ fontSize: 20, fontWeight: "700", marginBottom: 8 }}>{editingSale ? "Edit potato sale" : "Potato sale"}</Text>
