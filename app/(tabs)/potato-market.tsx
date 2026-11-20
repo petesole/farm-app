@@ -11,14 +11,14 @@ type Dispatch = { dispatch_id: string; dnote_number: string; dnote_date: string;
 type Trace = { id: number; name: string };
 type Market = { id: number; name: string };
 type Sale = { sale_id: string; dispatch_id: string; dnote_number: string; dnote_date: string; lines: Record<string, { pockets: number; price: number }>; allocations: { tracecode_id: number; size_code: string; pockets: number }[]; total: number };
-type Payment = { payment_id: string; market_id: number | null; market_name: string; payment_date: string; amount: number; note: string | null; market_reference: string | null };
+type Payment = { payment_id: string; market_id: number | null; customer_id?: number | null; market_name: string; payment_date: string; amount: number; note: string | null; market_reference: string | null };
 type FieldReport = { tracecode_id: number; tracecode_name: string; incoming_slips: number; incoming_kg: number; sold_pockets: number; sold_kg: number; sold_value: number };
 type StockRow = { season_name: string; size_name: string; available_pockets: number; pocket_weight_kg: number };
 
 const sizes: [string, string][] = [["LARGE", "Large"], ["MEDIUM", "Medium"], ["SMEDIUM", "Small-Medium"], ["SMALL", "Small"], ["CHATS", "Chats"], ["CUTS", "Cuts"], ["GREENS", "Greens"], ["BULLETS", "Bullets"]];
 const today = () => { const d = new Date(); return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`; };
 const dateIso = (value: string) => parseJsplDateInput(value);
-const showDate = (value: string) => value ? displayJsplDate(value.slice(0, 10)) : "-";
+const showDate = (value: string) => value ? displayJsplDate(value.slice(0, 10)) : "—";
 const inputStyle = { borderWidth: 1, borderColor: "#aeb9b4", borderRadius: 6, padding: 9, backgroundColor: "white", minWidth: 105, marginBottom: 7 } as const;
 function Button({ label, onPress, disabled = false }: { label: string; onPress: () => void; disabled?: boolean }) {
   return <Pressable onPress={onPress} disabled={disabled} style={{ padding: 11, backgroundColor: disabled ? "#9aa8a0" : C.primaryDark, borderRadius: 6, marginRight: 8, marginVertical: 5 }}><Text style={{ color: "white", fontWeight: "700" }}>{label}</Text></Pressable>;
@@ -35,6 +35,7 @@ export default function PotatoMarket() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [fieldReport, setFieldReport] = useState<FieldReport[]>([]);
   const [stock, setStock] = useState<StockRow[]>([]);
+  const [selectedReportField, setSelectedReportField] = useState<number | null>(null);
 
   const [tab, setTab] = useState<"sale" | "payment" | "transactions" | "field">("sale");
   const [dispatchId, setDispatchId] = useState("");
@@ -59,7 +60,8 @@ export default function PotatoMarket() {
     if (loadError) throw loadError;
     setDispatches(data.dispatches || []);
     setTraces(data.traces || []);
-    setMarkets(data.markets || []);
+    // Use the existing Weighbridge customer list as agreed for Market.
+    setMarkets(data.customers || []);
     setSales(data.sales || []);
     setPayments(data.payments || []);
     setFieldReport(data.field_report || []);
@@ -103,7 +105,8 @@ export default function PotatoMarket() {
 
   useEffect(() => {
     if (editingPayment) {
-      setMarketId(editingPayment.market_id == null ? "" : String(editingPayment.market_id));
+      const paymentMarketId = editingPayment.customer_id ?? editingPayment.market_id;
+      setMarketId(paymentMarketId == null ? "" : String(paymentMarketId));
       setPaymentDate(showDate(editingPayment.payment_date));
       setAmount(String(editingPayment.amount));
       setNote(editingPayment.note || "");
@@ -160,9 +163,9 @@ export default function PotatoMarket() {
     if (!marketId || !date || !Number.isFinite(value) || value <= 0) { setError("Choose a market and enter a valid date and payment amount."); return; }
     if (editingPayment && !paymentReason.trim()) { setError("Enter a reason for editing this payment."); return; }
     setBusy(true);
-    const { error: saveError } = await supabase.rpc("potato_market_save_market_payment", {
+    const { error: saveError } = await supabase.rpc("potato_market_save_payment", {
       p_payment_id: editingPayment?.payment_id || null,
-      p_market_id: Number(marketId),
+      p_customer_id: Number(marketId),
       p_payment_date: date,
       p_amount: value,
       p_note: note,
@@ -178,7 +181,7 @@ export default function PotatoMarket() {
     setError("");
     if (!newMarketName.trim()) { setError("Enter the market name to add it to the customer list."); return; }
     setBusy(true);
-    const { data, error: addError } = await supabase.rpc("potato_market_add_market_master", { p_market_name: newMarketName.trim() });
+    const { data, error: addError } = await supabase.rpc("potato_market_add_market", { p_market_name: newMarketName.trim() });
     setBusy(false);
     if (addError) { setError(addError.message); return; }
     await load();
@@ -207,17 +210,17 @@ export default function PotatoMarket() {
       <Text>Sale record</Text>
       <Picker selectedValue={saleEdit} onValueChange={setSaleEdit}>
         <Picker.Item label="New sale" value="new" />
-        {sales.map(sale => <Picker.Item key={sale.sale_id} label={`${sale.dnote_number} � ${showDate(sale.dnote_date)}`} value={sale.sale_id} />)}
+        {sales.map(sale => <Picker.Item key={sale.sale_id} label={`${sale.dnote_number} · ${showDate(sale.dnote_date)}`} value={sale.sale_id} />)}
       </Picker>
       <Text>D-Note</Text>
       <Picker selectedValue={dispatchId} onValueChange={setDispatchId}>
         <Picker.Item label={editingSale?.dnote_number || "Choose issued D-Note"} value={editingSale?.dispatch_id || ""} />
-        {availableDNotes.map(item => <Picker.Item key={item.dispatch_id} label={`${item.dnote_number} � ${showDate(item.dnote_date)}`} value={item.dispatch_id} />)}
+        {availableDNotes.map(item => <Picker.Item key={item.dispatch_id} label={`${item.dnote_number} · ${showDate(item.dnote_date)}`} value={item.dispatch_id} />)}
       </Picker>
       {dispatch && <Text style={{ color: C.textSecondary, marginVertical: 7 }}>D-Note date: {showDate(dispatch.dnote_date)} (used for this sale)</Text>}
 
       <Text style={{ fontWeight: "700", marginTop: 8 }}>1. Choose the live potato field(s)</Text>
-      <JsplSearchCombo label="Add live potato field" selector="trace" options={traces.filter(trace => !chosenFields.includes(trace.id)).map(trace => ({ id: trace.id, label: trace.name, active: true }))} value={null} onChange={value => { if (value !== null) setChosenFields(current => [...current, Number(value)]); }} placeholder="Search live potato fields." />
+      <JsplSearchCombo label="Add live potato field" selector="trace" options={traces.filter(trace => !chosenFields.includes(trace.id)).map(trace => ({ id: trace.id, label: trace.name, active: true }))} value={null} onChange={value => { if (value !== null) setChosenFields(current => [...current, Number(value)]); }} placeholder="Search live potato fields…" />
       <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
         {chosenFields.map(id => <View key={id} style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#e7eee9", borderRadius: 6, padding: 7, margin: 3 }}><Text style={{ fontWeight: "700", marginRight: 8 }}>{traceName(id)}</Text><Pressable onPress={() => { setChosenFields(current => current.filter(item => item !== id)); setAllocations(current => Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${id}:`)))); }}><Text style={{ color: C.danger, fontWeight: "700" }}>Remove</Text></Pressable></View>)}
       </View>
@@ -239,7 +242,7 @@ export default function PotatoMarket() {
         </View>)}
       </>}
       {editingSale && <TextInput style={inputStyle} value={saleReason} onChangeText={setSaleReason} placeholder="Reason for editing this sale" />}
-      <Button label={busy ? "Saving." : editingSale ? "Save sale edit" : "Save potato sale"} onPress={saveSale} disabled={busy || !dispatch} />
+      <Button label={busy ? "Saving…" : editingSale ? "Save sale edit" : "Save potato sale"} onPress={saveSale} disabled={busy || !dispatch} />
     </View>}
 
     {tab === "payment" && <View style={{ backgroundColor: "white", padding: 14, borderRadius: 8 }}>
@@ -247,48 +250,51 @@ export default function PotatoMarket() {
       <Text>Payment record</Text>
       <Picker selectedValue={paymentEdit} onValueChange={setPaymentEdit}>
         <Picker.Item label="New payment" value="new" />
-        {payments.map(payment => <Picker.Item key={payment.payment_id} label={`${payment.market_name} � ${showDate(payment.payment_date)} � ${Number(payment.amount).toFixed(2)}`} value={payment.payment_id} />)}
+        {payments.map(payment => <Picker.Item key={payment.payment_id} label={`${payment.market_name} · ${showDate(payment.payment_date)} · ${Number(payment.amount).toFixed(2)}`} value={payment.payment_id} />)}
       </Picker>
       <Text>Market</Text>
-      <Picker selectedValue={marketId} onValueChange={setMarketId}>
-        <Picker.Item label="Choose market" value="" />
-        {markets.map(market => <Picker.Item key={market.id} label={market.name} value={String(market.id)} />)}
-      </Picker>
+      <JsplSearchCombo label="Market" selector="crop" options={markets.map(market => ({ id: market.id, label: market.name, active: true }))} value={marketId ? Number(marketId) : null} onChange={value => setMarketId(value == null ? "" : String(value))} placeholder="Choose a market" />
       {!markets.length && <Text style={{ color: C.danger, marginVertical: 6 }}>The market list is empty. Add the market before recording its payment.</Text>}
       <Button label={addingMarket ? "Cancel add market" : "Add market to list"} onPress={() => { setAddingMarket(value => !value); setNewMarketName(""); }} />
       {addingMarket && <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
         <TextInput style={inputStyle} value={newMarketName} onChangeText={setNewMarketName} placeholder="New market name" />
-        <Button label={busy ? "Adding." : "Add to list"} onPress={addMarket} disabled={busy || !newMarketName.trim()} />
+        <Button label={busy ? "Adding…" : "Add to list"} onPress={addMarket} disabled={busy || !newMarketName.trim()} />
       </View>}
       <TextInput style={inputStyle} value={paymentDate} onChangeText={setPaymentDate} placeholder="Payment date DD/MM/YYYY" />
       <TextInput style={inputStyle} value={amount} onChangeText={setAmount} keyboardType="decimal-pad" placeholder="Amount received" />
       <TextInput style={inputStyle} value={reference} onChangeText={setReference} placeholder="Market reference (optional)" />
       <TextInput style={inputStyle} value={note} onChangeText={setNote} placeholder="Payment note (optional)" />
       {editingPayment && <TextInput style={inputStyle} value={paymentReason} onChangeText={setPaymentReason} placeholder="Reason for editing this payment" />}
-      <Button label={busy ? "Saving." : editingPayment ? "Save payment edit" : "Save market payment"} onPress={savePayment} disabled={busy || !marketId} />
+      <Button label={busy ? "Saving…" : editingPayment ? "Save payment edit" : "Save market payment"} onPress={savePayment} disabled={busy || !marketId} />
     </View>}
 
     {tab === "transactions" && <View style={{ backgroundColor: "white", padding: 14, borderRadius: 8 }}>
       <Text style={{ fontSize: 20, fontWeight: "700", marginBottom: 10 }}>Transaction Report</Text>
-      {sales.map(sale => <View key={sale.sale_id} style={{ paddingVertical: 9, borderBottomWidth: 1, borderColor: C.border }}><Text style={{ fontWeight: "700" }}>Sale � {sale.dnote_number} � {showDate(sale.dnote_date)}</Text><Text>Sale total: {Number(sale.total).toFixed(2)}</Text></View>)}
-      {payments.map(payment => <View key={payment.payment_id} style={{ paddingVertical: 9, borderBottomWidth: 1, borderColor: C.border }}><Text style={{ fontWeight: "700" }}>Payment � {payment.market_name} � {showDate(payment.payment_date)}</Text><Text>Amount: {Number(payment.amount).toFixed(2)}</Text>{payment.market_reference && <Text>Reference: {payment.market_reference}</Text>}{payment.note && <Text>Note: {payment.note}</Text>}</View>)}
+      {sales.map(sale => <View key={sale.sale_id} style={{ paddingVertical: 9, borderBottomWidth: 1, borderColor: C.border }}><Text style={{ fontWeight: "700" }}>Sale · {sale.dnote_number} · {showDate(sale.dnote_date)}</Text><Text>Sale total: {Number(sale.total).toFixed(2)}</Text></View>)}
+      {payments.map(payment => <View key={payment.payment_id} style={{ paddingVertical: 9, borderBottomWidth: 1, borderColor: C.border }}><Text style={{ fontWeight: "700" }}>Payment · {payment.market_name} · {showDate(payment.payment_date)}</Text><Text>Amount: {Number(payment.amount).toFixed(2)}</Text>{payment.market_reference && <Text>Reference: {payment.market_reference}</Text>}{payment.note && <Text>Note: {payment.note}</Text>}</View>)}
       {!sales.length && !payments.length && <Text>No potato market transactions recorded yet.</Text>}
     </View>}
 
     {tab === "field" && <View style={{ backgroundColor: "white", padding: 14, borderRadius: 8 }}>
       <Text style={{ fontSize: 20, fontWeight: "700", marginBottom: 10 }}>Potato Field Report</Text>
-      <Text style={{ fontWeight: "700", marginTop: 5 }}>Potato available stock by size</Text>
-      {stock.map((row, index) => <Text key={`${row.season_name}:${row.size_name}:${index}`}>{row.season_name} � {row.size_name}: {Number(row.available_pockets).toLocaleString()} pockets ({(Number(row.available_pockets) * Number(row.pocket_weight_kg)).toLocaleString()} kg)</Text>)}
-      {!stock.length && <Text>No available graded potato stock.</Text>}
-      <Text style={{ fontWeight: "700", marginTop: 14 }}>Field receipts and sales allocation</Text>
-      <View style={{ flexDirection: "row", flexWrap: "wrap", backgroundColor: "#e7eee9", padding: 8, marginTop: 6 }}>
-        {["Field", "Incoming WB slips", "Incoming kg", "Sale pockets", "Sale kg", "Sale value"].map(label => <Text key={label} style={{ fontWeight: "800", width: label === "Field" ? 150 : 125 }}>{label}</Text>)}
-      </View>
-      {fieldReport.map(row => <View key={row.tracecode_id} style={{ flexDirection: "row", flexWrap: "wrap", padding: 8, borderBottomWidth: 1, borderColor: C.border }}>
-        {[row.tracecode_name, Number(row.incoming_slips).toLocaleString(), Number(row.incoming_kg).toLocaleString(), Number(row.sold_pockets).toLocaleString(), Number(row.sold_kg).toLocaleString(), Number(row.sold_value).toFixed(2)].map((value, index) => <Text key={index} style={{ width: index === 0 ? 150 : 125 }}>{value}</Text>)}
-      </View>)}
-      {!fieldReport.length && <Text>No potato field receipts or sale allocations found.</Text>}
-    </View>}
-  </ScrollView>;
+      <JsplSearchCombo label="Field" selector="trace" options={traces.map(trace => ({ id: trace.id, label: trace.name, active: true }))} value={selectedReportField} onChange={value => setSelectedReportField(value == null ? null : Number(value))} placeholder="Choose a live potato field" />
+      {!selectedReportField && <Text style={{ color: C.textSecondary, marginVertical: 8 }}>Choose a field to view its report.</Text>}
+      {selectedReportField && <>
+        <Text style={{ fontWeight: "700", marginTop: 12 }}>Processed</Text>
+        <Text>Incoming WB slips: {Number(fieldReport.find(row => row.tracecode_id === selectedReportField)?.incoming_slips || 0).toLocaleString()}</Text>
+        <Text>Incoming weight: {Number(fieldReport.find(row => row.tracecode_id === selectedReportField)?.incoming_kg || 0).toLocaleString()} kg</Text>
+        <Text style={{ fontWeight: "700", marginTop: 12 }}>Stock</Text>
+        <Text style={{ color: C.textSecondary }}>Graded stock is shared by season; grading batches are not linked to individual fields.</Text>
+        {stock.map((row, index) => <Text key={`${row.season_name}:${row.size_name}:${index}`}>{row.season_name} · {row.size_name}: {Number(row.available_pockets).toLocaleString()} pockets ({(Number(row.available_pockets) * Number(row.pocket_weight_kg)).toLocaleString()} kg)</Text>)}
+        {!stock.length && <Text>No available graded potato stock.</Text>}
+        <Text style={{ fontWeight: "700", marginTop: 14 }}>Sold</Text>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", backgroundColor: "#e7eee9", padding: 8, marginTop: 6 }}>
+          {["Sale pockets", "Sale kg", "Sale value"].map(label => <Text key={label} style={{ fontWeight: "800", width: 125 }}>{label}</Text>)}
+        </View>
+        {fieldReport.filter(row => row.tracecode_id === selectedReportField).map(row => <View key={row.tracecode_id} style={{ flexDirection: "row", flexWrap: "wrap", padding: 8, borderBottomWidth: 1, borderColor: C.border }}>
+          {[Number(row.sold_pockets).toLocaleString(), Number(row.sold_kg).toLocaleString(), Number(row.sold_value).toFixed(2)].map((value, index) => <Text key={index} style={{ width: 125 }}>{value}</Text>)}
+        </View>)}
+        {!fieldReport.some(row => row.tracecode_id === selectedReportField) && <Text>No field receipts or sales recorded for this field.</Text>}
+      </>}
+    </View>}  </ScrollView>;
 }
-
