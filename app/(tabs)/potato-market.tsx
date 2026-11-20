@@ -101,7 +101,7 @@ export default function PotatoMarket() {
   const eligibleContracts=presales.filter(c=>c.status==="active" && !!dispatch &&
     sizes.filter(([code])=>Number(dispatch?.counts[code]||0)>0).every(([code])=>
       c.lines.some(l=>l.size_code===code && l.reserved>=Number(dispatch?.counts[code]||0))));
-  const reportFields=[...new Map(reportV2.map(r=>[r.tracecode_id,{id:r.tracecode_id,name:r.tracecode_name}])).values()];
+  const reportFields=[...new Map(reportV2.filter(r=>Number(r.raw_kg)>0||Number(r.processed_pockets)>0||Number(r.sold_pockets)>0).map(r=>[r.tracecode_id,{id:r.tracecode_id,name:r.tracecode_name}])).values()].sort((a,b)=>a.name.localeCompare(b.name));
   const selectedRows=reportV2.filter(r=>r.tracecode_id===selectedReportField).sort((a,b)=>a.sort_order-b.sort_order);
   const reportHa=Number(selectedRows[0]?.hectares||0);
   const rawKg=Number(selectedRows[0]?.raw_kg||0);
