@@ -122,11 +122,8 @@ returns trigger language plpgsql security definer set search_path=''
 as $fn$
 declare c record; needed integer; available integer; take_qty integer;
 begin
-  -- An already-dispatched D-Note must be classified before stock can be reserved.
-  if exists(
-    select 1 from public.wb_potato_dispatch d where d.status='issued'
-    and not exists(select 1 from public.potato_stock_allocation a where a.dispatch_id=d.dispatch_id)
-  ) then return new; end if;
+  -- New grading feeds contracted sales first even when an older D-Note is
+  -- still unclassified. FIFO for that older D-Note uses remaining normal stock.
   perform pg_catalog.pg_advisory_xact_lock(742219,1);
   -- Reserve ONLY the incoming grading batch. Do not silently relabel old normal
   -- stock as pre-sale stock when replenishing a diverted contract requirement.
