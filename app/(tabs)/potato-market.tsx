@@ -217,8 +217,14 @@ export default function PotatoMarket() {
       });
       if(e)throw new Error(e.message);
       const updated=await load();
-      if(!(updated?.presales||[]).some((c:Presale)=>c.presale_id===id))
-        throw new Error("Contract not verified; check records before retry.");
+      const saved=(updated?.presales||[]).find((c:Presale)=>c.presale_id===id) as Presale|undefined;
+      if(!saved || saved.reference!==contractReference.trim() ||
+         saved.customer_id!==contractCustomer || saved.tracecode_id!==contractField ||
+         saved.contract_date!==date ||
+         Object.entries(lines).some(([code,line])=>!saved.lines.some(row=>
+           row.size_code===code && Number(row.contracted)===line.pockets &&
+           Number(row.price)===line.price)))
+        throw new Error("Contract values could not be verified after saving. Check records before retry.");
       setContractReference("");setContractDate(today());setContractCustomer(null);
       setContractField(null);setContractLines({});setContractNotes("");
       setNotice("Pre-sale saved; graded stock reserved at contract prices.");
@@ -242,8 +248,13 @@ export default function PotatoMarket() {
       });
       if(e)throw new Error(e.message);
       const refreshed=await load();
-      if(!(refreshed?.payments||[]).some((p:Payment)=>p.payment_id===id)){
-        throw new Error("Payment could not be verified after saving. Check records before retrying.");
+      const saved=(refreshed?.payments||[]).find((p:Payment)=>p.payment_id===id) as Payment|undefined;
+      if(!saved || Number(saved.amount)!==value ||
+        Number(saved.customer_id??saved.market_id)!==Number(marketId) ||
+        saved.payment_date!==date ||
+        (saved.note||"")!==(note.trim()) ||
+        (saved.market_reference||"")!==(reference.trim())){
+        throw new Error("Payment values could not be verified after saving. Check records before retrying.");
       }
       setPaymentEdit("new");
       setMarketId("");setPaymentDate(today());setAmount("");setNote("");
