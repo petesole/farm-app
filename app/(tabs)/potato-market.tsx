@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { router } from "expo-router";
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { supabase } from "@/supabase";
@@ -488,6 +489,9 @@ export default function PotatoMarket() {
           <Text>Customer: {selectedPresaleReport.customer_name}</Text>
           <Text>Field: {selectedPresaleReport.trace_name}</Text>
           <Text>Contract Date: {showDate(selectedPresaleReport.contract_date)} · {status}</Text>
+          <Button label="Edit Contract" onPress={()=>router.push({
+            pathname:"/potato-presale-edit",params:{id:selectedPresaleReport.presale_id}
+          })}/>
           <ScrollView horizontal>
             <View>
               <View style={{flexDirection:"row",backgroundColor:"#e7eee9"}}>
