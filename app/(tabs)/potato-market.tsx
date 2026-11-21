@@ -14,7 +14,7 @@ type Payment = { payment_id: string; market_id: number | null; customer_id?: num
 type PresaleSize={size_code:string;contracted:number;price:number;allocated:number;collected:number;awaiting:number;reserved:number;sold_value:number};
 type Presale={presale_id:string;reference:string;contract_date:string;customer_id:number;customer_name:string;tracecode_id:number;trace_name:string;status:string;lines:PresaleSize[]};
 type FieldV2={tracecode_id:number;tracecode_name:string;hectares:number;raw_kg:number;waste_kg:number;size_code:string;size_name:string;sort_order:number;processed_pockets:number;processed_kg:number;stock_pockets:number;stock_kg:number;sold_pockets:number;sold_kg:number;sold_value:number};
-type TransactionRow={entry_type:string;entry_id:string;entry_date:string;reference:string;market_name:string;signed_amount:number;notes?:string|null};
+type TransactionRow={entry_type:string;entry_id:string;entry_date:string;reference:string;customer_id:number;market_name:string;signed_amount:number;notes?:string|null};
 type Correctable = Dispatch & {source:"normal"|"presale"|"divert";presale_id:string|null;prices:Record<string,number>};
 
 const sizes: [string, string][] = [["LARGE", "Large"], ["MEDIUM", "Medium"], ["SMEDIUM", "Small-Medium"], ["SMALL", "Small"], ["CHATS", "Chats"], ["CUTS", "Cuts"], ["BULLETS", "Bullets"], ["GREENS", "Greens"]];
@@ -52,6 +52,7 @@ export default function PotatoMarket() {
   const [correctionReason,setCorrectionReason]=useState("");
   const [reportV2,setReportV2]=useState<FieldV2[]>([]);
   const [transactionRows,setTransactionRows]=useState<TransactionRow[]>([]);
+  const [selectedTransactionMarket,setSelectedTransactionMarket]=useState<number|null>(null);
   const [pendingSizes,setPendingSizes]=useState<{size_code:string;pockets:number}[]>([]);
   const [contractFields,setContractFields]=useState<Trace[]>([]);
   const [contractReference,setContractReference]=useState("");
@@ -106,6 +107,25 @@ export default function PotatoMarket() {
   const eligibleContracts=presales.filter(c=>c.status==="active" && !!dispatch &&
     (correctionMode||sizes.filter(([code])=>Number(dispatch?.counts[code]||0)>0).every(([code])=>
       c.lines.some(l=>l.size_code===code && l.reserved>=Number(dispatch?.counts[code]||0)))));
+  // Report selector is based on potato SALES ONLY, never the full customer master or payments alone.
+  const transactionMarkets=[...new Map(transactionRows
+    .filter(r=>Number(r.customer_id)>0 && (r.entry_type==="normal_sale"||r.entry_type==="presale_reserve"))
+    .map(r=>[Number(r.customer_id),{id:Number(r.customer_id),name:r.market_name}])).values()]
+    .sort((a,b)=>a.name.localeCompare(b.name));
+  const selectedMarketTransactions=transactionRows
+    .filter(r=>r.customer_id===selectedTransactionMarket)
+    .sort((a,b)=>String(a.entry_date).localeCompare(String(b.entry_date)) ||
+      (a.entry_type==="payment"?1:0)-(b.entry_type==="payment"?1:0) ||
+      String(a.entry_id).localeCompare(String(b.entry_id)));
+  let marketRunningBalance=0;
+  const marketLedgerRows=selectedMarketTransactions.map(r=>{
+    marketRunningBalance+=Number(r.signed_amount)||0;
+    return {...r,balance:marketRunningBalance};
+  });
+  const marketSaleTotal=selectedMarketTransactions
+    .filter(r=>r.entry_type!=="payment").reduce((total,r)=>total+Number(r.signed_amount||0),0);
+  const marketPaymentTotal=selectedMarketTransactions
+    .filter(r=>r.entry_type==="payment").reduce((total,r)=>total-Number(r.signed_amount||0),0);
   const reportFields=[...new Map(reportV2.filter(r=>Number(r.raw_kg)>0||Number(r.processed_pockets)>0||Number(r.sold_pockets)>0).map(r=>[r.tracecode_id,{id:r.tracecode_id,name:r.tracecode_name}])).values()].sort((a,b)=>a.name.localeCompare(b.name));
   const selectedRows=reportV2.filter(r=>r.tracecode_id===selectedReportField).sort((a,b)=>sizes.findIndex(([code])=>code===a.size_code)-sizes.findIndex(([code])=>code===b.size_code));
   const reportHa=Number(selectedRows[0]?.hectares||0);
@@ -334,19 +354,60 @@ export default function PotatoMarket() {
 
 
     {tab==="transactions"&&<View style={{backgroundColor:"white",padding:14,borderRadius:8}}>
-      <Text style={{fontSize:20,fontWeight:"700",marginBottom:8}}>Transaction Report</Text>
-      {!!pendingSizes.length&&<Text style={{color:C.danger}}>Unallocated physical dispatches: {pendingSizes.map(p=>p.size_code+" "+num(p.pockets)).join(" · ")}. These pockets are not available to sell again.</Text>}
-      {dispatches.map(d=><View key={d.dispatch_id} style={{borderBottomWidth:1,borderColor:C.border,paddingVertical:8}}>
-        <Text style={{fontWeight:"700"}}>D-Note {d.dnote_number} · {showDate(d.dnote_date)}</Text>
-        <Text>Dispatched — awaiting stock allocation and pricing</Text>
-      </View>)}
-      {[...transactionRows].sort((a,b)=>String(b.entry_date).localeCompare(String(a.entry_date))).map(r=>
-        <View key={r.entry_type+":"+r.entry_id} style={{borderBottomWidth:1,borderColor:C.border,paddingVertical:8}}>
-          <Text style={{fontWeight:"700"}}>{r.entry_type.replace(/_/g," ")} · {r.reference} · {showDate(r.entry_date)}</Text>
-          <Text>{r.market_name} · {money(r.signed_amount)}</Text>
-          {!!r.notes&&<Text style={{color:C.textSecondary}}>{r.notes}</Text>}
-        </View>)}
-      {!transactionRows.length&&!dispatches.length&&<Text>No market transactions recorded yet.</Text>}
+      <Text style={{fontSize:20,fontWeight:"700",marginBottom:8}}>Potato Market Transaction Report</Text>
+      <JsplSearchCombo label="Market" selector="crop"
+        options={transactionMarkets.map(m=>({id:m.id,label:m.name,active:true}))}
+        value={selectedTransactionMarket}
+        onChange={v=>setSelectedTransactionMarket(v==null?null:Number(v))}
+        placeholder="Choose a market with potato sales"/>
+      {!transactionMarkets.length&&<Text style={{color:C.textSecondary,marginTop:8}}>No markets with recorded potato sales.</Text>}
+      {selectedTransactionMarket!==null&&!transactionMarkets.some(m=>m.id===selectedTransactionMarket)&&
+        <Text style={{color:C.danger}}>The selected market has no recorded potato sales. Choose another market.</Text>}
+      {transactionMarkets.some(m=>m.id===selectedTransactionMarket)&&<>
+        <Text style={{fontWeight:"700",fontSize:17,marginTop:12,marginBottom:6}}>
+          {transactionMarkets.find(m=>m.id===selectedTransactionMarket)?.name}
+        </Text>
+        <ScrollView horizontal>
+          <View>
+            <View style={{flexDirection:"row",backgroundColor:"#e7eee9",borderBottomWidth:1,borderColor:C.border}}>
+              <ReportCell bold width={115} value="Date"/>
+              <ReportCell bold width={200} value="Reference / Transaction"/>
+              <ReportCell bold width={145} value="Stock Out / Sales"/>
+              <ReportCell bold width={145} value="Payments In"/>
+              <ReportCell bold width={145} value="Balance"/>
+            </View>
+            {marketLedgerRows.map(r=><View key={r.entry_type+":"+r.entry_id}
+              style={{borderBottomWidth:1,borderColor:C.border}}>
+              <View style={{flexDirection:"row"}}>
+                <ReportCell width={115} value={showDate(r.entry_date)}/>
+                <ReportCell width={200} value={
+                  r.entry_type==="normal_sale"?"D-Note "+r.reference:
+                  r.entry_type==="presale_reserve"?"Pre-sale "+r.reference:
+                  r.entry_type==="presale_divert"?"Pre-sale adjustment "+r.reference:
+                  r.entry_type==="payment"?"Payment "+(r.reference==="Payment"?"":r.reference):
+                  r.reference
+                }/>
+                <ReportCell width={145} value={r.entry_type==="payment"?"":"$"+money(r.signed_amount)}/>
+                <ReportCell width={145} value={r.entry_type==="payment"?"$"+money(-Number(r.signed_amount)):""}/>
+                <ReportCell width={145} value={"$"+money(r.balance)}/>
+              </View>
+              {!!r.notes&&<Text style={{paddingHorizontal:6,paddingBottom:7,color:C.textSecondary}}>
+                {r.notes}
+              </Text>}
+            </View>)}
+            <View style={{flexDirection:"row",backgroundColor:"#e7eee9",borderTopWidth:1,borderColor:C.border}}>
+              <ReportCell bold width={115} value=""/>
+              <ReportCell bold width={200} value="TOTAL"/>
+              <ReportCell bold width={145} value={"$"+money(marketSaleTotal)}/>
+              <ReportCell bold width={145} value={"$"+money(marketPaymentTotal)}/>
+              <ReportCell bold width={145} value={"$"+money(marketSaleTotal-marketPaymentTotal)}/>
+            </View>
+          </View>
+        </ScrollView>
+        <Text style={{color:C.textSecondary,marginTop:7}}>
+          Balance is sales less payments. A negative balance means the market has paid in advance or has a credit.
+        </Text>
+      </>}
     </View>}
     {tab==="field"&&<View style={{backgroundColor:"white",padding:14,borderRadius:8}}>
       <Text style={{fontSize:20,fontWeight:"700",marginBottom:8}}>Potato Field Report</Text>
