@@ -369,7 +369,12 @@ export default function PotatoMarket() {
         <Text style={{width:115}}>{name}</Text>
         <TextInput style={{...inputStyle,width:130}} keyboardType="number-pad" placeholder="Pockets" value={contractLines[code]?.qty||""} onChangeText={v=>setContractLines(p=>({...p,[code]:{qty:v,price:p[code]?.price||""}}))}/>
         <TextInput style={{...inputStyle,width:135}} keyboardType="decimal-pad" placeholder="Price/pocket" value={contractLines[code]?.price||""} onChangeText={v=>setContractLines(p=>({...p,[code]:{qty:p[code]?.qty||"",price:v}}))}/>
+        <Text style={{width:145}}>{"$"+money(Number(contractLines[code]?.qty||0)*Number(contractLines[code]?.price||0))}</Text>
       </View>)}
+      <Text style={{fontWeight:"700",marginBottom:8}}>
+        {"Total contract pockets: "+num(Object.values(contractLines).reduce((v,r)=>v+Number(r.qty||0),0))
+        +" · Total value: $"+money(Object.values(contractLines).reduce((v,r)=>v+Number(r.qty||0)*Number(r.price||0),0))}
+      </Text>
       <TextInput style={inputStyle} placeholder="Contract note (optional)" value={contractNotes} onChangeText={setContractNotes}/>
       <Button label={busy?"Saving…":"Save pre-sale"} disabled={busy} onPress={savePresale}/>
       <Text style={{fontSize:18,fontWeight:"700",marginTop:14}}>Recently entered pre-sales</Text>
