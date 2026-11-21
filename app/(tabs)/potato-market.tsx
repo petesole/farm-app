@@ -15,6 +15,7 @@ type PresaleSize={size_code:string;contracted:number;price:number;allocated:numb
 type Presale={presale_id:string;reference:string;contract_date:string;customer_id:number;customer_name:string;tracecode_id:number;trace_name:string;status:string;lines:PresaleSize[]};
 type FieldV2={tracecode_id:number;tracecode_name:string;hectares:number;raw_kg:number;waste_kg:number;size_code:string;size_name:string;sort_order:number;processed_pockets:number;processed_kg:number;stock_pockets:number;stock_kg:number;sold_pockets:number;sold_kg:number;sold_value:number};
 type TransactionRow={entry_type:string;entry_id:string;entry_date:string;reference:string;customer_id:number;market_name:string;signed_amount:number;notes?:string|null};
+type PendingMarketDNote={dispatch_id:string;customer_id:number;market_name:string;dnote_number:string;dnote_date:string;pockets:number};
 type Correctable = Dispatch & {source:"normal"|"presale"|"divert";presale_id:string|null;prices:Record<string,number>};
 
 const sizes: [string, string][] = [["LARGE", "Large"], ["MEDIUM", "Medium"], ["SMEDIUM", "Small-Medium"], ["SMALL", "Small"], ["CHATS", "Chats"], ["CUTS", "Cuts"], ["BULLETS", "Bullets"], ["GREENS", "Greens"]];
@@ -53,6 +54,7 @@ export default function PotatoMarket() {
   const [reportV2,setReportV2]=useState<FieldV2[]>([]);
   const [transactionRows,setTransactionRows]=useState<TransactionRow[]>([]);
   const [selectedTransactionMarket,setSelectedTransactionMarket]=useState<number|null>(null);
+  const [pendingMarketDNotes,setPendingMarketDNotes]=useState<PendingMarketDNote[]>([]);
   const [pendingSizes,setPendingSizes]=useState<{size_code:string;pockets:number}[]>([]);
   const [contractFields,setContractFields]=useState<Trace[]>([]);
   const [contractReference,setContractReference]=useState("");
@@ -73,7 +75,7 @@ export default function PotatoMarket() {
   const [paymentReason, setPaymentReason] = useState("");
 
   async function load() {
-    const { data, error: loadError } = await supabase.rpc("potato_market_extended_context");
+    const { data, error: loadError } = await supabase.rpc("potato_market_statement_context");
     if (loadError) throw loadError;
     setDispatches(data.dispatches || []);
     // Use the existing Weighbridge customer list as agreed for Market.
@@ -83,6 +85,7 @@ export default function PotatoMarket() {
     setLatestAllocated(data.latest_allocated || null);
     setReportV2(data.field_report_v2 || []);
     setTransactionRows(data.transaction_rows || []);
+    setPendingMarketDNotes(data.pending_market_dnotes || []);
     setPendingSizes(data.pending_stock_by_size || []);
     setContractFields(data.contract_fields || []);
     return data;
@@ -107,13 +110,17 @@ export default function PotatoMarket() {
   const eligibleContracts=presales.filter(c=>c.status==="active" && !!dispatch &&
     (correctionMode||sizes.filter(([code])=>Number(dispatch?.counts[code]||0)>0).every(([code])=>
       c.lines.some(l=>l.size_code===code && l.reserved>=Number(dispatch?.counts[code]||0)))));
-  // Report selector is based on potato SALES ONLY, never the full customer master or payments alone.
-  const transactionMarkets=[...new Map(transactionRows
-    .filter(r=>Number(r.customer_id)>0 && (r.entry_type==="normal_sale"||r.entry_type==="presale_reserve"))
-    .map(r=>[Number(r.customer_id),{id:Number(r.customer_id),name:r.market_name}])).values()]
-    .sort((a,b)=>a.name.localeCompare(b.name));
+  // Only customers with an actual potato sale or an issued potato D-Note.
+  // Payments alone never qualify a customer for this list.
+  const transactionMarkets=[...new Map([
+    ...transactionRows.filter(r=>Number(r.customer_id)>0 &&
+       (r.entry_type==="normal_sale"||r.entry_type==="presale_reserve"))
+       .map(r=>[Number(r.customer_id),{id:Number(r.customer_id),name:r.market_name}] as const),
+    ...pendingMarketDNotes.filter(d=>Number(d.customer_id)>0)
+       .map(d=>[Number(d.customer_id),{id:Number(d.customer_id),name:d.market_name}] as const)
+  ]) .values()].sort((a,b)=>a.name.localeCompare(b.name));
   const selectedMarketTransactions=transactionRows
-    .filter(r=>r.customer_id===selectedTransactionMarket)
+    .filter(r=>Number(r.customer_id)===selectedTransactionMarket)
     .sort((a,b)=>String(a.entry_date).localeCompare(String(b.entry_date)) ||
       (a.entry_type==="payment"?1:0)-(b.entry_type==="payment"?1:0) ||
       String(a.entry_id).localeCompare(String(b.entry_id)));
@@ -126,6 +133,8 @@ export default function PotatoMarket() {
     .filter(r=>r.entry_type!=="payment").reduce((total,r)=>total+Number(r.signed_amount||0),0);
   const marketPaymentTotal=selectedMarketTransactions
     .filter(r=>r.entry_type==="payment").reduce((total,r)=>total-Number(r.signed_amount||0),0);
+  const selectedPendingDNotes=pendingMarketDNotes.filter(d=>Number(d.customer_id)===selectedTransactionMarket)
+    .sort((a,b)=>String(a.dnote_date).localeCompare(String(b.dnote_date))||a.dnote_number.localeCompare(b.dnote_number));
   const reportFields=[...new Map(reportV2.filter(r=>Number(r.raw_kg)>0||Number(r.processed_pockets)>0||Number(r.sold_pockets)>0).map(r=>[r.tracecode_id,{id:r.tracecode_id,name:r.tracecode_name}])).values()].sort((a,b)=>a.name.localeCompare(b.name));
   const selectedRows=reportV2.filter(r=>r.tracecode_id===selectedReportField).sort((a,b)=>sizes.findIndex(([code])=>code===a.size_code)-sizes.findIndex(([code])=>code===b.size_code));
   const reportHa=Number(selectedRows[0]?.hectares||0);
@@ -367,6 +376,10 @@ export default function PotatoMarket() {
         <Text style={{fontWeight:"700",fontSize:17,marginTop:12,marginBottom:6}}>
           {transactionMarkets.find(m=>m.id===selectedTransactionMarket)?.name}
         </Text>
+        {!!selectedPendingDNotes.length&&<Text style={{color:C.danger,marginBottom:8}}>
+          {selectedPendingDNotes.length} dispatched D-Note(s) still awaiting stock allocation and prices.
+          They are not included in the monetary balance.
+        </Text>}
         <ScrollView horizontal>
           <View>
             <View style={{flexDirection:"row",backgroundColor:"#e7eee9",borderBottomWidth:1,borderColor:C.border}}>
@@ -376,6 +389,13 @@ export default function PotatoMarket() {
               <ReportCell bold width={145} value="Payments In"/>
               <ReportCell bold width={145} value="Balance"/>
             </View>
+            {selectedPendingDNotes.map(d=><View key={d.dispatch_id} style={{flexDirection:"row",borderBottomWidth:1,borderColor:C.border}}>
+              <ReportCell width={115} value={showDate(d.dnote_date)}/>
+              <ReportCell width={200} value={"D-Note "+d.dnote_number+" (unpriced)"}/>
+              <ReportCell width={145} value="Awaiting price"/>
+              <ReportCell width={145} value=""/>
+              <ReportCell width={145} value="—"/>
+            </View>)}
             {marketLedgerRows.map(r=><View key={r.entry_type+":"+r.entry_id}
               style={{borderBottomWidth:1,borderColor:C.border}}>
               <View style={{flexDirection:"row"}}>
