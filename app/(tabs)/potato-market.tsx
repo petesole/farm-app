@@ -41,7 +41,10 @@ export default function PotatoMarket() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [selectedReportField, setSelectedReportField] = useState<number | null>(null);
 
-  const [tab, setTab] = useState<"sale"|"presale"|"payment"|"transactions"|"field">("sale");
+  const [tab, setTab] = useState<"sale"|"payment"|"transactions"|"presale_report"|"field">("sale");
+  const [marketEntryType,setMarketEntryType]=useState<"payment"|"presale">("payment");
+  const [presaleReportCustomer,setPresaleReportCustomer]=useState<number|null>(null);
+  const [presaleReportContract,setPresaleReportContract]=useState("");
   const [dispatchId,setDispatchId]=useState("");
   const [source,setSource]=useState<"normal"|"presale"|"divert">("normal");
   const [prices,setPrices]=useState<Record<string,string>>({});
@@ -119,6 +122,9 @@ export default function PotatoMarket() {
     ...pendingMarketDNotes.filter(d=>Number(d.customer_id)>0)
        .map(d=>[Number(d.customer_id),{id:Number(d.customer_id),name:d.market_name}] as const)
   ]) .values()].sort((a,b)=>a.name.localeCompare(b.name));
+  const presaleCustomers=[...new Map(presales.map(p=>[p.customer_id,{id:p.customer_id,name:p.customer_name}])).values()].sort((a,b)=>a.name.localeCompare(b.name));
+  const presaleReportContracts=presales.filter(p=>p.customer_id===presaleReportCustomer).sort((a,b)=>a.reference.localeCompare(b.reference));
+  const selectedPresaleReport=presales.find(p=>p.presale_id===presaleReportContract);
   const selectedMarketTransactions=transactionRows
     .filter(r=>Number(r.customer_id)===selectedTransactionMarket)
     .sort((a,b)=>String(a.entry_date).localeCompare(String(b.entry_date)) ||
@@ -258,8 +264,9 @@ export default function PotatoMarket() {
     <JsplModuleHeader title="Potato Market" subtitle="Normal FIFO, pre-sales, dispatches and market payments" backLabel="Back to Weighbridge Dashboard" backHref="/weighbridge" />
     <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
       <Button label="D-Note Allocation" onPress={() => setTab("sale")} />
-      <Button label="Pre-Sales" onPress={() => setTab("presale")} />
+
       <Button label="Market Payment" onPress={() => setTab("payment")} />
+      <Button label="Pre-Sale Report" onPress={() => setTab("presale_report")} />
       <Button label="Transaction Report" onPress={() => setTab("transactions")} />
       <Button label="Field Report" onPress={() => setTab("field")} />
       <Button label="Refresh" onPress={() => load().catch((e: any) => setError(e.message))} />
@@ -313,33 +320,15 @@ export default function PotatoMarket() {
       </>}
       {!availableDNotes.length&&<Text>No D-Notes awaiting stock allocation.</Text>}
     </View>}
-    {tab==="presale"&&<View style={{backgroundColor:"white",padding:14,borderRadius:8}}>
-      <Text style={{fontSize:20,fontWeight:"700"}}>New pre-sale</Text>
-      <Text style={{color:C.textSecondary}}>Record the contract before grading if necessary. Grading from its field is reserved first, up to the contracted quantities.</Text>
-      <TextInput style={inputStyle} placeholder="Contract reference" value={contractReference} onChangeText={setContractReference}/>
-      <TextInput style={inputStyle} placeholder="Date DD/MM/YYYY" value={contractDate} onChangeText={setContractDate}/>
-      <JsplSearchCombo label="Customer" selector="crop" options={markets.map(m=>({id:m.id,label:m.name,active:true}))} value={contractCustomer} onChange={v=>setContractCustomer(v==null?null:Number(v))} placeholder="Choose customer"/>
-      <JsplSearchCombo label="Source field" selector="trace" options={contractFields.map(f=>({id:f.id,label:f.name,active:true}))} value={contractField} onChange={v=>setContractField(v==null?null:Number(v))} placeholder="Choose live potato field"/>
-      <Text style={{fontWeight:"700",marginTop:10}}>Pockets and price per 15 kg pocket</Text>
-      {sizes.map(([code,name])=><View key={code} style={{flexDirection:"row",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-        <Text style={{width:115}}>{name}</Text>
-        <TextInput style={{...inputStyle,width:130}} keyboardType="number-pad" placeholder="Pockets" value={contractLines[code]?.qty||""} onChangeText={v=>setContractLines(p=>({...p,[code]:{qty:v,price:p[code]?.price||""}}))}/>
-        <TextInput style={{...inputStyle,width:135}} keyboardType="decimal-pad" placeholder="Price/pocket" value={contractLines[code]?.price||""} onChangeText={v=>setContractLines(p=>({...p,[code]:{qty:p[code]?.qty||"",price:v}}))}/>
-      </View>)}
-      <TextInput style={inputStyle} placeholder="Contract note (optional)" value={contractNotes} onChangeText={setContractNotes}/>
-      <Button label={busy?"Saving…":"Save pre-sale"} disabled={busy} onPress={savePresale}/>
-      <Text style={{fontSize:18,fontWeight:"700",marginTop:14}}>Existing pre-sales</Text>
-      {presales.map(c=><View key={c.presale_id} style={{paddingVertical:8,borderBottomWidth:1,borderColor:C.border}}>
-        <Text style={{fontWeight:"700"}}>{c.reference} — {c.customer_name}</Text>
-        <Text>{c.trace_name} · {showDate(c.contract_date)} · {c.status}</Text>
-        {c.lines.map(l=><Text key={l.size_code} style={{color:C.textSecondary}}>
-          {l.size_code}: contracted {num(l.contracted)}, reserved {num(l.reserved)}, collected {num(l.collected)}, outstanding {num(l.awaiting)}, sold value {money(l.sold_value)}
-        </Text>)}
-      </View>)}
-      {!presales.length&&<Text>No pre-sales recorded.</Text>}
-    </View>}
     {tab === "payment" && <View style={{ backgroundColor: "white", padding: 14, borderRadius: 8 }}>
-      <Text style={{ fontSize: 20, fontWeight: "700" }}>{editingPayment ? "Edit market payment" : "Market payment"}</Text>
+      <Text style={{fontSize:20,fontWeight:"700"}}>Market Payment / Pre-Sale</Text>
+      <Text>Entry Type</Text>
+      <Picker selectedValue={marketEntryType} onValueChange={v=>{setMarketEntryType(v);setError("");setNotice("");}}>
+        <Picker.Item label="Market Payment" value="payment"/>
+        <Picker.Item label="Pre-Sale" value="presale"/>
+      </Picker>
+      {marketEntryType==="payment"&&<>
+      <Text style={{fontSize:18,fontWeight:"700"}}>{editingPayment?"Edit market payment":"New market payment"}</Text>
       <Text>Payment record</Text>
       <Picker selectedValue={paymentEdit} onValueChange={setPaymentEdit}>
         <Picker.Item label="New payment" value="new" />
@@ -359,6 +348,32 @@ export default function PotatoMarket() {
       <TextInput style={inputStyle} value={note} onChangeText={setNote} placeholder="Payment note (optional)" />
       {editingPayment && <TextInput style={inputStyle} value={paymentReason} onChangeText={setPaymentReason} placeholder="Reason for editing this payment" />}
       <Button label={busy ? "Saving…" : editingPayment ? "Save payment edit" : "Save market payment"} onPress={savePayment} disabled={busy || !marketId} />
+      </>}
+      {marketEntryType==="presale"&&<View>
+      <Text style={{fontSize:20,fontWeight:"700"}}>New pre-sale</Text>
+      <Text style={{color:C.textSecondary}}>Record the contract before grading if necessary. Grading from its field is reserved first, up to the contracted quantities.</Text>
+      <TextInput style={inputStyle} placeholder="Contract reference" value={contractReference} onChangeText={setContractReference}/>
+      <TextInput style={inputStyle} placeholder="Date DD/MM/YYYY" value={contractDate} onChangeText={setContractDate}/>
+      <JsplSearchCombo label="Customer" selector="crop" options={markets.map(m=>({id:m.id,label:m.name,active:true}))} value={contractCustomer} onChange={v=>setContractCustomer(v==null?null:Number(v))} placeholder="Choose customer"/>
+      <JsplSearchCombo label="Source field" selector="trace" options={contractFields.map(f=>({id:f.id,label:f.name,active:true}))} value={contractField} onChange={v=>setContractField(v==null?null:Number(v))} placeholder="Choose live potato field"/>
+      <Text style={{fontWeight:"700",marginTop:10}}>Pockets and price per 15 kg pocket</Text>
+      {sizes.map(([code,name])=><View key={code} style={{flexDirection:"row",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+        <Text style={{width:115}}>{name}</Text>
+        <TextInput style={{...inputStyle,width:130}} keyboardType="number-pad" placeholder="Pockets" value={contractLines[code]?.qty||""} onChangeText={v=>setContractLines(p=>({...p,[code]:{qty:v,price:p[code]?.price||""}}))}/>
+        <TextInput style={{...inputStyle,width:135}} keyboardType="decimal-pad" placeholder="Price/pocket" value={contractLines[code]?.price||""} onChangeText={v=>setContractLines(p=>({...p,[code]:{qty:p[code]?.qty||"",price:v}}))}/>
+      </View>)}
+      <TextInput style={inputStyle} placeholder="Contract note (optional)" value={contractNotes} onChangeText={setContractNotes}/>
+      <Button label={busy?"Saving…":"Save pre-sale"} disabled={busy} onPress={savePresale}/>
+      <Text style={{fontSize:18,fontWeight:"700",marginTop:14}}>Recently entered pre-sales</Text>
+      {presales.map(c=><View key={c.presale_id} style={{paddingVertical:8,borderBottomWidth:1,borderColor:C.border}}>
+        <Text style={{fontWeight:"700"}}>{c.reference} — {c.customer_name}</Text>
+        <Text>{c.trace_name} · {showDate(c.contract_date)} · {c.status}</Text>
+        {c.lines.map(l=><Text key={l.size_code} style={{color:C.textSecondary}}>
+          {l.size_code}: contracted {num(l.contracted)}, reserved {num(l.reserved)}, collected {num(l.collected)}, outstanding {num(l.awaiting)}, sold value {money(l.sold_value)}
+        </Text>)}
+      </View>)}
+      {!presales.length&&<Text>No pre-sales recorded.</Text>}
+    </View></View>}
     </View>}
 
 
