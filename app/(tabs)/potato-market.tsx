@@ -373,7 +373,7 @@ export default function PotatoMarket() {
         </Text>)}
       </View>)}
       {!presales.length&&<Text>No pre-sales recorded.</Text>}
-    </View></View>}
+      </View>}
     </View>}
 
 
@@ -444,6 +444,101 @@ export default function PotatoMarket() {
         </Text>
       </>}
     </View>}
+
+    {tab==="presale_report"&&<View style={{backgroundColor:"white",padding:14,borderRadius:8}}>
+      <Text style={{fontSize:20,fontWeight:"700",marginBottom:8}}>Pre-Sale Report</Text>
+      <JsplSearchCombo label="Customer / Market" selector="crop"
+        options={presaleCustomers.map(c=>({id:c.id,label:c.name,active:true}))}
+        value={presaleReportCustomer}
+        onChange={v=>{setPresaleReportCustomer(v==null?null:Number(v));setPresaleReportContract("");}}
+        placeholder="Choose a customer with pre-sales"/>
+      {!presaleCustomers.length&&<Text>No pre-sale contracts recorded.</Text>}
+      {presaleReportCustomer!==null&&<>
+        <Text style={{fontWeight:"700",marginTop:10}}>Contract</Text>
+        <Picker selectedValue={presaleReportContract} onValueChange={setPresaleReportContract}>
+          <Picker.Item value="" label="Choose a contract"/>
+          {presaleReportContracts.map(c=><Picker.Item key={c.presale_id} value={c.presale_id}
+            label={c.reference+" · "+c.trace_name+" · "+showDate(c.contract_date)}/>)}
+        </Picker>
+      </>}
+      {selectedPresaleReport&&(()=>{
+        const rows=selectedPresaleReport.lines;
+        const totals=rows.reduce((t,l)=>({
+          contracted:t.contracted+Number(l.contracted), allocated:t.allocated+Number(l.allocated),
+          collected:t.collected+Number(l.collected), reserved:t.reserved+Number(l.reserved),
+          outstanding:t.outstanding+Number(l.awaiting),
+          contractValue:t.contractValue+Number(l.contracted)*Number(l.price),
+          soldValue:t.soldValue+Number(l.sold_value)
+        }),{contracted:0,allocated:0,collected:0,reserved:0,outstanding:0,contractValue:0,soldValue:0});
+        const paymentValue=payments.filter(p=>Number(p.customer_id??p.market_id)===selectedPresaleReport.customer_id)
+          .reduce((v,p)=>v+Number(p.amount||0),0);
+        const sameCustomerContracts=presales.filter(p=>p.customer_id===selectedPresaleReport.customer_id).length;
+        const status=selectedPresaleReport.status==="cancelled"?"Cancelled":
+          totals.outstanding===0&&totals.reserved===0?"Fulfilled":
+          totals.allocated>0?"Partially fulfilled":"Open";
+        return <>
+          <Text style={{fontWeight:"700",fontSize:18,marginTop:10}}>{selectedPresaleReport.reference}</Text>
+          <Text>Customer: {selectedPresaleReport.customer_name}</Text>
+          <Text>Field: {selectedPresaleReport.trace_name}</Text>
+          <Text>Contract Date: {showDate(selectedPresaleReport.contract_date)} · {status}</Text>
+          <ScrollView horizontal>
+            <View>
+              <View style={{flexDirection:"row",backgroundColor:"#e7eee9"}}>
+                <ReportCell bold width={115} value="Size"/>
+                <ReportCell bold width={110} value="Contracted"/>
+                <ReportCell bold width={115} value="Allocated"/>
+                <ReportCell bold width={110} value="Collected"/>
+                <ReportCell bold width={110} value="Reserved"/>
+                <ReportCell bold width={120} value="Outstanding"/>
+                <ReportCell bold width={110} value="Price"/>
+                <ReportCell bold width={125} value="Contract Value"/>
+                <ReportCell bold width={125} value="Sold Value"/>
+              </View>
+              {sizes.filter(([code])=>rows.some(l=>l.size_code===code)).map(([code,name])=>{
+                const l=rows.find(r=>r.size_code===code)!;
+                return <View key={code} style={{flexDirection:"row",borderBottomWidth:1,borderColor:C.border}}>
+                  <ReportCell width={115} value={name}/>
+                  <ReportCell width={110} value={num(l.contracted)}/>
+                  <ReportCell width={115} value={num(l.allocated)}/>
+                  <ReportCell width={110} value={num(l.collected)}/>
+                  <ReportCell width={110} value={num(l.reserved)}/>
+                  <ReportCell width={120} value={num(l.awaiting)}/>
+                  <ReportCell width={110} value={"$"+money(l.price)}/>
+                  <ReportCell width={125} value={"$"+money(l.contracted*l.price)}/>
+                  <ReportCell width={125} value={"$"+money(l.sold_value)}/>
+                </View>;
+              })}
+              <View style={{flexDirection:"row",backgroundColor:"#e7eee9"}}>
+                <ReportCell bold width={115} value="TOTAL"/>
+                <ReportCell bold width={110} value={num(totals.contracted)}/>
+                <ReportCell bold width={115} value={num(totals.allocated)}/>
+                <ReportCell bold width={110} value={num(totals.collected)}/>
+                <ReportCell bold width={110} value={num(totals.reserved)}/>
+                <ReportCell bold width={120} value={num(totals.outstanding)}/>
+                <ReportCell width={110} value=""/>
+                <ReportCell bold width={125} value={"$"+money(totals.contractValue)}/>
+                <ReportCell bold width={125} value={"$"+money(totals.soldValue)}/>
+              </View>
+            </View>
+          </ScrollView>
+          <Text style={{fontWeight:"700",fontSize:17,marginTop:14}}>Financial position</Text>
+          <Text>Total contract value: {"$"+money(totals.contractValue)}</Text>
+          <Text>Allocated sales value: {"$"+money(totals.soldValue)}</Text>
+          <Text>Unallocated contract value: {"$"+money(totals.contractValue-totals.soldValue)}</Text>
+          <Text>Customer payments received (all contracts): {"$"+money(paymentValue)}</Text>
+          <Text>Customer account balance on allocated sales (all contracts): {"$"+money(
+            transactionRows.filter(t=>Number(t.customer_id)===selectedPresaleReport.customer_id)
+              .reduce((v,t)=>v+Number(t.signed_amount||0),0))}</Text>
+          {sameCustomerContracts>1&&<Text style={{color:C.textSecondary,marginTop:7}}>
+            Payments are recorded against the customer, not individual contracts; no payment is attributed twice.
+          </Text>}
+          <Text style={{color:C.textSecondary,marginTop:7}}>
+            Allocated stock is valued as sold at its contracted price. Collection reduces reserved stock, not sales.
+          </Text>
+        </>;
+      })()}
+    </View>}
+
     {tab==="field"&&<View style={{backgroundColor:"white",padding:14,borderRadius:8}}>
       <Text style={{fontSize:20,fontWeight:"700",marginBottom:8}}>Potato Field Report</Text>
       {!!pendingSizes.length&&<Text style={{color:C.danger,fontWeight:"700"}}>
