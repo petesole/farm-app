@@ -377,15 +377,6 @@ export default function PotatoMarket() {
       </Text>
       <TextInput style={inputStyle} placeholder="Contract note (optional)" value={contractNotes} onChangeText={setContractNotes}/>
       <Button label={busy?"Saving…":"Save pre-sale"} disabled={busy} onPress={savePresale}/>
-      <Text style={{fontSize:18,fontWeight:"700",marginTop:14}}>Recently entered pre-sales</Text>
-      {presales.map(c=><View key={c.presale_id} style={{paddingVertical:8,borderBottomWidth:1,borderColor:C.border}}>
-        <Text style={{fontWeight:"700"}}>{c.reference} — {c.customer_name}</Text>
-        <Text>{c.trace_name} · {showDate(c.contract_date)} · {c.status}</Text>
-        {c.lines.map(l=><Text key={l.size_code} style={{color:C.textSecondary}}>
-          {l.size_code}: contracted {num(l.contracted)}, reserved {num(l.reserved)}, collected {num(l.collected)}, outstanding {num(l.awaiting)}, sold value {money(l.sold_value)}
-        </Text>)}
-      </View>)}
-      {!presales.length&&<Text>No pre-sales recorded.</Text>}
       </View>}
     </View>}
 
