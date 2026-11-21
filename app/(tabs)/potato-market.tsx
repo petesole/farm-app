@@ -224,26 +224,33 @@ export default function PotatoMarket() {
     }catch(e:any){setError(e.message||"Pre-sale save failed.");}
     finally{setBusy(false);}
   }
-  async function savePayment() {
-    setError("");
-    const date = dateIso(paymentDate), value = Number(amount);
-    if (!marketId || !date || !Number.isFinite(value) || value <= 0) { setError("Choose a market and enter a valid date and payment amount."); return; }
-    if (editingPayment && !paymentReason.trim()) { setError("Enter a reason for editing this payment."); return; }
+  async function savePayment(){
+    setError("");setNotice("");
+    const date=dateIso(paymentDate),value=Number(amount);
+    if(!marketId||!date||!Number.isFinite(value)||value<=0){
+      setError("Choose a market and enter a valid date and payment amount.");return;
+    }
+    if(editingPayment&&!paymentReason.trim()){setError("Enter a reason for editing this payment.");return;}
     setBusy(true);
-    const { error: saveError } = await supabase.rpc("potato_market_save_payment", {
-      p_payment_id: editingPayment?.payment_id || null,
-      p_customer_id: Number(marketId),
-      p_payment_date: date,
-      p_amount: value,
-      p_note: note,
-      p_market_reference: reference,
-      p_reason: paymentReason || null,
-    });
-    setBusy(false);
-    if (saveError) { setError(saveError.message); return; }
-    setPaymentEdit("new"); await load();
+    try{
+      const {data:id,error:e}=await supabase.rpc("potato_market_save_payment",{
+        p_payment_id:editingPayment?.payment_id||null,
+        p_customer_id:Number(marketId),
+        p_payment_date:date,p_amount:value,p_note:note,
+        p_market_reference:reference,p_reason:paymentReason||null
+      });
+      if(e)throw new Error(e.message);
+      const refreshed=await load();
+      if(!(refreshed?.payments||[]).some((p:Payment)=>p.payment_id===id)){
+        throw new Error("Payment could not be verified after saving. Check records before retrying.");
+      }
+      setPaymentEdit("new");
+      setMarketId("");setPaymentDate(today());setAmount("");setNote("");
+      setReference("");setPaymentReason("");
+      setNotice(editingPayment?"Payment correction saved and verified. New payment ready.":"Payment saved and verified. New payment ready.");
+    }catch(e:any){setError(e.message||"Payment save failed; entry retained.");}
+    finally{setBusy(false);}
   }
-
   async function addMarket() {
     setError("");
     if (!newMarketName.trim()) { setError("Enter the market name to add it to the customer list."); return; }
