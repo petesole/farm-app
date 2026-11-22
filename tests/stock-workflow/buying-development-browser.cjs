@@ -8,17 +8,51 @@ const readings = {
   admin: ['stock_access', 'cash_book', 'cash_book_supplier_invoices', 'outstanding_issues', 'job_cards', 'town_trips'],
   buyer: ['stock_access', 'job_cards', 'town_trips'],
   driver: ['stock_access', 'town_trips'],
+  stock: ['stock_access','job_cards','town_trips'],
 };
+
+// Optional display-only fixtures. Every Supabase request from this context is
+// intercepted, including Auth. No fixture session or write reaches the project.
+async function displayFixture(context,role){
+  const user={id:'00000000-0000-4000-8000-000000000001',email:'screen@example.invalid',aud:'authenticated',user_metadata:{},app_metadata:{}};
+  const session={user,access_token:'display-fixture-only',token_type:'bearer',refresh_token:'display-fixture-only',expires_in:3600,expires_at:Math.floor(Date.now()/1000)+3600};
+  const admin=role==='admin', buyer=role==='buyer', stores=role==='stock', driver=role==='driver';
+  const access={can_main:admin,is_admin:admin,is_stock:admin||stores,is_buyer:buyer,is_driver:driver};
+  const lookups={
+    stock_access:{access},cash_book:{accounts:[],entries:[],trips:[],advances:[],tripInvoices:[],counterparties:[],expenses:[]},
+    cash_book_supplier_invoices:{invoices:[],creditOptions:[]},outstanding_issues:{counts:{},returned:[]},
+    job_cards:{cards:[],can_create:buyer,can_buy:buyer||admin,can_main:admin,can_reserve:buyer||stores,
+      vehicles:[{vehicle_id:11,vehicle_name:'Screen test tractor',vehicle_type_id:4,vehicle_type:'Tractor',type_code:'TRA',owner_name:'Screen owner',owner_code:'JS',catalogue_group:'vehicle'}],
+      items:[{item_code:'FILTER-A',item_name:'Service filter',base_unit:'each',part_number:'F-12',category_ids:[3]}],
+      categories:[{category_id:3,catalogue_group:'vehicle',category_name:'Filters'}],traces:[]},
+    job_asset_purchase_history:{rows:[{id:'1',item_code:'FILTER-A',item_name:'Service filter',part_number:'F-12',active:true,supplier_name:'Screen supplier',receipt:'GRV-1',document_date:'2026-11-20',unit_price:'12.00'}]},
+    town_trips:{trips:[{id:'screen-trip',trip_number:1,trip_date:'2026-11-20',driver_name:'Test driver',orders:[],finalised_at:null}],drivers:[],orders:[],can_create:admin,can_report:driver,can_receive:!driver},
+  };
+  await context.route('https://*.supabase.co/**',async route=>{
+    const req=route.request(),u=new URL(req.url());
+    const headers={'access-control-allow-origin':'*','access-control-allow-headers':'*','access-control-allow-methods':'GET,POST,OPTIONS'};
+    if(req.method()==='OPTIONS')return route.fulfill({status:204,headers});
+    let response;
+    if(u.pathname==='/auth/v1/token')response=session;
+    else if(u.pathname==='/auth/v1/user')response=user;
+    else if(u.pathname==='/rest/v1/rpc/my_farm_app_roles')response=[role];
+    else if(req.method()==='GET'&&u.pathname.endsWith('/stock-buying-development'))response=lookups[[...u.searchParams.keys()][0]];
+    if(response===undefined)return route.fulfill({status:403,headers,json:{error:'Outside the read-only screen fixture'}});
+    return route.fulfill({headers,json:response});
+  });
+}
 
 async function click(page, name) {
   await page.getByRole('button').filter({has:page.getByText(name,{exact:true})}).last().click({timeout:20000});
 }
 
 async function check(browser, role, width) {
-  const email = process.env['BUYING_TEST_'+role.toUpperCase()+'_EMAIL'];
-  const password = process.env['BUYING_TEST_'+role.toUpperCase()+'_PASSWORD'];
+  const fixture=process.env.BUYING_TEST_DISPLAY_ONLY==='true';
+  const email = fixture?'screen@example.invalid':process.env['BUYING_TEST_'+role.toUpperCase()+'_EMAIL'];
+  const password = fixture?'display-fixture-only':process.env['BUYING_TEST_'+role.toUpperCase()+'_PASSWORD'];
   assert(email && password, 'Missing dedicated '+role+' test sign-in');
   const context = await browser.newContext({viewport:{width,height:850}});
+  if(fixture)await displayFixture(context,role);
   const page = await context.newPage();
   const received = new Set();
   const faults = [];
@@ -33,13 +67,18 @@ async function check(browser, role, width) {
     await page.goto(site+'/login');
     await page.getByPlaceholder('email@example.com').fill(email);
     await page.getByPlaceholder('password', {exact:true}).fill(password);
-    await click(page,'Sign In');
+    await page.getByText('Sign In',{exact:true}).click();
     await page.waitForURL(url => !url.pathname.endsWith('/login'), {timeout:40000});
     await page.goto(site+'/stock-dashboard');
     if(role==='admin'){
       await click(page,'Cash Book');
       await click(page,'Quick Cash Out');
       await page.getByText('Payee',{exact:true}).first().waitFor();
+      await page.goto(site+'/cashbook');
+      await click(page,'New Receipt');
+      await page.getByRole('textbox',{name:'Payer',exact:true}).click();
+      await page.getByRole('textbox',{name:'Payer',exact:true}).fill('Screen payer');
+      await page.getByText(/Add payer/i).first().waitFor();
       await page.goto(site+'/stock-dashboard');
       await Promise.all([page.waitForResponse(r=>r.url().includes('outstanding_issues=')&&r.ok()),click(page,'Outstanding Issues')]);
     }
@@ -53,20 +92,36 @@ async function check(browser, role, width) {
         await page.getByText('Vehicle Type',{exact:true}).first().waitFor();
         await page.getByText('Transaction date',{exact:true}).first().waitFor();
         await page.getByText('Unit price',{exact:true}).first().waitFor();
+        const date=page.getByRole('textbox',{name:'Transaction date',exact:true});
+        await date.fill('2/2');
+        await date.press('Tab');
+        assert.match(await date.inputValue(),/^02\/02\/\d{4}$/);
+        if (fixture) {
+          await page.getByRole('textbox',{name:'Vehicle Type',exact:true}).click();
+          await click(page,'Tractor');
+          await page.getByRole('textbox',{name:'Vehicle or implement',exact:true}).click();
+          await click(page,'Screen test tractor');
+          await page.getByText(/Screen supplier.+12.00/).waitFor();
+          await click(page,'+');
+          await page.getByText('On card',{exact:true}).waitFor();
+          assert.equal(await page.getByRole('textbox',{name:'Qty 1',exact:true}).inputValue(),'1');
+          assert.equal(await page.getByRole('textbox',{name:'Unit price 1',exact:true}).inputValue(),'');
+        }
       }
     }
     await page.goto(site+'/stock-dashboard');
     await click(page,'Town Trips');
     if(role==='driver')assert.equal(await page.getByText('Add New Trip',{exact:true}).count(),0);
     await click(page,'View Historical Trips');
+    if(fixture)await page.getByText(/Trip 1.+Outstanding/).waitFor();
     for(const key of readings[role])assert(received.has(key),role+' did not load '+key);
     assert.deepEqual(faults,[]);
-    console.log('PASS',role,width+'px');
+    console.log('PASS',fixture?'display only':'authenticated',role,width+'px');
   } finally {await context.close();}
 }
 
 (async()=>{
   const browser=await chromium.launch({executablePath:process.env.BUYING_TEST_BROWSER||undefined,headless:true});
-  try{for(const role of ['admin','buyer','driver'])for(const width of [1366,390])await check(browser,role,width);}
+  try{for(const role of ['admin','buyer','stock','driver'])for(const width of [1366,390])await check(browser,role,width);}
   finally{await browser.close();}
 })().catch(error=>{console.error(error.message);process.exitCode=1;});

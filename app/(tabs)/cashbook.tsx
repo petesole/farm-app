@@ -63,7 +63,7 @@ export default function CashBook(){
     setBusy(true);setError('');setNotice('');
     try{
       const {result}=await stockMutation('cash-book',{action,payload});
-      if(action==='cash_book_add_counterparty'){setDraft(current=>({...current,counterparty:result.name}));setNotice('Payer or payee added.');}
+      if(action==='cash_book_add_counterparty'){if(tab==='labour')setLabourPayment(current=>({...current,payee:result.name}));else setDraft(current=>({...current,counterparty:result.name}));setNotice('Payer or payee added.');}
       else if(action==='cash_book_account'){setAccount(blankAccount);setNotice('Account created.');}
       else if(action==='cash_book_draft'){setDraft(blankEntry);setTab('history');setNotice('Entry '+result.entry_number+' saved as draft.');}
       else if(action==='cash_book_trip_advance'){setAdvance(blankAdvance);setNotice('Trip advance recorded.');}
@@ -233,7 +233,7 @@ export default function CashBook(){
         <Text style={styles.title}>Selected labour cost {labourTotal}</Text>
         <StockSelect label="Account in the recorded cost currency" value={labourPayment.account_id} options={accountOptions}
           onChange={value=>setLabourPayment(current=>({...current,account_id:String(value??'')}))}/>
-        <StockField label="Payee" value={labourPayment.payee} onChange={payee=>setLabourPayment(current=>({...current,payee}))}/>
+        <StockSelect label="Payee" value={labourPayment.payee||null} options={data.counterparties.map(p=>({id:p.name,label:p.name}))} onChange={v=>setLabourPayment(current=>({...current,payee:String(v??'')}))} createLabel="+ Add payee" onCreate={name=>void save("cash_book_add_counterparty",{name})}/>
         <StockDateField label="Payment date (dd/mm/yyyy)" value={labourPayment.date} onChange={date=>setLabourPayment(current=>({...current,date}))}/>
         <StockField label="Payment reference" value={labourPayment.reference} onChange={reference=>setLabourPayment(current=>({...current,reference}))}/>
         <StockButton title="Save labour payment draft"

@@ -87,7 +87,7 @@ Deno.serve(async(req)=>{
      as collected_outstanding,
     (select count(*)::int from stock_v2.job_card_part p
      left join stock_v2.job_part_usage u on u.part_id=p.id
-     where p.requested_quantity>coalesce(u.issued_quantity,0)) as outstanding_parts,
+     where p.requested_quantity>coalesce(u.issued_quantity,0) and exists(select from stock_v2.item i where i.item_id=p.item_id and not i.buying_direct_expense) and exists(select from stock_v2.job_card j where j.id=p.job_id and j.closed_at is null)) as outstanding_parts,
     (select count(*)::int from cash_book.entry where status='draft') as cash_drafts,
     (select count(*)::int from cash_book.trip_advance a where not exists(
       select 1 from cash_book.trip_settlement s where s.advance_id=a.id)) as unreconciled_advances`;
@@ -407,6 +407,13 @@ Deno.serve(async(req)=>{
   }
   if(req.method==="GET" && new URL(req.url).searchParams.has("linked_credit_options")){
    const rows=await db`select credit_id,credit_note_number,owner_code,supplier_name,credit_note_date::text,total_amount::float8 from stock_v2.supplier_credit_note where status='posted' order by credit_id desc`;return reply({rows});
+  }
+  if(req.method==="GET"&&new URL(req.url).searchParams.has("irrigation_asset_farm")){
+   if(!access.can_main)return reply({error:"Vehicle Admin access required"},403);
+   const vehicle=Number(new URL(req.url).searchParams.get("irrigation_asset_farm"));
+   const [assignment]=await db`select farm_id::float8 from stock_v2.irrigation_asset_farm where vehicle_id=${vehicle}`;
+   const farms=await db`select farm_id::float8 as id,farm_name as label from public.farm where active or farm_id=${assignment?.farm_id??null}::bigint order by farm_name`;
+   return reply({farms,farm_id:assignment?.farm_id??null});
   }
   if(req.method==="GET" && new URL(req.url).searchParams.has("stock_staff")){
    await db`select stock_v2.workflow_require(${user.id}::uuid,true)`;
@@ -1377,6 +1384,30 @@ left join lateral (
   if(body?.action==="workflow_correct_grv"||body?.action==="workflow_correct_physical"){
    const rows=body.action==="workflow_correct_grv"?await db`select stock_v2.workflow_correct_grv(${user.id}::uuid,${body.operation_id}::uuid,${db.json(body.payload)}::jsonb) as result`:await db`select stock_v2.workflow_correct_physical(${user.id}::uuid,${body.operation_id}::uuid,${db.json(body.payload)}::jsonb) as result`;
    return reply({success:true,result:rows[0].result});
+  }
+  if(body?.action==="save_irrigation_vehicle"){
+   if(!access.can_main)return reply({error:"Vehicle Admin access required"},403);
+   const p=body.vehicle,vehicleId=body.vehicle_id??null,farmId=body.farm_id??null;
+   if(!p?.vehicle_name?.trim()||!["DIESEL","PETROL","NONE"].includes(p.fuel_type))return reply({error:"Check the equipment name and fuel type."},400);
+   const result=await transaction(async tx=>{
+    const [type]=await tx`select concat_ws(' ',type_name,type_code) ~* 'pump|pivot' as fixed from public.vehicle_type where vehicle_type_id=${p.vehicle_type_id}`;
+    if(!type?.fixed&&!vehicleId)throw Error("Choose a pump or pivot.");
+    if(vehicleId){
+     const [old]=await tx`select stock_v2.job_asset_group(vehicle_id) as catalogue_group from public.vehicle where vehicle_id=${vehicleId}::bigint for update`;
+     if(!old||(!type?.fixed&&old.catalogue_group!=="irrigation"))throw Error("Choose a registered irrigation asset.");
+     const [mapping]=await tx`select farm_id::float8 from stock_v2.irrigation_asset_farm where vehicle_id=${vehicleId}::bigint`;
+     if((mapping?.farm_id??null)!==(body.previous_farm_id??null))throw Error("The farm assignment changed. Reload the equipment.");
+    }
+    if(farmId&&(!type?.fixed||!(await tx`select 1 from public.farm where farm_id=${farmId} and (active or farm_id=${body.previous_farm_id??null}::bigint) for share`).length))throw Error("Select an active farm for this pump or pivot.");
+    const permitted=["fuel_type","vehicle_name","ownership_status","owner_company_id","hire_supplier_id","vehicle_model","vehicle_assignment_id","tractor_size","consumption","vehicle_discontinued","has_meter","meter_type","vehicle_type_id","tractor_class_id"];
+    const values=Object.fromEntries(permitted.map(key=>[key,p[key]??null]));
+    const [vehicle]=vehicleId
+      ?await tx`update public.vehicle set ${tx(values,permitted)} where vehicle_id=${vehicleId}::bigint returning vehicle_id`
+      :await tx`insert into public.vehicle ${tx(values,permitted)} returning vehicle_id`;
+    if(farmId)await tx`insert into stock_v2.irrigation_asset_farm(vehicle_id,farm_id) values(${vehicle.vehicle_id},${farmId}) on conflict(vehicle_id) do update set farm_id=excluded.farm_id`;
+    else await tx`delete from stock_v2.irrigation_asset_farm where vehicle_id=${vehicle.vehicle_id}`;
+    return vehicle;
+   });return reply({success:true,result});
   }
   if(body?.action==="buying_staff_assign"){
    await db`select stock_v2.workflow_require(${user.id}::uuid,true)`;

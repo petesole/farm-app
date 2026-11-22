@@ -27,7 +27,7 @@ function landingForRole(roleName: string) {
   if (r === "admin") return "/(tabs)/main-dashboard";
   if (r === "sprayer") return "/sprayer";
   if (r === "buyer" || r === "driver" || r === "workshop") return "/(tabs)/stock-dashboard";
-  if (r === "stock") return "/(tabs)/stock-test";
+  if (r === "stock") return "/(tabs)/stock-dashboard";
   if (r === "manager") return "/(tabs)/fuel";
   if (r === "rainfall") return "/rainfall-entry";
   if (r === "labour") return "/(tabs)/labour";

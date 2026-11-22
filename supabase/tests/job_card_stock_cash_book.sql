@@ -4,7 +4,7 @@ set local lock_timeout='3s';
 set local statement_timeout='55s';
 do $accept$
 declare
-  admin_user uuid; buyer uuid; vehicle bigint; own bigint; owner_code_text text;
+  admin_user uuid; buyer uuid; driver uuid; stores uuid; vehicle bigint; own bigint; owner_code_text text;
   supplier_id_test bigint; supplier text; trace bigint; category bigint; part_item bigint; part bigint;
   job uuid:=gen_random_uuid(); quote uuid:=gen_random_uuid(); request_id uuid:=gen_random_uuid();
   authorisation uuid:=gen_random_uuid(); trip uuid:=gen_random_uuid(); receipt uuid:=gen_random_uuid();
@@ -13,10 +13,17 @@ declare
   code text:='QA-'||job; day date:=(current_timestamp at time zone 'Africa/Harare')::date;
   submitted jsonb; approval jsonb; ordered jsonb; order_id_test bigint; purchased_line_id bigint; posted jsonb; invoice bigint;
   ineligible_asset bigint; returned_receipt uuid:=gen_random_uuid(); issue_id uuid:=gen_random_uuid(); issued jsonb;
+  pump_type bigint; pump bigint; fixed_farm bigint; pump_job uuid:=gen_random_uuid();
 begin
   select user_id into strict admin_user from public.app_user_role where lower(role_name)='admin' order by user_id limit 1;
-  select user_id into strict buyer from public.app_user_role where lower(role_name)='fuel' order by user_id limit 1;
-  insert into stock_v2.buying_staff_role(user_id,role_name,assigned_by) values(buyer,'buyer',admin_user),(buyer,'driver',admin_user) on conflict do nothing;
+  select u.id into strict buyer from auth.users u where stock_v2.can_buy(u.id) order by u.id limit 1;
+  select user_id into strict driver from (
+    select user_id from public.app_user_role where lower(role_name)='driver'
+    union select user_id from stock_v2.buying_staff_role where role_name='driver'
+  ) d order by user_id limit 1;
+  select user_id into strict stores from stock_v2.staff_role where role_name='stock' and active order by user_id limit 1;
+  perform stock_v2.workflow_require(stores);
+  if stock_v2.can_buy(driver) or stock_v2.workflow_access(driver)->>'is_admin'='true' then raise exception 'Select a dedicated driver for the access check'; end if;
   select v.vehicle_id,o.owner_id,c.stock_owner_code into strict vehicle,own,owner_code_text
     from public.vehicle v join public.company c on c.company_id=v.owner_company_id
     join stock_v2.owner o on o.owner_code='TEST_'||c.stock_owner_code
@@ -40,6 +47,18 @@ begin
   insert into stock_v2.buying_item_category select part_item,category;
   insert into stock_v2.buying_item_category select part_item,category_id from stock_v2.buying_category where catalogue_group='irrigation' and category_name ilike '%bearing%' limit 1;
   if (select count(*) from stock_v2.buying_item_category where item_id=part_item)<>2 then raise exception 'Shared bearing catalogue failed'; end if;
+  insert into public.vehicle_type(type_code,type_name) values('QA'||substr(job::text,1,8),'Acceptance Pump')
+    returning vehicle_type_id into pump_type;
+  insert into public.vehicle(vehicle_name,fuel_type,vehicle_type_id,ownership_status,owner_company_id)
+    select code,'DIESEL',pump_type,'owned',v.owner_company_id from public.vehicle v where v.vehicle_id=vehicle returning vehicle_id into pump;
+  select farm_id into strict fixed_farm from public.farm where active order by farm_id limit 1;
+  insert into stock_v2.irrigation_asset_farm(vehicle_id,farm_id) values(pump,fixed_farm);
+  insert into stock_v2.job_card(id,vehicle_id,card_type,work_description,requested_by) values(pump_job,pump,'irrigation','Repair pump bearing',buyer);
+  insert into stock_v2.job_card_part(job_id,item_id,requested_quantity,category_id)
+    select pump_job,part_item,1,c.category_id from stock_v2.buying_item_category ic join stock_v2.buying_category c using(category_id)
+    where ic.item_id=part_item and c.catalogue_group='irrigation';
+  delete from stock_v2.irrigation_asset_farm where vehicle_id=pump;
+  if not exists(select from stock_v2.job_card where id=pump_job and farm_id=fixed_farm) then raise exception 'Fixed farm was lost from the original job'; end if;
   insert into stock_v2.job_card(id,vehicle_id,work_description,requested_by) values(job,vehicle,'Replace worn bearing',buyer);
   insert into stock_v2.job_card_part(job_id,item_id,category_id,requested_quantity) values(job,part_item,category,2) returning id into part;
   if not exists(select from stock_v2.job_card_part where id=part and owner_id=own and unit_price is null) then raise exception 'Asset owner or optional price failed'; end if;
@@ -59,8 +78,8 @@ begin
   if stock_v2.buying_authorise_po(admin_user,authorisation,approval)->>'target_order_id' is distinct from order_id_test::text
     or not exists(select from stock_v2.order_header where order_id=order_id_test and payment_terms='Cash on collection') then raise exception 'PO terms or replay failed'; end if;
   select l.order_line_id into strict purchased_line_id from stock_v2.job_purchase_line l where l.part_id=part and l.quote_id=quote;
-  insert into stock_v2.town_trip(id,trip_date,driver_id,created_by) values(trip,day,buyer,admin_user);
-  insert into stock_v2.town_trip_order(trip_id,order_id,outcome,checked_by,checked_at) values(trip,order_id_test,'collected',buyer,now());
+  insert into stock_v2.town_trip(id,trip_date,driver_id,created_by) values(trip,day,driver,admin_user);
+  insert into stock_v2.town_trip_order(trip_id,order_id,outcome,checked_by,checked_at) values(trip,order_id_test,'collected',driver,now());
   insert into cash_book.account(id,name,currency,opening_date,opening_balance,created_by) values(account,code,'USD',day,100,admin_user);
   insert into cash_book.entry(id,kind,currency,account_id,amount,entry_date,value_date,reference,narrative,counterparty,status,created_by,decided_by,decided_at)
     values(advance,'payment','USD',account,50,day,day,code,'Trip advance','QA Buyer','confirmed',admin_user,admin_user,now());
@@ -85,9 +104,9 @@ begin
       or (select sum(quantity) from stock_v2.quantity_balance where item_id=part_item) is distinct from 2::numeric then raise exception 'Receipt verification or replay failed'; end if;
   if not exists(select from stock_v2.job_asset_purchase_history h where h.vehicle_id=vehicle and h.item_id=part_item and h.supplier_name=supplier and h.unit_price=15)
     or exists(select from stock_v2.job_asset_purchase_history h where h.vehicle_id<>vehicle and h.item_id=part_item) then raise exception 'Equipment history attribution failed'; end if;
-  insert into stock_v2.job_part_reservation_event(id,part_id,quantity_delta,actor) values(gen_random_uuid(),part,2,buyer);
-  issued:=stock_v2.post_job_part_issue(issue_id,buyer,part,2);
-  if stock_v2.post_job_part_issue(issue_id,buyer,part,2) is distinct from issued then raise exception 'Replayed stock issue differs'; end if;
+  insert into stock_v2.job_part_reservation_event(id,part_id,quantity_delta,actor) values(gen_random_uuid(),part,2,stores);
+  issued:=stock_v2.post_job_part_issue(issue_id,stores,part,2);
+  if stock_v2.post_job_part_issue(issue_id,stores,part,2) is distinct from issued then raise exception 'Replayed stock issue differs'; end if;
   if not exists(select from stock_v2.job_part_usage where part_id=part and issued_quantity=2 and repair_cost=30 and pending_cost_lines=0) then raise exception 'Issued part cost is wrong'; end if;
   insert into cash_book.entry(id,kind,currency,account_id,amount,entry_date,value_date,reference,narrative,counterparty,status,created_by,decided_by,decided_at)
     values(change_id,'receipt','USD',account,20,day,day,'R-'||code,'Return trip cash','QA Buyer','confirmed',admin_user,admin_user,now());
