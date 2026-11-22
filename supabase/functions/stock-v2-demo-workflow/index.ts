@@ -16,6 +16,49 @@ Deno.serve(async(req)=>{
  try{
   const access=(await db`select stock_v2.workflow_access(${user.id}::uuid) as value`)[0].value;
   if(req.method==="GET" && new URL(req.url).searchParams.has("stock_access"))return reply({access});
+  if(req.method==="GET" && new URL(req.url).searchParams.has("chemical_actives")){
+    try{
+      const rows=await db`select i.item_code,a.active_name,a.concentration::float8 as concentration,a.concentration_unit
+        from stock_v2.item_active_ingredient a join stock_v2.item i using(item_id)
+        order by i.item_code,a.id`;
+      return reply({rows});
+    }catch(e){
+      if((e as any)?.code==="42P01")return reply({rows:[],unavailable:true});
+      throw e;
+    }
+  }
+  if(req.method==="POST" && new URL(req.url).searchParams.has("chemical_actives")){
+    if(!access.is_admin)return reply({error:"Admin access required to edit chemical master data"},403);
+    const payload=await req.json().catch(()=>null);
+    const code=String(payload?.item_code??"").trim();
+    const rows=payload?.actives;
+    if(!code||!Array.isArray(rows)||rows.length<1||rows.length>20)
+      return reply({error:"Product and 1–20 active ingredients required"},400);
+    const normalized=rows.map((a:any)=>({
+      name:String(a.name??"").trim(),
+      amount:Number(a.amount),
+      unit:String(a.unit??"")
+    }));
+    if(normalized.some((a:any)=>!a.name||a.name.length>150||!Number.isFinite(a.amount)||a.amount<=0||!["g/L","g/kg"].includes(a.unit))||
+      new Set(normalized.map((a:any)=>a.name.toLowerCase())).size!==normalized.length)
+      return reply({error:"Each active needs a unique name, positive concentration and g/L or g/kg unit"},400);
+    try{
+      await db.begin(async(tx:any)=>{
+        const found=await tx`select item_id from stock_v2.item where item_code=${code} for update`;
+        if(!found.length)throw Error("Product not found");
+        const itemId=found[0].item_id;
+        const prior=await tx`select active_name,concentration::float8 as amount,concentration_unit as unit from stock_v2.item_active_ingredient where item_id=${itemId} order by id`;
+        await tx`delete from stock_v2.item_active_ingredient where item_id=${itemId}`;
+        for(const a of normalized)await tx`insert into stock_v2.item_active_ingredient
+          (item_id,active_name,concentration,concentration_unit,updated_by)
+          values(${itemId},${a.name},${a.amount},${a.unit},${user.id}::uuid)`;
+        await tx`insert into stock_v2.item_active_ingredient_audit(item_id,actor,old_ingredients,new_ingredients)
+          values(${itemId},${user.id}::uuid,${JSON.stringify(prior)}::jsonb,${JSON.stringify(normalized)}::jsonb)`;
+      });
+      return reply({saved:true});
+    }catch(e){return reply({error:e instanceof Error?e.message:String(e)},400)}
+  }
+
   await db`select stock_v2.workflow_require(${user.id}::uuid)`;
   if(req.method==='GET'&&new URL(req.url).searchParams.has('stock_adjustment_report')){
    if(!(await db`select stock_v2.can_print_stocktake(${user.id}::uuid) as allowed`)[0].allowed)return reply({error:'Admin or Clerk access required'},403);
