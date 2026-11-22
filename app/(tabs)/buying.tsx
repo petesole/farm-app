@@ -2,7 +2,6 @@ import {useEffect, useState} from 'react';
 import {useRouter} from 'expo-router';
 import {ScrollView, Text} from 'react-native';
 import {StockV2Header} from '@/components/jspl/StockV2Header';
-import {WorkflowGuide} from '@/components/jspl/WorkflowGuide';
 import {StockButton, stockStyles} from '@/components/jspl/StockWorkflowControls';
 import {stockRequest} from '@/utils/stock-workflow';
 
@@ -23,7 +22,6 @@ export default function Buying() {
     <StockV2Header title="Buying" dashboard allowMain={access?.can_main}/>
     {error ? <Text style={stockStyles.error}>{error}</Text> : null}
     {access?.is_buyer || access?.can_main ? <>
-      <WorkflowGuide name="buying"/>
       <StockButton title="Purchase Orders" onPress={() => router.push({pathname:'/stock-v2-purchase-orders',params:{from:'buying'}})}/>
       <StockButton title="Receiving" onPress={() => router.push({pathname:'/stock-v2-po-receiving',params:{from:'buying'}})}/>
       <StockButton title="Job Cards" onPress={() => router.push({pathname:'/job-cards',params:{from:'buying'}})}/>

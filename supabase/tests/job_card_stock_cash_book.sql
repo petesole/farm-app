@@ -13,10 +13,11 @@ declare
   code text:='QA-'||job; day date:=(current_timestamp at time zone 'Africa/Harare')::date;
   submitted jsonb; approval jsonb; ordered jsonb; order_id_test bigint; purchased_line_id bigint; posted jsonb; invoice bigint;
   ineligible_asset bigint; returned_receipt uuid:=gen_random_uuid(); issue_id uuid:=gen_random_uuid(); issued jsonb;
+  note_id uuid:=gen_random_uuid(); saved_note cash_book.quick_cash_note; test_count bigint;
   pump_type bigint; pump bigint; fixed_farm bigint; pump_job uuid:=gen_random_uuid();
 begin
   select user_id into strict admin_user from public.app_user_role where lower(role_name)='admin' order by user_id limit 1;
-  select u.id into strict buyer from auth.users u where stock_v2.can_buy(u.id) order by u.id limit 1;
+  select u.id into strict buyer from auth.users u where stock_v2.can_buy(u.id) and not coalesce((stock_v2.workflow_access(u.id)->>'is_admin')::boolean,false) order by u.id limit 1;
   select user_id into strict driver from (
     select user_id from public.app_user_role where lower(role_name)='driver'
     union select user_id from stock_v2.buying_staff_role where role_name='driver'
@@ -59,6 +60,7 @@ begin
     where ic.item_id=part_item and c.catalogue_group='irrigation';
   delete from stock_v2.irrigation_asset_farm where vehicle_id=pump;
   if not exists(select from stock_v2.job_card where id=pump_job and farm_id=fixed_farm) then raise exception 'Fixed farm was lost from the original job'; end if;
+  insert into stock_v2.job_card(id,vehicle_id,work_description,requested_by) values(gen_random_uuid(),vehicle,'Admin-created maintenance job',admin_user);
   insert into stock_v2.job_card(id,vehicle_id,work_description,requested_by) values(job,vehicle,'Replace worn bearing',buyer);
   insert into stock_v2.job_card_part(job_id,item_id,category_id,requested_quantity) values(job,part_item,category,2) returning id into part;
   if not exists(select from stock_v2.job_card_part where id=part and owner_id=own and unit_price is null) then raise exception 'Asset owner or optional price failed'; end if;
@@ -83,6 +85,24 @@ begin
   insert into cash_book.account(id,name,currency,opening_date,opening_balance,created_by) values(account,code,'USD',day,100,admin_user);
   insert into cash_book.entry(id,kind,currency,account_id,amount,entry_date,value_date,reference,narrative,counterparty,status,created_by,decided_by,decided_at)
     values(advance,'payment','USD',account,50,day,day,code,'Trip advance','QA Buyer','confirmed',admin_user,admin_user,now());
+  select count(*) into test_count from cash_book.entry where account_id=account;
+  begin
+    perform cash_book.save_quick_note(buyer,gen_random_uuid(),day,'Access check');
+    raise exception 'Buyer posted a Cash Book note';
+  exception when insufficient_privilege then null; end;
+  saved_note:=cash_book.save_quick_note(admin_user,note_id,day,'Collect receipt');
+  perform cash_book.save_quick_note(admin_user,note_id,day,'Collect receipt');
+  if saved_note.entry_id is not null or (select count(*) from cash_book.quick_cash_note where id=note_id)<>1
+    or (select count(*) from cash_book.entry where account_id=account)<>test_count then raise exception 'Quick Cash posted money or duplicated a note'; end if;
+  begin
+    perform cash_book.match_quick_note(admin_user,note_id,gen_random_uuid());
+    raise exception 'Matched missing payment' using errcode='23514';
+  exception when raise_exception then if sqlerrm not like 'Select a confirmed payment%' then raise; end if; end;
+  perform cash_book.match_quick_note(admin_user,note_id,advance);
+  saved_note:=cash_book.match_quick_note(admin_user,note_id,advance);
+  if saved_note.entry_id is distinct from advance or saved_note.reconciled_by is distinct from admin_user
+    or not exists(select from cash_book.account_balance where id=account and balance=50)
+    or (select count(*) from cash_book.entry where account_id=account)<>test_count then raise exception 'Reconciliation changed the ledger'; end if;
   insert into cash_book.trip_advance values(advance,trip,account,50);
   insert into stock_v2.receipt_verification(id,receipt_action,submitted_by,town_trip_id,payload) values(receipt,'combined_grv',buyer,trip,
     jsonb_build_object('owner_code',owner_code_text,'supplier',supplier,'invoice_number',code,'invoice_date',day,

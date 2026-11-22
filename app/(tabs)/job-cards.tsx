@@ -213,7 +213,7 @@ export default function JobCards() {
     {error ? <><Text style={styles.error}>{error}</Text><StockRecovery scope={reservationPart!==null?'job-reservation':'job-card'} onRecovered={() => void load()}/></> : null}
     {notice ? <Text style={styles.success}>{notice}</Text> : null}
     {data&&!editing&&!history?<View style={styles.row}>
-      {data.can_create?<StockButton title="New Job Card" onPress={()=>{setEditing(true);setDate(new Date().toLocaleDateString('en-GB'));setParts([newPart()]);setError('');setNotice('');}}/>:<View><Text style={styles.muted}>The Buyer enters new Job Cards.</Text>{data.can_main?<StockButton title="Assign Buyer access" onPress={()=>router.push("/stock-v2-staff")}/>:null}</View>}
+      {data.can_create?<StockButton title="New Job Card" onPress={()=>{setEditing(true);setDate(new Date().toLocaleDateString('en-GB'));setParts([newPart()]);setError('');setNotice('');}}/>:null}
       <StockButton title="Historical Job Cards" onPress={()=>setHistory(true)}/>
     </View>:null}
     {editing ? <View style={styles.card}>

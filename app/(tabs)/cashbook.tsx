@@ -2,14 +2,12 @@ import {useCallback,useState} from 'react';
 import {useFocusEffect,useLocalSearchParams} from 'expo-router';
 import {ScrollView,Text,View} from 'react-native';
 import {StockV2Header} from '@/components/jspl/StockV2Header';
-import {WorkflowGuide} from '@/components/jspl/WorkflowGuide';
+import {CashBookHistory,type CashEntry as Entry,type QuickNote,type CashBalance} from '@/components/jspl/CashBookHistory';
 import {StockButton,StockDateField,StockField,StockRecovery,StockSelect,stockStyles as styles} from '@/components/jspl/StockWorkflowControls';
 import {displayJsplDate,parseJsplDateInput} from '@/utils/jspl-input';
 import {stockMutation,stockRequest} from '@/utils/stock-workflow';
 
 type Account={id:string;name:string;currency:string;balance:string;active:boolean};
-type Entry={id:string;entry_number:number;kind:string;currency:string;amount:string;account_id:string;destination_id?:string;entry_date:string;
-  reference:string;narrative:string;status:'draft'|'confirmed'|'voided';reversal_of?:string;reversed:boolean;trip_cash:boolean};
 type Trip={id:string;trip_number:number;trip_date:string;driver_name:string};
 type Advance={id:string;trip_id:string;account_id:string;amount:string;currency:string;outstanding:string;spend?:string;cash_returned?:string;receipt_reference?:string;settled_date?:string;
   invoices:{invoice_number:string;amount:string}[]};
@@ -24,11 +22,11 @@ const blankSettlement={advance_id:'',date:'',spend:'',cash_returned:'',receipt_r
 
 export default function CashBook(){
   const {view}=useLocalSearchParams<{view?:string}>();
-  const [data,setData]=useState<{accounts:Account[];entries:Entry[];trips:Trip[];advances:Advance[];tripInvoices:TripInvoice[];counterparties:{name:string}[];expenses:{id:string;job_number:number;item_name:string;tracecode_name:string}[]}>();
-  const [tab,setTab]=useState<'home'|'entries'|'history'|'accounts'|'trips'|'labour'|'suppliers'>(view==='trips'||view==='history'?view:'home');
+  const [data,setData]=useState<{accounts:Account[];entries:Entry[];notes:QuickNote[];balances:CashBalance[];trips:Trip[];advances:Advance[];tripInvoices:TripInvoice[];counterparties:{name:string}[];expenses:{id:string;job_number:number;item_name:string;tracecode_name:string}[]}>();
+  const [tab,setTab]=useState<'home'|'entries'|'quick'|'history'|'accounts'|'trips'|'labour'|'suppliers'>(view==='trips'||view==='history'?view:'home');
   const [expenseLines,setExpenseLines]=useState<{part_id:string;amount:string}[]>([]);
   const [draft,setDraft]=useState(blankEntry);
-  const [quickOut,setQuickOut]=useState(false);
+  const [quickNote,setQuickNote]=useState({date:'',description:''});
   const [account,setAccount]=useState(blankAccount);
   const [advance,setAdvance]=useState(blankAdvance);
   const [settlement,setSettlement]=useState(blankSettlement);
@@ -47,8 +45,9 @@ export default function CashBook(){
   const [notice,setNotice]=useState('');
   const load=useCallback(async()=>{
     try{
-      const [book,suppliers]=await Promise.all([stockRequest('?cash_book=1'),stockRequest('?cash_book_supplier_invoices=1')]);
-      setData(book);setInvoices(suppliers.invoices);setCreditOptions(suppliers.creditOptions);
+      await Promise.all([stockRequest('?cash_book=1').then(setData),stockRequest('?cash_book_supplier_invoices=1').then(suppliers=>{
+        setInvoices(suppliers.invoices);setCreditOptions(suppliers.creditOptions);
+      })]);
     }
     catch(failure){setError((failure as Error).message);}
   },[]);
@@ -68,7 +67,8 @@ export default function CashBook(){
       else if(action==='cash_book_draft'){setDraft(blankEntry);setTab('history');setNotice('Entry '+result.entry_number+' saved as draft.');}
       else if(action==='cash_book_trip_advance'){setAdvance(blankAdvance);setNotice('Trip advance recorded.');}
       else if(action==='cash_book_trip_settle'){setSettlement(blankSettlement);setNotice('Trip advance reconciled.');}
-      else if(action==='cash_book_quick_cash_out'){setDraft(blankEntry);setTab('history');setNotice('Cash out '+result.entry_number+' posted.');}
+      else if(action==='cash_book_quick_note'){setQuickNote({date:'',description:''});setTab('history');setNotice('Quick Cash '+result.note_number+' saved for reconciliation.');}
+      else if(action==='cash_book_match_note'){setNotice('Quick Cash '+result.note_number+' reconciled.');}
       else if(action==='cash_book_labour_draft'){setSelectedLabour([]);setLabourRows([]);setLoadedLabourDate('');setNotice('Labour payment '+result.entry_number+' saved as a draft.');}
       else if(action==='cash_book_supplier_draft'){setSupplierPayment({grv_id:'',account_id:'',date:'',amount:'',reference:''});setNotice('Supplier payment '+result.entry_number+' saved as a draft.');}
       else if(action==='cash_book_apply_supplier_credit'){setCredit({pair:'',currency:'',amount:''});setNotice('Supplier credit applied.');}
@@ -81,8 +81,8 @@ export default function CashBook(){
   const editDraft=(key:keyof typeof blankEntry,value:string)=>setDraft(current=>({...current,[key]:value}));
   const editAccount=(key:keyof typeof blankAccount,value:string)=>setAccount(current=>({...current,[key]:value}));
   const decision=(entry:Entry,command:'confirm'|'void')=>void save('cash_book_decision',{entry_id:entry.id,decision:command});
-  function openTransaction(kind:string,quick=false){
-    setExpenseLines([]);setDraft({...blankEntry,kind});setQuickOut(quick);setError('');setNotice('');setTab('entries');
+  function openTransaction(kind:'payment'|'receipt'){
+    setExpenseLines([]);setDraft({...blankEntry,kind});setError('');setNotice('');setTab('entries');
   }
   const entryDate=parseJsplDateInput(draft.entry_date);
   const valueDate=draft.value_date?parseJsplDateInput(draft.value_date):entryDate;
@@ -100,7 +100,7 @@ export default function CashBook(){
   const labourSources=labourRows.filter(row=>selectedLabour.includes(rowKey(row)));
   const labourTotal=(labourSources.reduce((sum,row)=>sum+Math.round(Number(row.amount)*100),0)/100).toFixed(2);
   const validDraft=!busy&&!!entryDate&&!!valueDate&&!!source&&!!draft.reference.trim()&&!!draft.narrative.trim()&&Number(draft.amount)>0
-    &&(draft.kind==='transfer'?!!draft.destination_id:!!draft.counterparty.trim());
+    &&!!draft.counterparty.trim();
 
   async function loadLabour(){
     if(!labourDay||busy)return;
@@ -112,32 +112,28 @@ export default function CashBook(){
     finally{setBusy(false);}
   }
 
-  return <ScrollView contentContainerStyle={styles.page}>
-    <StockV2Header title={({home:"Cash Book",entries:quickOut?"Quick Cash Out":"New "+draft.kind[0].toUpperCase()+draft.kind.slice(1),history:"Transaction History",accounts:"Cash Book Accounts",trips:"Trip Advances",labour:"Labour Payments",suppliers:"Supplier Invoices"})[tab]} dashboard allowMain={!!data}
+  return <ScrollView key={tab} contentContainerStyle={styles.page}>
+    <StockV2Header title={({home:"Cash Book",quick:"Quick Cash",entries:"New "+draft.kind[0].toUpperCase()+draft.kind.slice(1),history:"Transaction History",accounts:"Cash Book Accounts",trips:"Trip Advances",labour:"Labour Payments",suppliers:"Supplier Invoices"})[tab]} dashboard allowMain={!!data}
       backLabel={tab==='home'?undefined:'← Cash Book'} onStock={tab==='home'?undefined:()=>{if(!busy)setTab('home');}}/>
     {error?<><Text style={styles.error}>{error}</Text><StockRecovery scope="cash-book" onRecovered={()=>void load()}/></>:null}
     {notice?<Text style={styles.success}>{notice}</Text>:null}
-    {data?<>{tab==="home"?<><WorkflowGuide name="cashbook" context={{
-      home:'Use Quick Cash Out to record a payment that has already been made.',
-      entries:'Use Quick Cash Out for a payment already made.',
-      history:'Review saved transactions.',
-      accounts:'Enter the opening balance as at the opening date.',
-      trips:'The amount spent plus the cash returned must equal the advance.',
-      labour:'Use an account in the recorded Labour cost currency.',
-      suppliers:'A draft reserves part of the invoice balance until it is confirmed or voided.',
-    }[tab]}/><View style={styles.row}>
+    {data?<>{tab==="home"?<><View style={styles.row}>
       <StockButton title="New Payment" disabled={busy} onPress={()=>openTransaction('payment')}/>
       <StockButton title="New Receipt" disabled={busy} onPress={()=>openTransaction('receipt')}/>
-      <StockButton title="New Transfer" disabled={busy} onPress={()=>openTransaction('transfer')}/>
-      <StockButton title="Quick Cash Out" disabled={busy} onPress={()=>openTransaction('payment',true)}/>
+      <StockButton title="Quick Cash" disabled={busy} onPress={()=>{setQuickNote({date:new Date().toLocaleDateString('en-GB'),description:''});setNotice('');setError('');setTab('quick');}}/>
       <StockButton title="Transaction History" disabled={busy} onPress={()=>setTab('history')}/>
       <StockButton title="Accounts" disabled={busy} onPress={()=>setTab('accounts')}/>
       <StockButton title="Trip advances" disabled={busy} onPress={()=>setTab('trips')}/>
       <StockButton title="Labour payments" disabled={busy} onPress={()=>setTab('labour')}/>
       <StockButton title="Supplier invoices" disabled={busy} onPress={()=>setTab('suppliers')}/>
     </View></>:null}
-    {accounts.map(record=><Text key={record.id} style={styles.text}>{record.name} · {record.currency} {record.balance}</Text>)}
-    {tab==='home'?null:tab==='accounts'?<View style={styles.card}>
+    {tab==='accounts'&&accounts.map(record=><Text key={record.id} style={styles.text}>{record.name} · {record.currency} {record.balance}</Text>)}
+    {tab==='home'?null:tab==='quick'?<View style={styles.card}>
+      <StockDateField label="Date" value={quickNote.date} onChange={date=>setQuickNote(n=>({...n,date}))}/>
+      <StockField label="Description" value={quickNote.description} onChange={description=>setQuickNote(n=>({...n,description}))}/>
+      <StockButton title="Save Quick Cash" disabled={busy||!parseJsplDateInput(quickNote.date)||!quickNote.description.trim()||quickNote.description.trim().length>500}
+        onPress={()=>void save('cash_book_quick_note',{date:parseJsplDateInput(quickNote.date),description:quickNote.description.trim()})}/>
+      </View>:tab==='accounts'?<View style={styles.card}>
       <Text style={styles.title}>New account</Text>
       <StockField label="Account name" value={account.name} onChange={value=>editAccount('name',value)}/>
       <StockSelect label="Currency" value={account.currency} options={['USD','ZiG'].map(id=>({id,label:id}))} onChange={value=>editAccount('currency',String(value??''))}/>
@@ -246,14 +242,11 @@ export default function CashBook(){
       <View style={styles.card}>
         <StockSelect label="Account" value={draft.account_id} options={accountOptions}
           onChange={value=>setDraft(current=>({...current,account_id:String(value??''),destination_id:''}))}/>
-        {draft.kind==='transfer'?<StockSelect label="Destination account" value={draft.destination_id}
-          options={accountOptions.filter(record=>record.id!==source?.id&&accounts.find(account=>account.id===record.id)?.currency===source?.currency)}
-          onChange={value=>editDraft('destination_id',String(value??''))}/>
-          :<StockSelect label={draft.kind==="receipt"?"Payer":"Payee"} value={draft.counterparty||null}
+        <StockSelect label={draft.kind==="receipt"?"Payer":"Payee"} value={draft.counterparty||null}
           options={(data.counterparties??[]).map(party=>({id:party.name,label:party.name}))}
           onChange={value=>editDraft("counterparty",String(value??""))}
           createLabel={draft.kind==="receipt"?"+ Add payer":"+ Add payee"}
-          onCreate={name=>void save("cash_book_add_counterparty",{name})}/>}
+          onCreate={name=>void save("cash_book_add_counterparty",{name})}/>
         <StockField label="Amount" value={draft.amount} numeric onChange={value=>editDraft('amount',value)}/>
         <StockDateField label="Transaction date (dd/mm/yyyy)" value={draft.entry_date} onChange={value=>editDraft('entry_date',value)}/>
         <StockDateField label="Value date (optional)" value={draft.value_date} onChange={value=>editDraft('value_date',value)}/>
@@ -267,15 +260,12 @@ export default function CashBook(){
         </View>:null}
         <StockField label="Reference" value={draft.reference} onChange={value=>editDraft('reference',value)}/>
         <StockField label="Description" value={draft.narrative} onChange={value=>editDraft('narrative',value)}/>
-        <StockButton title={quickOut?"Post Quick Cash Out":"Save draft"} disabled={!validDraft||expenseLines.some(l=>!l.part_id||!(Number(l.amount)>0))||expenseLines.reduce((s,l)=>s+Number(l.amount),0)>Number(draft.amount)+0.000001}
-          onPress={()=>void save(quickOut?'cash_book_quick_cash_out':'cash_book_draft',{...draft,entry_date:entryDate,value_date:valueDate,expense_allocations:expenseLines})}/>
+        <StockButton title="Save draft" disabled={!validDraft||expenseLines.some(l=>!l.part_id||!(Number(l.amount)>0))||expenseLines.reduce((s,l)=>s+Number(l.amount),0)>Number(draft.amount)+0.000001}
+          onPress={()=>void save('cash_book_draft',{...draft,entry_date:entryDate,value_date:valueDate,expense_allocations:expenseLines})}/>
       </View>
-    </>:<>
-      {data.entries.map(entry=><View key={entry.id} style={styles.card}>
-        <Text style={styles.title}>{entry.reference} · {entry.currency} {entry.amount}</Text>
-        <Text style={styles.text}>{displayJsplDate(entry.entry_date)} · {entry.kind} · {entry.reversed?'Reversed':entry.status} · {label(entry.account_id)}{entry.destination_id?' → '+label(entry.destination_id):''}</Text>
-        <Text style={styles.muted}>{entry.narrative}</Text>
-        {entry.status==='draft'?<View style={styles.row}>
+    </>:<CashBookHistory entries={data.entries} notes={data.notes??[]} balances={data.balances??[]} busy={busy} accountName={label}
+      match={(note,entryId)=>void save('cash_book_match_note',{note_id:note.id,entry_id:entryId})}
+      actions={entry=>entry.status==='draft'?<View style={styles.row}>
           <StockButton title="Confirm entry" disabled={busy} onPress={()=>decision(entry,'confirm')}/>
           <StockButton title="Void draft" disabled={busy} onPress={()=>decision(entry,'void')}/>
         </View>:entry.status==='confirmed'&&!entry.reversed&&!entry.reversal_of&&!entry.trip_cash?(reversal.id===entry.id?<View style={styles.card}>
@@ -284,8 +274,7 @@ export default function CashBook(){
           <StockButton title="Post reversal" disabled={busy||!reversalDate||!reversal.reason.trim()}
             onPress={()=>void save('cash_book_decision',{entry_id:entry.id,decision:'reverse',entry_date:reversalDate,reason:reversal.reason})}/>
         </View>:<StockButton title="Reverse entry" disabled={busy} onPress={()=>setReversal({id:entry.id,date:'',reason:''})}/>):null}
-      </View>)}
-    </>}
+    />}
     </>:null}
   </ScrollView>;
 }

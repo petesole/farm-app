@@ -32,8 +32,8 @@ Deno.serve(async(req)=>{
    const key=Deno.env.get("JSPL_WORKFLOW_OPENAI_API_KEY"),model=Deno.env.get("JSPL_WORKFLOW_OPENAI_MODEL");
    if(!key||!model)return reply({error:"Ask a question will be available when AI help is configured. The workflow guide is available now."},503);
    const workflow=module==="buying"
-    ?"Buying can view Job Cards and submit purchase orders or receipts. Admin authorises POs and enters payment terms. JS requires a supplier. AO may defer supplier selection until receiving. Partial deliveries remain linked to the PO. An admin verifies a receipt before stock posts. A returned receipt can be reopened and corrected by the submitter. Town Trips let admin assign orders and drivers report collection. Buying opens collected orders in Receiving. Buying and Stock can reserve and issue Job Card parts."
-    :"Cash Book is admin-only. Draft payments, receipts and same-currency transfers do not change balances until confirmed. A confirmed entry can be reversed where supported. Quick Cash Out records a payment already made. Trip advances debit the selected account. Reconciliation requires documented spend plus cash returned to equal the advance. Only cash returned credits the account. Labour drafts link to selected source rows and the admin must choose the account in the recorded cost currency. Eligible verified supplier invoices support partial drafts and payments. Trip invoices and credit-linked invoices require separate reconciliation.";
+    ?"Admin and Buyer can open Job Cards and submit purchase orders or receipts. Admin authorises POs and enters payment terms. JS requires a supplier. AO may defer supplier selection until receiving. Partial deliveries remain linked to the PO. An admin verifies a receipt before stock posts. A returned receipt can be reopened and corrected by the submitter. Town Trips let admin assign orders and drivers report collection. Buying opens collected orders in Receiving. Buying and Stock can reserve and issue Job Card parts."
+    :"Cash Book is admin-only. Quick Cash saves only a date and description for later reconciliation. In Transaction History select the note to match it to a confirmed payment or receipt. Saving or matching a note does not change balances. History starts with the latest transaction, with From and To dates and current balances by currency. Draft payments and receipts affect balances only when confirmed. Trip advances debit the selected account. Reconciliation requires documented spend plus cash returned to equal the advance. Only cash returned credits the account. Labour drafts link to selected source rows and the admin must choose the account in the recorded cost currency. Eligible verified supplier invoices support partial drafts and payments. Trip invoices and credit-linked invoices require separate reconciliation.";
    try{
     const response=await fetch("https://api.openai.com/v1/responses",{
      method:"POST",headers:{authorization:"Bearer "+key,"content-type":"application/json"},
@@ -114,7 +114,7 @@ Deno.serve(async(req)=>{
    if(!access.can_main)return reply({error:"Cash Book access required"},403);
    const [accounts,entries,trips,advances,tripInvoices,counterparties]=await Promise.all([
     db`select id,name,currency,opening_date::text,opening_balance::text,active,balance::text from cash_book.account_balance order by currency,name`,
-    db`select e.id,e.entry_number,e.kind,e.currency,e.account_id,e.destination_id,e.amount::text,e.entry_date::text,
+    db`select e.id,e.entry_number,e.kind,e.currency,e.account_id,e.destination_id,e.amount::text,e.entry_date::text,e.created_at,
       e.value_date::text,e.reference,e.narrative,e.counterparty,e.status,e.reversal_of,
       exists(select 1 from cash_book.entry r where r.reversal_of=e.id) as reversed,
       exists(select 1 from cash_book.trip_advance a where a.id=e.id)
@@ -137,7 +137,11 @@ Deno.serve(async(req)=>{
     ) names group by lower(name) order by lower(name)`,
    ]);
    const expenses=await db`select p.id::text as id,j.job_number,i.item_name,t.tracecode_name from stock_v2.job_card_part p join stock_v2.job_card j on j.id=p.job_id join stock_v2.item i using(item_id) left join public.tracecode t on t.tracecode_id=j.tracecode_id where i.buying_direct_expense and j.closed_at is null order by j.job_number desc,p.id`;
-   return reply({accounts,entries,trips,advances,tripInvoices,counterparties,expenses});
+   const notes=await db`select n.id,n.note_number,n.note_date::text,n.description,n.created_at,n.entry_id,e.reference as matched_reference,
+     n.entry_id is not null and not exists(select from cash_book.entry r where r.reversal_of=n.entry_id and r.status='confirmed') as reconciled
+     from cash_book.quick_cash_note n left join cash_book.entry e on e.id=n.entry_id order by n.note_date desc,n.note_number desc`;
+   const balances=await db`select currency,sum(balance)::text as balance from cash_book.account_balance group by currency order by currency`;
+   return reply({accounts,entries,trips,advances,tripInvoices,counterparties,expenses,notes,balances});
   }
   if(req.method==="GET"&&new URL(req.url).searchParams.has("town_trips")){
    if(!access.is_stock&&!access.is_buyer&&!access.is_driver)return reply({error:"Town Trip access required"},403);
@@ -812,7 +816,8 @@ left join lateral (
    if(body.operation_id)await tx`insert into stock_v2.approval_operation(id,actor,request,result) values(${body.operation_id}::uuid,${user.id}::uuid,${tx.json(body)}::jsonb,${tx.json(result)}::jsonb)`;
    return result;
   });
-  if(["cash_book_account","cash_book_draft","cash_book_decision","cash_book_trip_advance","cash_book_trip_settle","cash_book_labour_draft","cash_book_quick_cash_out","cash_book_supplier_draft","cash_book_apply_supplier_credit","cash_book_add_counterparty"].includes(body?.action)){
+  if(body?.action==="cash_book_quick_cash_out")return reply({error:"Refresh Cash Book to enter a Quick Cash note."},409);
+  if(["cash_book_account","cash_book_draft","cash_book_decision","cash_book_trip_advance","cash_book_trip_settle","cash_book_labour_draft","cash_book_quick_note","cash_book_match_note","cash_book_supplier_draft","cash_book_apply_supplier_credit","cash_book_add_counterparty"].includes(body?.action)){
    if(!access.can_main)return reply({error:"Cash Book access required"},403);
    const p=body.payload??{};
    const uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
@@ -821,6 +826,16 @@ left join lateral (
    const clean=(value:unknown)=>typeof value==="string"?value.trim():"";
    if(!uuid.test(String(body.operation_id??"")))return reply({error:"Reload Cash Book to save a recoverable operation."},400);
    const result=await transaction(async tx=>{
+    if(body.action==="cash_book_quick_note"){
+     if(!iso.test(clean(p.date))||!clean(p.description)||clean(p.description).length>500)throw Error("Enter a date and a description of up to 500 characters.");
+     const [note]=await tx`select id,note_number from cash_book.save_quick_note(${user.id}::uuid,${body.operation_id}::uuid,${p.date}::date,${clean(p.description)})`;
+     return note;
+    }
+    if(body.action==="cash_book_match_note"){
+     if(!uuid.test(clean(p.note_id))||!uuid.test(clean(p.entry_id)))throw Error("Select a note and a confirmed transaction.");
+     const [note]=await tx`select id,note_number from cash_book.match_quick_note(${user.id}::uuid,${p.note_id}::uuid,${p.entry_id}::uuid)`;
+     return note;
+    }
     if(body.action==="cash_book_add_counterparty"){
      const name=clean(p.name);
      if(!name||name.length>120)throw Error("Enter a payer or payee name of up to 120 characters.");
@@ -925,13 +940,13 @@ left join lateral (
       values(${body.operation_id}::uuid,${name},${currency},${date}::date,${opening}::numeric,${user.id}::uuid) returning id,name`;
      return account;
     }
-    if(["cash_book_draft","cash_book_quick_cash_out","cash_book_labour_draft"].includes(body.action)){
-     const labour=body.action==="cash_book_labour_draft",quick=body.action==="cash_book_quick_cash_out";
-     const kind=labour||quick?"payment":clean(p.kind),account=clean(p.account_id),destination=clean(p.destination_id),value=clean(p.amount);
+    if(["cash_book_draft","cash_book_labour_draft"].includes(body.action)){
+     const labour=body.action==="cash_book_labour_draft";
+     const kind=labour?"payment":clean(p.kind),account=clean(p.account_id),destination=clean(p.destination_id),value=clean(p.amount);
      const date=clean(p.entry_date),valueDate=clean(p.value_date),reference=clean(p.reference),narrative=clean(p.narrative),party=clean(p.counterparty);
-     if(!["payment","receipt","transfer"].includes(kind)||!uuid.test(account)||!amount.test(value)||Number(value)<=0||
+     if(!["payment","receipt"].includes(kind)||!uuid.test(account)||!amount.test(value)||Number(value)<=0||
       !iso.test(date)||!iso.test(valueDate)||!reference||reference.length>120||!narrative||narrative.length>500||
-      (kind==="transfer"?(!uuid.test(destination)||account===destination):(!party||party.length>120||!!destination)))
+      (!party||party.length>120||!!destination))
       throw Error("Complete the transaction details and enter a positive amount.");
      let labourRows:any[]=[];
      if(labour){
@@ -950,21 +965,16 @@ left join lateral (
      }
      const [entry]=await tx`insert into cash_book.entry(id,kind,currency,account_id,destination_id,amount,entry_date,value_date,
       reference,narrative,counterparty,created_by,status,decided_by,decided_at)
-      select ${body.operation_id}::uuid,${kind},a.currency,a.id,d.id,${value}::numeric,${date}::date,${valueDate}::date,
-       ${reference},${narrative},${kind==="transfer"?"":party},${user.id}::uuid,
+      select ${body.operation_id}::uuid,${kind},a.currency,a.id,null,${value}::numeric,${date}::date,${valueDate}::date,
+       ${reference},${narrative},${party},${user.id}::uuid,
        'draft',null::uuid,null::timestamptz
-      from cash_book.account a left join cash_book.account d on d.id=${destination||null}::uuid and d.currency=a.currency and d.active
+      from cash_book.account a
       where a.id=${account}::uuid and a.active and a.opening_date<=least(${date}::date,${valueDate}::date)
-       and (${kind}<>'transfer' or (d.id is not null and d.opening_date<=least(${date}::date,${valueDate}::date)))
       returning id,entry_number,status`;
-     if(!entry)throw Error("Use active accounts and dates on or after opening. Transfers require the same currency.");
+     if(!entry)throw Error("Use an active account and dates on or after opening.");
      if(p.expense_allocations?.length){
       if(labour||kind!=="payment"||!Array.isArray(p.expense_allocations)||p.expense_allocations.length>30)throw Error("Choose valid Job Card expense lines for a payment.");
       for(const line of p.expense_allocations)await tx`insert into cash_book.job_expense(entry_id,part_id,amount) values(${entry.id}::uuid,${line.part_id}::bigint,${line.amount}::numeric)`;
-     }
-     if(quick){
-      await tx`update cash_book.entry set status='confirmed',decided_by=${user.id}::uuid,decided_at=now() where id=${entry.id}::uuid`;
-      entry.status="confirmed";
      }
      for(const row of labourRows)await tx`insert into cash_book.labour_payment_source(entry_id,source_type,source_id,amount)
        values(${entry.id}::uuid,${row.source_type},${row.source_id},${row.amount}::numeric)`;

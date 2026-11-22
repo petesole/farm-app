@@ -16,10 +16,13 @@ const readings = {
 async function displayFixture(context,role){
   const user={id:'00000000-0000-4000-8000-000000000001',email:'screen@example.invalid',aud:'authenticated',user_metadata:{},app_metadata:{}};
   const session={user,access_token:'display-fixture-only',token_type:'bearer',refresh_token:'display-fixture-only',expires_in:3600,expires_at:Math.floor(Date.now()/1000)+3600};
-  const admin=role==='admin', buyer=role==='buyer', stores=role==='stock', driver=role==='driver';
+  const admin=role==='admin', buyer=admin||role==='buyer', stores=role==='stock', driver=role==='driver';
   const access={can_main:admin,is_admin:admin,is_stock:admin||stores,is_buyer:buyer,is_driver:driver};
+  const cashEntry=(day,number)=>({id:'entry-'+number,entry_number:number,reference:'Test receipt '+number,entry_date:day,created_at:day+'T12:00:00Z',kind:'receipt',status:'confirmed',currency:'USD',account_id:'USD-account',amount:'5.00',narrative:'Test deposit '+number});
+  const book={accounts:[],entries:[cashEntry('2026-11-10',1),cashEntry('2026-11-19',2)],notes:[],balances:[{currency:'USD',balance:'42.00'},{currency:'ZiG',balance:'5.00'}],
+    trips:[],advances:[],tripInvoices:[],counterparties:[],expenses:[]};
   const lookups={
-    stock_access:{access},cash_book:{accounts:[],entries:[],trips:[],advances:[],tripInvoices:[],counterparties:[],expenses:[]},
+    stock_access:{access},cash_book:book,
     cash_book_supplier_invoices:{invoices:[],creditOptions:[]},outstanding_issues:{counts:{},returned:[]},
     job_cards:{cards:[],can_create:buyer,can_buy:buyer||admin,can_main:admin,can_reserve:buyer||stores,
       vehicles:[{vehicle_id:11,vehicle_name:'Screen test tractor',vehicle_type_id:4,vehicle_type:'Tractor',type_code:'TRA',owner_name:'Screen owner',owner_code:'JS',catalogue_group:'vehicle'}],
@@ -37,6 +40,20 @@ async function displayFixture(context,role){
     else if(u.pathname==='/auth/v1/user')response=user;
     else if(u.pathname==='/rest/v1/rpc/my_farm_app_roles')response=[role];
     else if(req.method()==='GET'&&u.pathname.endsWith('/stock-buying-development'))response=lookups[[...u.searchParams.keys()][0]];
+    else if(req.method()==='POST'&&u.pathname.endsWith('/stock-buying-development')&&admin){
+      const {action,payload}=req.postDataJSON();
+      if(action==='cash_book_quick_note'){
+        assert.deepEqual(Object.keys(payload).sort(),['date','description']);
+        book.notes.push({id:'new-note',note_number:1,note_date:payload.date,description:payload.description,created_at:payload.date+'T13:00:00Z',reconciled:false});
+        response={success:true,result:{note_number:1}};
+      } else if(action==='cash_book_match_note'){
+        assert.equal(payload.note_id,'new-note');
+        const entry=book.entries.find(e=>e.id===payload.entry_id);
+        assert(entry);
+        Object.assign(book.notes[0],{entry_id:entry.id,matched_reference:entry.reference,reconciled:true});
+        response={success:true,result:{note_number:1}};
+      }
+    }
     if(response===undefined)return route.fulfill({status:403,headers,json:{error:'Outside the read-only screen fixture'}});
     return route.fulfill({headers,json:response});
   });
@@ -71,10 +88,63 @@ async function check(browser, role, width) {
     await page.waitForURL(url => !url.pathname.endsWith('/login'), {timeout:40000});
     if(role==='admin')await click(page,'Stock');
     if(role==='admin'){
+      const help=page.getByRole('button',{name:'Open walkthrough assistant',exact:true});
+      await help.waitFor();
+      assert.equal(await page.getByText('Walkthrough assistant',{exact:true}).isVisible(),false);
+      const bounds=await help.boundingBox();
+      assert(bounds&&bounds.x>=width-75&&bounds.x+bounds.width<=width);
+      await help.click();
+      const choice=page.getByRole('textbox',{name:'Choose a walkthrough',exact:true});
+      await choice.waitFor();
+      await click(page,'Next');
+      await choice.click();
       await click(page,'Cash Book');
-      await click(page,'Quick Cash Out');
-      await page.getByText('Payee',{exact:true}).first().waitFor();
+      const question=page.getByRole('textbox',{name:'Workflow question',exact:true});
+      await question.fill('How do I use Quick Cash?');
+      await click(page,'Ask');
+      await page.getByText(/Select Quick Cash, enter the date and description/).waitFor();
+      await click(page,'Close');
+      await help.waitFor();
+      await click(page,'Cash Book');
+      await click(page,'Quick Cash');
+      const field=name=>page.getByRole('textbox',{name,exact:true});
+      await field('Description').waitFor();
+      assert.equal(await page.getByRole('textbox').count(),2);
+      assert.match(await field('Date').inputValue(),/^\d{2}\/\d{2}\/\d{4}$/);
+      if(fixture){
+        await field('Date').fill('20/11/2026');
+        await field('Description').fill('Collect garage receipt');
+        await click(page,'Save Quick Cash');
+        await page.getByText('Quick Cash 1 saved for reconciliation.').waitFor();
+      }else{
+        await click(page,'← Cash Book');
+        await click(page,'Transaction History');
+      }
+      await page.getByText('Current balance',{exact:true}).waitFor();
+      if(fixture){
+        await page.getByText('USD 42.00',{exact:true}).waitFor();
+        await page.getByText('ZiG 5.00',{exact:true}).waitFor();
+        const history=page.getByRole('button',{name:/^(Quick Cash 1|Test receipt [12])$/});
+        assert.deepEqual(await history.evaluateAll(nodes=>nodes.map(x=>x.getAttribute('aria-label'))),['Quick Cash 1','Test receipt 2','Test receipt 1']);
+        await field('Date from').fill('19/11/2026');
+        await field('Date to').fill('19/11/2026');
+        await field('Date to').press('Tab');
+        assert.equal(await history.count(),1);
+        assert.equal(await history.first().getAttribute('aria-label'),'Test receipt 2');
+        await page.getByText('USD 42.00',{exact:true}).waitFor();
+        await field('Date from').fill('20/11/2026');
+        await page.getByText('Date from must be on or before Date to.').waitFor();
+        await field('Date from').fill('');
+        await field('Date to').fill('');
+        await page.getByRole('button',{name:'Quick Cash 1',exact:true}).click();
+        await field('Confirmed transaction').click();
+        await page.getByRole('button',{name:/19\/11\/2026.*Test receipt 2/}).click();
+        await click(page,'Reconcile note');
+        await page.getByText('Matched to Test receipt 2',{exact:true}).waitFor();
+        await page.getByText('USD 42.00',{exact:true}).waitFor();
+      }
       await click(page,'← Cash Book');
+      assert.equal(await page.getByText('New Transfer',{exact:true}).count(),0);
       await click(page,'New Receipt');
       await page.getByRole('textbox',{name:'Payer',exact:true}).click();
       await page.getByRole('textbox',{name:'Payer',exact:true}).fill('Screen payer');
@@ -88,7 +158,7 @@ async function check(browser, role, width) {
       await click(page,'Job Cards');
       await click(page,'Historical Job Cards');
       await click(page,'← Job Cards');
-      if(role==='buyer'){
+      if(role==='buyer'||role==='admin'){
         await click(page,'New Job Card');
         await page.getByText('Vehicle Type',{exact:true}).first().waitFor();
         await page.getByText('Transaction date',{exact:true}).first().waitFor();

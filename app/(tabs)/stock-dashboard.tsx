@@ -2,7 +2,6 @@ import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import {router,useFocusEffect} from 'expo-router';
 import {useCallback,useState} from 'react';
 import {ActivityIndicator,ScrollView,Text,View} from 'react-native';
-import {ErpWalkthrough} from '@/components/jspl/ErpWalkthrough';
 import {JsplDashboardButton} from '@/components/jspl/JsplDashboardButton';
 import {StockV2Header} from '@/components/jspl/StockV2Header';
 import {StockSelect,stockStyles} from '@/components/jspl/StockWorkflowControls';
@@ -41,7 +40,7 @@ export default function StockDashboard(){
     {!!error?<Text style={stockStyles.error}>{error||'Main Dashboard access is required.'}</Text>:null}
     {access&&!error?<>
       {process.env.EXPO_PUBLIC_STOCK_DEVELOPMENT==='true'&&access.can_main?<StockSelect label="Test User Role" value={preview} options={['actual','admin','buyer','driver','stock'].map(id=>({id,label:id==='actual'?'My assigned roles':id[0].toUpperCase()+id.slice(1)}))} onChange={v=>setPreview(String(v??'actual'))}/>:null}
-      {preview!=='actual'?<Text style={stockStyles.muted}>Dashboard preview. Select My assigned roles to open a module.</Text>:<ErpWalkthrough access={access}/>}
+      {preview!=='actual'?<Text style={stockStyles.muted}>Dashboard preview. Select My assigned roles to open a module.</Text>:null}
       <View style={{flexDirection:'row',flexWrap:'wrap',gap:jsplSpacing.lg}}>
         {modules.filter(m=>visible&&(m.route==="/job-cards"?(visible.is_stock||visible.is_buyer||visible.is_workshop):m.route==="/town-trips"?(visible.is_stock||visible.is_driver||visible.is_buyer):m.route==="/buying"?(visible.is_admin||visible.is_buyer):m.route==="/stock-test"?visible.is_stock:visible.can_main)).map(module=><View key={module.route} style={{width:240,maxWidth:'100%'}}>
           <JsplDashboardButton disabled={preview!=='actual'} title={module.title} description={module.description}

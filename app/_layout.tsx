@@ -1,4 +1,5 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from "@react-navigation/native";
+import {ErpWalkthrough} from "@/components/jspl/ErpWalkthrough";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { View } from "react-native";
@@ -37,6 +38,7 @@ export default function RootLayout() {
         {/* modal route at app/modal.tsx */}
         <Stack.Screen name="modal" options={{ presentation: "modal" }} />
       </Stack>
+      <ErpWalkthrough/>
 
       </View>
       <StatusBar style="auto" />

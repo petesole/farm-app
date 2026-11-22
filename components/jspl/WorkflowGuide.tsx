@@ -1,70 +1,31 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import {useEffect,useState} from 'react';
+import {useState} from 'react';
 import {Text,View} from 'react-native';
-import {StockButton,StockField,stockStyles} from '@/components/jspl/StockWorkflowControls';
 import {stockRequest} from '@/utils/stock-workflow';
+import {StockField,StockButton,stockStyles as styles} from './StockWorkflowControls';
 
-const guides={
-  buying:[
-    {title:'Create a purchase order',body:'Choose the stock owner and add the required parts. For a repair, start from Job Cards to carry the requested parts into the order. Submit the order for admin authorisation.'},
-    {title:'Follow the order',body:'After admin authorisation, the order is available in Receiving. If it needs collection in town, admin can assign it to a driver in Town Trips.'},
-    {title:'Record the delivery',body:'Select the actual supplier and the lines delivered. Enter only the quantities that arrived. Submit the delivery note or invoice for admin verification before stock is posted.'},
-    {title:'Correct a returned receipt',body:'Open Receiving, read the admin’s reason, and choose Correct receipt. Review the restored details before resubmitting.'},
-  ],
-  cashbook:[
-    {title:'Record a transaction',body:'Choose the account and enter the amount, dates and reference. Save a draft for review. A confirmed payment or receipt changes the account balance.'},
-    {title:'Transfer between accounts',body:'Choose two accounts in the same currency. Confirming the transfer debits the source and credits the destination.'},
-    {title:'Record cash for a trip',body:'In Trip advances, select the trip and the account used. After the trip, reconcile the amount spent and the unused cash returned against the advance.'},
-    {title:'Use an existing source',body:'Open Labour payments or Supplier invoices to create a draft linked to the source records. Review the amount and currency before confirming the payment.'},
-  ],
-} as const;
-
-type GuideName=keyof typeof guides;
-
-export function WorkflowGuide({name,context}:{name:GuideName;context?:string}){
-  const [open,setOpen]=useState(false);
-  const [step,setStep]=useState(0);
-  const [question,setQuestion]=useState('');
-  const [answer,setAnswer]=useState('');
-  const [error,setError]=useState('');
-  const [asking,setAsking]=useState(false);
-  const key='jspl-guide-seen:'+name;
-  const steps=guides[name];
-  useEffect(()=>{
-    let active=true;
-    AsyncStorage.getItem(key).then(seen=>{
-      if(active&&!seen)setOpen(true);
-    }).catch(()=>{});
-    return ()=>{active=false;};
-  },[key]);
-
-  function close(){
-    setOpen(false);
-    void AsyncStorage.setItem(key,'1').catch(()=>{});
-  }
-
+const answers=[
+  {name:'Cash Book',words:/quick cash|cash note|reconcil.*note/i,text:'Select Quick Cash, enter the date and description, then Save Quick Cash. In Transaction History, open the note and select the confirmed payment or receipt to reconcile it. Recording the note does not change the balance.'},
+  {name:'Cash Book',words:/history|balance|date range/i,text:'Open Transaction History. The newest entry appears first. Use Date from or Date to to narrow the list. Current balances include confirmed transactions across the Cash Book and are shown separately by currency.'},
+  {name:'Cash Book',words:/supplier|invoice/i,text:'Open Supplier invoices, select the verified invoice, paying account, amount and date, then save the payment draft. Open the draft in Transaction History to confirm it.'},
+  {name:'Job Cards',words:/admin|buyer|open|new|create/i,text:'Admin and Buyer can both open Job Cards. Select New Job Card, choose General, Asset or Irrigation, then enter the issue and the parts required.'},
+  {name:'Job Cards',words:/history|filter|reuse|part number/i,text:'Choose the equipment. Below the entry lines, Equipment purchase history lists the latest purchases first with supplier and price. Press + beside a part to add it to this Job Card.'},
+];
+export function WorkflowQuestion({name,topic,guidance,canAskOnline}:{name:'buying'|'cashbook';topic:string;guidance:string;canAskOnline:boolean}){
+  const [question,setQuestion]=useState(''),[answer,setAnswer]=useState(''),[busy,setBusy]=useState(false);
   async function ask(){
-    if(asking||!question.trim()||question.trim().length>500)return;
-    setAsking(true);setError('');setAnswer('');
-    try{setAnswer((await stockRequest('?workflow_help=1',{module:name,question:question.trim()})).answer);}
-    catch(failure){setError((failure as Error).message);}
-    finally{setAsking(false);}
+    if(busy||!question.trim())return;
+    const local=answers.find(a=>a.name===topic&&a.words.test(question));
+    if(local){setAnswer(local.text);return;}
+    if(!canAskOnline){setAnswer(guidance);return;}
+    setBusy(true);setAnswer('');
+    try{setAnswer((await stockRequest('?workflow_help=1',{module:name,question:topic+' — '+question.trim()})).answer);}
+    catch{setAnswer('Live answers are unavailable. '+guidance);}
+    finally{setBusy(false);}
   }
-
-  if(!open)return <StockButton title="Workflow help" onPress={()=>{setStep(0);setOpen(true);}}/>;
-  return <View style={stockStyles.card}>
-    <Text style={stockStyles.title}>{steps[step].title}</Text>
-    <Text style={stockStyles.text}>{steps[step].body}</Text>
-    {context?<Text style={stockStyles.muted}>{context}</Text>:null}
-    <View style={stockStyles.row}>
-      <StockButton title="Previous" disabled={step===0} onPress={()=>setStep(current=>Math.max(0,current-1))}/>
-      {step<steps.length-1?<StockButton title="Next" onPress={()=>setStep(current=>Math.min(steps.length-1,current+1))}/>:null}
-      <StockButton title={step===steps.length-1?'Done':'Close guide'} onPress={close}/>
-    </View>
+  return <View style={{gap:8}}>
     <StockField label="Workflow question" value={question} onChange={setQuestion}/>
-    <Text style={stockStyles.muted}>Ask about workflow steps. Leave out names, amounts and references.</Text>
-    <StockButton title="Ask a question" disabled={asking||!question.trim()||question.trim().length>500} onPress={()=>void ask()}/>
-    {answer?<Text style={stockStyles.text}>{answer}</Text>:null}
-    {error?<Text style={stockStyles.error}>{error}</Text>:null}
+    <Text style={styles.muted}>Ask about the steps. Leave out names, amounts and references.</Text>
+    <StockButton title="Ask" disabled={busy||!question.trim()||question.trim().length+topic.length+3>500} onPress={()=>void ask()}/>
+    {answer?<Text accessibilityLiveRegion="polite" style={styles.text}>{answer}</Text>:null}
   </View>;
 }
