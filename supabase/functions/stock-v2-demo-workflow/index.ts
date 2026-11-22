@@ -417,7 +417,13 @@ Deno.serve(async(req)=>{
   }
   if(req.method==="GET" && new URL(req.url).searchParams.has("stock_staff")){
    await db`select stock_v2.workflow_require(${user.id}::uuid,true)`;
-   const rows=await db`select u.id,u.email,s.role_name,s.active,s.assigned_at,s.note,array(select role_name from stock_v2.buying_staff_role b where b.user_id=u.id order by role_name) as buying_roles,exists(select 1 from public.app_user_role a where a.user_id=u.id and lower(a.role_name)='admin') as global_admin from auth.users u left join stock_v2.staff_role s on s.user_id=u.id order by u.email`;
+   const rows=await db`select u.id,u.email,coalesce(s.role_name,br.roles[1]) as role_name,
+     coalesce(s.active,cardinality(br.roles)>0) as active,s.assigned_at,s.note,br.roles as buying_roles,
+     exists(select from public.app_user_role a where a.user_id=u.id and lower(a.role_name)='admin') as global_admin
+     from auth.users u left join stock_v2.staff_role s on s.user_id=u.id
+     cross join lateral (select array(select role_name from stock_v2.buying_staff_role where user_id=u.id
+       union select lower(role_name) from public.app_user_role where user_id=u.id and lower(role_name) in ('buyer','driver') order by 1) as roles) br
+     order by u.email`;
    return reply({rows});
   }
   if(req.method==="GET" && new URL(req.url).searchParams.has("grv_corrections")){
@@ -1414,7 +1420,10 @@ left join lateral (
    if(!access.can_main||!["buyer","driver"].includes(body.role_name)||typeof body.active!=="boolean"||!body.reason?.trim())return reply({error:"Choose a responsibility, status and reason."},400);
    const result=await transaction(async tx=>{
      if(body.active)await tx`insert into stock_v2.buying_staff_role(user_id,role_name,assigned_by) values(${body.user_id}::uuid,${body.role_name},${user.id}::uuid) on conflict do nothing`;
-     else await tx`delete from stock_v2.buying_staff_role where user_id=${body.user_id}::uuid and role_name=${body.role_name}`;
+     else {
+      await tx`delete from stock_v2.buying_staff_role where user_id=${body.user_id}::uuid and role_name=${body.role_name}`;
+      await tx`delete from public.app_user_role where user_id=${body.user_id}::uuid and lower(role_name)=${body.role_name} and lower(role_name) in ('buyer','driver')`;
+     }
      return {saved:true};
    });
    return reply({success:true,result});
