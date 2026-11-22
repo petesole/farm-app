@@ -69,25 +69,26 @@ async function check(browser, role, width) {
     await page.getByPlaceholder('password', {exact:true}).fill(password);
     await page.getByText('Sign In',{exact:true}).click();
     await page.waitForURL(url => !url.pathname.endsWith('/login'), {timeout:40000});
-    await page.goto(site+'/stock-dashboard');
+    if(role==='admin')await click(page,'Stock');
     if(role==='admin'){
       await click(page,'Cash Book');
       await click(page,'Quick Cash Out');
       await page.getByText('Payee',{exact:true}).first().waitFor();
-      await page.goto(site+'/cashbook');
+      await click(page,'← Cash Book');
       await click(page,'New Receipt');
       await page.getByRole('textbox',{name:'Payer',exact:true}).click();
       await page.getByRole('textbox',{name:'Payer',exact:true}).fill('Screen payer');
       await page.getByText(/Add payer/i).first().waitFor();
-      await page.goto(site+'/stock-dashboard');
+      await click(page,'← Cash Book');
+      await click(page,'← Stock');
       await Promise.all([page.waitForResponse(r=>r.url().includes('outstanding_issues=')&&r.ok()),click(page,'Outstanding Issues')]);
+      await click(page,'← Stock');
     }
     if(role!=='driver'){
-      await page.goto(site+'/stock-dashboard');
       await click(page,'Job Cards');
       await click(page,'Historical Job Cards');
+      await click(page,'← Job Cards');
       if(role==='buyer'){
-        await page.goto(site+'/job-cards');
         await click(page,'New Job Card');
         await page.getByText('Vehicle Type',{exact:true}).first().waitFor();
         await page.getByText('Transaction date',{exact:true}).first().waitFor();
@@ -107,14 +108,16 @@ async function check(browser, role, width) {
           assert.equal(await page.getByRole('textbox',{name:'Qty 1',exact:true}).inputValue(),'1');
           assert.equal(await page.getByRole('textbox',{name:'Unit price 1',exact:true}).inputValue(),'');
         }
+        await click(page,'← Job Cards');
       }
+      await click(page,'← Stock');
     }
-    await page.goto(site+'/stock-dashboard');
     await click(page,'Town Trips');
     if(role==='driver')assert.equal(await page.getByText('Add New Trip',{exact:true}).count(),0);
     await click(page,'View Historical Trips');
     if(fixture)await page.getByText(/Trip 1.+Outstanding/).waitFor();
     for(const key of readings[role])assert(received.has(key),role+' did not load '+key);
+    await page.waitForLoadState('networkidle');
     assert.deepEqual(faults,[]);
     console.log('PASS',fixture?'display only':'authenticated',role,width+'px');
   } finally {await context.close();}
