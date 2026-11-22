@@ -245,10 +245,12 @@ Deno.serve(async(req)=>{
      join public.company company on company.company_id=v.owner_company_id and company.owns_vehicles
      left join stock_v2.irrigation_asset_farm af using(vehicle_id) left join public.farm f using(farm_id)
      where t.active and not v.vehicle_discontinued and not v.is_other and v.ownership_status='owned' order by vehicle_type,v.vehicle_name`,
-    db`select i.item_code,i.item_name,i.base_unit,i.buying_part_number as part_number,
+    db`select i.item_code,i.item_name,i.base_unit,i.buying_part_number as part_number,lub.item_id is not null as stock_lubricant,
       array(select category_id::float8 from stock_v2.buying_item_category where item_id=i.item_id) as category_ids
-      from stock_v2.item i where i.active order by item_name`,
-    db`select category_id::float8,catalogue_group,category_name from stock_v2.buying_category order by category_name`,
+      from stock_v2.item i left join stock_v2.job_lubricant_inputs lub using(item_id)
+      where i.active and (i.input_type is distinct from 'Lubricants' or lub.item_id is not null) order by i.item_name`,
+    db`select category_id::float8,catalogue_group,category_name,stock_v2.is_job_lubricant_category(category_name) as stock_only
+      from stock_v2.buying_category order by category_name`,
     db`select t.tracecode_id::float8 as id,t.tracecode_name as name from public.tracecode t left join public.crop c using(crop_id)
       where t.end_date is null and (c.crop_name is null or upper(c.crop_name)='COS') order by t.tracecode_name`,
    ]);
@@ -1190,28 +1192,33 @@ left join lateral (
      const name=String(p.name??"").trim();
      if(!["general","vehicle","implement","irrigation"].includes(p.group)||name.length<1||name.length>120)
       throw Error("Enter a category name.");
-     const [row]=await tx`insert into stock_v2.buying_category(catalogue_group,category_name) values(${p.group},${name})
+     const [row]=await tx`insert into stock_v2.buying_category(catalogue_group,category_name) values(${p.group},case when stock_v2.is_job_lubricant_category(${name}) then 'Lubricants' else ${name} end)
        on conflict(catalogue_group,lower(category_name)) do update set category_name=stock_v2.buying_category.category_name
        returning category_id::float8,category_name`;
      return row;
     }
-    const [category]=await tx`select category_id,catalogue_group,category_name from stock_v2.buying_category where category_id=${Number(p.category_id)}`;
+    const [category]=await tx`select category_id,catalogue_group,category_name,stock_v2.is_job_lubricant_category(category_name) as stock_only from stock_v2.buying_category where category_id=${Number(p.category_id)}`;
     const name=String(p.name??"").trim(),number=String(p.part_number??"").trim(),unit=String(p.unit??"").trim();
     if(!category||name.length>150||number.length>100||unit.length>30||(!name&&!number&&!p.item_code))
      throw Error("Select a category and enter a part name or number.");
+    if(category.stock_only){
+     const [stock]=await tx`select item_code from stock_v2.job_lubricant_inputs where item_code=${p.item_code??null}`;
+     if(!stock)throw Error("Choose an existing lubricant Stock Input. Add missing products in Stock Balances first.");
+     return stock;
+    }
     let [item]=await tx`select item_id,item_code,active,input_type from stock_v2.item
       where (${p.item_code??null}::text is not null and item_code=${p.item_code??null})
        or (${number}<>'' and (lower(buying_part_number)=lower(${number}) or lower(item_code)=lower(${number})))
        or (${number}='' and lower(item_name)=lower(${name}))
       order by (lower(buying_part_number)=lower(${number})) desc nulls last,item_id limit 1`;
     if(item&&!item.active)throw Error("This catalogue item is inactive.");
-    if(item&&category.category_name.toLowerCase()==='lubricants'&&item.input_type!=='Lubricants')
-      throw Error('Set the existing stock item’s input type to Lubricants before adding it to this category.');
+    if(item?.input_type==='Lubricants')throw Error('Select this Stock Input from the Lubricants category.');
     if(!item){
      if(!name||!unit)throw Error("Enter the part name and unit of measure.");
      [item]=await tx`insert into stock_v2.item(item_code,item_name,base_unit,input_type,input_category,buying_part_number)
       values(${"PART-"+String(body.operation_id)},${name},${unit},${category.catalogue_group==="general"?"General":"Parts"},
-       ${category.category_name},${number||null}) returning item_id,item_code`;
+       ${category.category_name},${number||null}) returning item_id,item_code,input_type`;
+     if(item.input_type==='Lubricants')throw Error('Add this lubricant in Stock Balances first.');
     }
     await tx`insert into stock_v2.buying_item_category(item_id,category_id) values(${item.item_id},${category.category_id}) on conflict do nothing`;
     return {item_code:item.item_code};

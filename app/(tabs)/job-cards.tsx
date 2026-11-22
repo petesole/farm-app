@@ -9,7 +9,7 @@ import {displayJsplDate,parseJsplDateInput} from '@/utils/jspl-input';
 
 type Part = {part_id?:number;category_id:number|null;item_code:string;quantity:string;unit_price:string;sample_details:string;line_purpose:string};
 type CardType='general'|'asset'|'irrigation';
-type Category={category_id:number;catalogue_group:string;category_name:string};
+type Category={category_id:number;catalogue_group:string;category_name:string;stock_only:boolean};
 type AssetPurchase = {id:string;part_number?:string;item_code:string;item_name:string;active:boolean;document_date:string;supplier_name:string;receipt:string;unit_price:string|null};
 type JobCard = {
   id: string; job_number: number; vehicle_name: string; work_description: string; transaction_date:string; closed_at:string|null; revision:string;card_type:CardType;vehicle_id:number|null;tracecode_id:number|null;
@@ -18,7 +18,7 @@ type JobCard = {
 };
 type CardData = {
   cards: JobCard[]; can_create: boolean; can_main?: boolean; can_buy?: boolean; can_reserve?: boolean;
-  items?: {item_code: string; item_name: string; base_unit: string;part_number:string|null;category_ids:number[]}[];
+  items?: {item_code: string; item_name: string; base_unit: string;part_number:string|null;stock_lubricant:boolean;category_ids:number[]}[];
   categories?:Category[];
   traces?:{id:number;name:string}[];
   vehicles?: {vehicle_id: number; vehicle_name: string; vehicle_type_id:number|null; vehicle_type:string;type_code:string; owner_code:string|null;owner_name:string;catalogue_group:string;farm_name:string|null}[];
@@ -145,6 +145,8 @@ export default function JobCards() {
   const types=[...new Map(assets.map(row=>[String(row.vehicle_type_id??'unclassified'),row.vehicle_type])).entries()];
   const group=cardType==='asset'?(asset?.catalogue_group??'vehicle'):cardType;
   const categories=(data?.categories??[]).filter(category=>category.catalogue_group===group);
+  const stockItems=data?.items??[];
+  const categoryFor=(id:number|null)=>categories.find(c=>c.category_id===id);
   const traces=(data?.traces??[]).filter(entry=>cardType!=='irrigation'||/^IRR/i.test(entry.name));
   const validPrice=(value:string)=>!value.trim()||(Number.isFinite(Number(value))&&Number(value)>=0&&Number(value)<=999999999);
   const valid=!!parseJsplDateInput(date)&&(usingAsset?!!asset:!!trace)&&description.trim().length>0&&description.trim().length<=1000
@@ -165,6 +167,7 @@ export default function JobCards() {
         editPart(entry.index,{category_id:result.category_id,item_code:''});
       }else{
         const line=parts[entry.index];
+        if(!line||categoryFor(line.category_id)?.stock_only)throw Error('Choose a lubricant from Stock Inputs.');
         const {result}=await stockMutation('job-card-catalogue',{action:'save_job_catalogue_part',
           payload:{category_id:line.category_id,name:entry.name,part_number:entry.number,unit:entry.unit}});
         editPart(entry.index,{item_code:result.item_code});
@@ -177,6 +180,11 @@ export default function JobCards() {
   async function selectCategory(index:number,value:string|number|null){
     const category_id=value===null?null:Number(value);
     const line=parts[index];
+    setCatalogueEdit(null);
+    if(categoryFor(category_id)?.stock_only){
+      editPart(index,{category_id,item_code:stockItems.some(i=>i.item_code===line.item_code&&i.stock_lubricant)?line.item_code:''});
+      return;
+    }
     if(!category_id||!line.item_code||line.category_id){editPart(index,{category_id,item_code:''});return;}
     setBusy(true);setError('');
     try{
@@ -196,7 +204,10 @@ export default function JobCards() {
     finally{setBusy(false);}
   }
   function addHistoricalPart(purchase:AssetPurchase){
-    const category_id=categories.find(c=>data?.items?.find(i=>i.item_code===purchase.item_code)?.category_ids.includes(c.category_id))?.category_id??null;
+    const item=stockItems.find(i=>i.item_code===purchase.item_code);
+    if(!item)return;
+    const category_id=(item.stock_lubricant?categories.find(c=>c.category_name==='Lubricants'):
+      categories.find(c=>item.category_ids.includes(c.category_id)))?.category_id??null;
     const line={...newPart(),item_code:purchase.item_code,category_id};
     setParts(lines=>{
       if(lines.some(row=>row.item_code===line.item_code))return lines;
@@ -235,23 +246,27 @@ export default function JobCards() {
       <ScrollView horizontal keyboardShouldPersistTaps="handled">
         <View style={{gap:8}}>
           <View style={rowStyle}>{['Category','Part','Qty','Unit price'].map((label,index)=><Text key={label} style={[styles.text,{width:columns[index]}]}>{label}</Text>)}</View>
-          {parts.map((part,index)=><View key={index} style={rowStyle}>
+          {parts.map((part,index)=>{
+            const stockOnly=categoryFor(part.category_id)?.stock_only===true;
+            const items=stockItems.filter(i=>stockOnly?i.stock_lubricant:
+              i.item_code===part.item_code||(!i.stock_lubricant&&part.category_id!==null&&i.category_ids.includes(part.category_id)));
+            return <View key={index} style={rowStyle}>
             <View style={{width:columns[0]}}><StockSelect label={'Category '+(index+1)} value={part.category_id}
-              options={categories.map(c=>({id:c.category_id,label:c.category_name}))}
+              options={categories.filter(c=>!c.stock_only||c.category_name==='Lubricants'||c.category_id===part.category_id).map(c=>({id:c.category_id,label:c.category_name}))}
               onChange={value=>void selectCategory(index,value)}
               createLabel="+ Add category" onCreate={name=>setCatalogueEdit({mode:'category',index,name,number:'',unit:''})}/></View>
-            <View style={{width:columns[1]}}><StockSelect label={'Part '+(index+1)} value={part.item_code} disabled={!part.category_id}
-              options={(data?.items??[]).filter(item=>item.item_code===part.item_code||(part.category_id!==null&&item.category_ids.includes(part.category_id)))
-                .map(item=>({id:item.item_code,label:[item.part_number,item.item_name].filter(Boolean).join(' · ')}))}
+            <View style={{width:columns[1]}}><StockSelect label={(stockOnly?'Stock Input ':'Part ')+(index+1)} value={part.item_code} disabled={!part.category_id}
+              options={items.map(item=>({id:item.item_code,label:stockOnly?item.item_name+' · '+item.item_code:[item.part_number,item.item_name].filter(Boolean).join(' · ')}))}
               onChange={value=>editPart(index,{item_code:String(value??'')})}
-              createLabel="+ Add part" onCreate={name=>setCatalogueEdit({mode:'part',index,name,number:'',unit:'each'})}/></View>
+              createLabel="+ Add part" onCreate={stockOnly?undefined:name=>setCatalogueEdit({mode:'part',index,name,number:'',unit:'each'})}/>
+              {stockOnly?<Text style={styles.muted}>Add missing lubricants in Stock Balances → New Product.</Text>:null}</View>
             <TextInput accessibilityLabel={'Qty '+(index+1)} value={part.quantity} keyboardType="decimal-pad"
               onChangeText={quantity=>editPart(index,{quantity})} style={[styles.input,{width:columns[2],minWidth:0}]}/>
             <TextInput accessibilityLabel={'Unit price '+(index+1)} value={part.unit_price} keyboardType="decimal-pad"
               placeholder="Optional" onChangeText={unit_price=>editPart(index,{unit_price})} style={[styles.input,{width:columns[3],minWidth:0}]}/>
             <StockButton title="Details" onPress={()=>setLineDetails(lineDetails===index?null:index)}/>
             <StockButton title="Remove" disabled={busy} onPress={()=>{setCatalogueEdit(null);setParts(lines=>lines.filter((_,offset)=>offset!==index));}}/>
-          </View>)}
+          </View>;})}
         </View>
       </ScrollView>
       {lineDetails!==null&&parts[lineDetails]?<View style={styles.card}>
@@ -283,9 +298,10 @@ export default function JobCards() {
               <Text style={styles.text}>{purchase.item_name} · {purchase.part_number??purchase.item_code}</Text>
               <Text style={styles.muted}>{displayJsplDate(purchase.document_date)} · {purchase.supplier_name} · {purchase.receipt} · {purchase.unit_price===null?'Price pending':Number(purchase.unit_price).toFixed(2)+' per unit'}</Text>
             </View>
-            {purchase.active&&!parts.some(line=>line.item_code===purchase.item_code)
-              ?<StockButton title="+" disabled={busy||parts.length>=30} onPress={()=>addHistoricalPart(purchase)}/>
-              :<Text style={styles.muted}>{purchase.active?'On card':'Inactive part'}</Text>}
+            {parts.some(line=>line.item_code===purchase.item_code)?<Text style={styles.muted}>On card</Text>:
+              purchase.active&&stockItems.some(i=>i.item_code===purchase.item_code)
+                ?<StockButton title="+" disabled={busy||parts.length>=30} onPress={()=>addHistoricalPart(purchase)}/>
+                :<Text style={styles.muted}>{purchase.active?'Unavailable for new Job Cards':'Inactive part'}</Text>}
           </View>)}
       </View>:null}
     </View> : null}

@@ -26,6 +26,23 @@ begin
      (select count(*) from stock_v2.buying_item_category ic join stock_v2.buying_category c using(category_id) where item_id=oil and c.category_name='Lubricants')<>4
      then raise exception 'New oil was not shared across Job Card catalogues'; end if;
   select category_id into strict cat from stock_v2.buying_category where catalogue_group='vehicle' and category_name='Lubricants';
+  insert into stock_v2.job_card(id,vehicle_id,work_description,requested_by) values(job,tractor,'Oil top-up',buyer);
+  if exists(select from stock_v2.job_lubricant_inputs where item_id=oil) then raise exception 'Catalogue-only oil reached the Stock Input picker'; end if;
+  begin
+    insert into stock_v2.job_card_part(job_id,item_id,category_id,requested_quantity) values(job,oil,cat,1);
+    raise exception 'Job Card accepted an unregistered lubricant' using errcode='23514';
+  exception when raise_exception then if sqlerrm not like 'Choose an active lubricant Stock Input%' then raise; end if; end;
+  begin
+    insert into stock_v2.buying_item_category(item_id,category_id) values(petrol,cat) on conflict do nothing;
+    insert into stock_v2.job_card_part(job_id,item_id,category_id,requested_quantity) values(job,petrol,cat,1);
+    raise exception 'Stale category mapping allowed petrol as a lubricant' using errcode='23514';
+  exception when raise_exception then if sqlerrm not like 'Choose an active lubricant Stock Input%' then raise; end if; end;
+  -- Stock Balances > New Product registers the stock master in the same save.
+  insert into stock_v2.product_metadata(item_id,version) values(oil,1);
+  if not exists(select from stock_v2.job_lubricant_inputs where item_id=oil) then raise exception 'New Stock Input missing at zero balance'; end if;
+  update stock_v2.item set active=false where item_id=oil;
+  if exists(select from stock_v2.job_lubricant_inputs where item_id=oil) then raise exception 'Inactive lubricant still offered'; end if;
+  update stock_v2.item set active=true where item_id=oil;
   insert into stock_v2.document(document_type,document_number,document_date,status,reason) values('opening',code,day,'draft','Rolled back lubricant fixture') returning document_id into doc;
   foreach line in array array[oil,petrol] loop
     insert into stock_v2.document_line(document_id,item_id,quantity) values(doc,line,10) returning line_id into movement_line;
@@ -53,7 +70,6 @@ begin
     'lines',jsonb_build_array(jsonb_build_object('item_code',(select item_code from stock_v2.item where item_id=petrol),'quantity',1,'equipment_other','Workshop'))));
   if (select quantity from stock_v2.quantity_balance where item_id=petrol and owner_id=own and location_id=wh)<>before_petrol-1 then raise exception 'Petrol Direct Issue failed'; end if;
 
-  insert into stock_v2.job_card(id,vehicle_id,work_description,requested_by) values(job,tractor,'Oil top-up',buyer);
   insert into stock_v2.job_card_part(job_id,item_id,category_id,requested_quantity) values(job,oil,cat,5) returning id into part;
   insert into stock_v2.job_part_reservation_event(id,part_id,quantity_delta,actor) values(gen_random_uuid(),part,5,stores);
   posted:=stock_v2.post_job_part_issue(op,stores,part,3);

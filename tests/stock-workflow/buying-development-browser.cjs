@@ -35,8 +35,8 @@ async function displayFixture(context,role){
     cash_book_supplier_invoices:{invoices:[],creditOptions:[]},outstanding_issues:{counts:{},returned:[]},
     job_cards:{cards:[oilCard],can_create:buyer,can_buy:buyer||admin,can_main:admin,can_reserve:buyer||stores,
       vehicles:[{vehicle_id:11,vehicle_name:'Screen test tractor',vehicle_type_id:4,vehicle_type:'Tractor',type_code:'TRA',owner_name:'Screen owner',owner_code:'JS',catalogue_group:'vehicle'}],
-      items:[{item_code:'FILTER-A',item_name:'Service filter',base_unit:'each',part_number:'F-12',category_ids:[3]},{...lubricant,part_number:null,category_ids:[4]}],
-      categories:[{category_id:3,catalogue_group:'vehicle',category_name:'Filters'},{category_id:4,catalogue_group:'vehicle',category_name:'Lubricants'}],traces:[]},
+      items:[{item_code:'FILTER-A',item_name:'Service filter',base_unit:'each',part_number:'F-12',category_ids:[3]},{...lubricant,stock_lubricant:true,part_number:null,category_ids:[4]},{...lubricant,item_code:'EMPTY',item_name:'Hydraulic oil',quantity:0,stock_lubricant:true,part_number:null,category_ids:[4]}],
+      categories:[{category_id:3,catalogue_group:'vehicle',category_name:'Filters'},{category_id:4,catalogue_group:'vehicle',category_name:'Lubricants',stock_only:true},{category_id:5,catalogue_group:'vehicle',category_name:'Oils',stock_only:true}],traces:[]},
     job_asset_purchase_history:{rows:[{id:'1',item_code:'FILTER-A',item_name:'Service filter',part_number:'F-12',active:true,supplier_name:'Screen supplier',receipt:'GRV-1',document_date:'2026-11-20',unit_price:'12.00'}]},
     town_trips:{trips:[{id:'screen-trip',trip_number:1,trip_date:'2026-11-20',driver_name:'Test driver',orders:[],finalised_at:null}],drivers:[],orders:[],can_create:admin,can_report:driver,can_receive:!driver},
   };
@@ -195,6 +195,26 @@ async function check(browser, role, width) {
           await page.getByText('On card',{exact:true}).waitFor();
           assert.equal(await page.getByRole('textbox',{name:'Qty 1',exact:true}).inputValue(),'1');
           assert.equal(await page.getByRole('textbox',{name:'Unit price 1',exact:true}).inputValue(),'');
+          const category=page.getByRole('textbox',{name:'Category 1',exact:true});
+          await category.click();
+          assert.equal(await page.getByRole('button',{name:'Oils',exact:true}).count(),0);
+          await click(page,'Lubricants');
+          const stockInput=page.getByRole('textbox',{name:'Stock Input 1',exact:true});
+          await stockInput.click();
+          await page.getByRole('button',{name:'Gear Oil · LUBE',exact:true}).waitFor();
+          assert.equal(await page.getByRole('button',{name:/Add part/}).count(),0);
+          await stockInput.fill('Unregistered lubricant');
+          await page.getByText('No matching results',{exact:true}).waitFor();
+          assert.equal(await page.getByRole('button',{name:/Add part/}).count(),0);
+          await stockInput.fill('Hydraulic');
+          await click(page,'Hydraulic oil · EMPTY');
+          assert.equal(await stockInput.inputValue(),'Hydraulic oil · EMPTY');
+          await category.click();
+          await click(page,'Filters');
+          const other=page.getByRole('textbox',{name:'Part 1',exact:true});
+          await other.click();
+          await other.fill('Missing filter');
+          await page.getByRole('button',{name:/Add part/}).waitFor();
         }
         await click(page,'← Job Cards');
       }
