@@ -1,3 +1,4 @@
+import {stockV2Endpoint} from "@/utils/stock-v2-endpoint";
 import {StockV2Header} from "@/components/jspl/StockV2Header";
 import {useEffect,useState} from "react";
 import {useRouter} from "expo-router";
@@ -6,7 +7,7 @@ import {ThemedText} from "@/components/themed-text";
 import {ThemedView} from "@/components/themed-view";
 import {supabase} from "../../../supabase";
 import {jsplColors,jsplSpacing,jsplRadii,jsplSizes} from "@/constants/jspl-design";
-const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
+const endpoint=stockV2Endpoint;
 type Supplier={supplier_id:number;supplier_name:string;active:boolean};
 export default function Suppliers(){
  const router=useRouter(),[list,setList]=useState<Supplier[]>([]),[current,setCurrent]=useState<Supplier|null>(null),[search,setSearch]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState(""),[notice,setNotice]=useState("");

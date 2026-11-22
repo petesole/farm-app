@@ -1,3 +1,4 @@
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import {JsplSearchCombo} from "@/components/jspl/JsplSearchCombo";
 import {StockProductEditor} from '@/components/jspl/StockProductEditor';
 import {stockRequest} from '@/utils/stock-workflow';
@@ -37,6 +38,13 @@ const uuid=()=>"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const 
 const number=(x:string)=>Number(x);
 const currency=(n:number)=>Number.isFinite(n)?n.toFixed(2):"—";
 const tabs=["Purchase Orders","POs Outstanding","GRV","Stock Balances","Spray Planning","Stock Transfer","Direct Issue","Corrections","Supplier Returns","Stock Take","PO Corrections"] as const;
+const stockIcons={
+ "Purchase Orders":"shopping-cart","POs Outstanding":"local-shipping","GRV":"receipt-long",
+ "Stock Balances":"inventory-2","Spray Planning":"agriculture","Stock Transfer":"swap-horiz",
+ "Direct Issue":"outbox","Corrections":"edit-note","Supplier Returns":"assignment-return",
+ "Stock Take":"fact-check","PO Corrections":"edit",
+} as const;
+const stockIcon=(name:React.ComponentProps<typeof MaterialIcons>['name'])=><MaterialIcons name={name} size={28} color="#164932"/>;
 // Screen states also include the retained Planned Issue flow, beyond the dashboard buttons.
 type Tab=typeof tabs[number]|"Planned Issue";
 function Field({label,value,onChange,numeric=false,date=false}:{label:string;value:string;onChange:(v:string)=>void;numeric?:boolean;date?:boolean}){
@@ -239,22 +247,21 @@ export default function StockV2Workflow(){
    <Image source={require("../../../assets/images/jspl_farm_watermark.png")} resizeMode="contain" style={[styles.watermark,{width:watermarkSize,height:watermarkSize}]}/>
   </View>
   <ScrollView style={styles.foreground} contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
-  <StockV2Header title={tab??"Stock Dashboard"} dashboard={tab===null} allowMain={workflow?.access.can_main} onStock={()=>switchTab(null)} onRefresh={tab===null?undefined:()=>void refresh()}/>
+  <StockV2Header title={tab??"Stock Dashboard"} dashboard={tab===null} allowMain={workflow?.access.can_main} onStock={tab===null?undefined:()=>switchTab(null)} onRefresh={tab===null?undefined:()=>void refresh()}/>
   {tab===null?<View style={styles.home}>
-    <ThemedText style={styles.homeTitle}>Stock Home</ThemedText>
-    <ThemedText style={styles.muted}>Choose a stock operation</ThemedText>
-    <View style={styles.navActions}>
-
-     {workflow?.access.is_admin?<Pressable style={styles.back} onPress={()=>router.push("/stock-v2-setup")}><ThemedText style={styles.backText}>Manage Owners & Contracts</ThemedText></Pressable>:null}
-     <Pressable style={styles.back} onPress={()=>router.push("/stock-v2-suppliers")}><ThemedText style={styles.backText}>Manage Suppliers</ThemedText></Pressable>
-    </View>
     <View style={styles.homeGrid}>
-     {workflow?.access.is_admin?<View style={styles.dashboardCard}><JsplDashboardButton title={"Awaiting Approval ("+workflow.awaiting+")"} description="Purchase orders, credit notes and counted stocktakes" onPress={()=>router.push("/stock-v2-approvals")}/></View>:null}
-     <View style={styles.dashboardCard}><JsplDashboardButton title="Supplier Credit Notes" onPress={()=>router.push("/(tabs)/home/stock-v2-credits")}/></View>
-     {workflow?.access.can_adjustments?<View style={styles.dashboardCard}><JsplDashboardButton title="Stock Adjustment" alertCount={workflow.adjustment_count??0} onPress={()=>router.push("/stock-v2-adjustments")}/></View>:null}
-     {workflow?.access.is_admin?<><View style={styles.dashboardCard}><JsplDashboardButton title="GRV Corrections" onPress={()=>router.push("/stock-v2-grv-corrections")}/></View><View style={styles.dashboardCard}><JsplDashboardButton title="Stock Staff Access" onPress={()=>router.push("/stock-v2-staff")}/></View></>:null}
+     {workflow?.access.is_stock?<View style={styles.dashboardCard}><JsplDashboardButton title="Job Cards" icon={stockIcon("build")} onPress={()=>router.push({pathname:"/job-cards",params:{from:"stock"}})}/></View>:null}
+     {workflow?.access.is_admin?<View style={styles.dashboardCard}><JsplDashboardButton title={"Awaiting Approval ("+workflow.awaiting+")"} icon={stockIcon("pending-actions")} description="Purchase orders, receipts, credit notes and counted stocktakes" onPress={()=>router.push("/stock-v2-approvals")}/></View>:null}
+     <View style={styles.dashboardCard}><JsplDashboardButton title="Supplier Credit Notes" icon={stockIcon("credit-card")} onPress={()=>router.push("/(tabs)/home/stock-v2-credits")}/></View>
+     {workflow?.access.can_adjustments?<View style={styles.dashboardCard}><JsplDashboardButton title="Stock Adjustment" icon={stockIcon("tune")} alertCount={workflow.adjustment_count??0} onPress={()=>router.push("/stock-v2-adjustments")}/></View>:null}
+     {workflow?.access.is_admin?<>
+      <View style={styles.dashboardCard}><JsplDashboardButton title="GRV Corrections" icon={stockIcon("edit-note")} onPress={()=>router.push("/stock-v2-grv-corrections")}/></View>
+      <View style={styles.dashboardCard}><JsplDashboardButton title="Stock Staff Access" icon={stockIcon("people")} onPress={()=>router.push("/stock-v2-staff")}/></View>
+      <View style={styles.dashboardCard}><JsplDashboardButton title="Manage Owners & Contracts" icon={stockIcon("description")} onPress={()=>router.push("/stock-v2-setup")}/></View>
+     </>:null}
+     <View style={styles.dashboardCard}><JsplDashboardButton title="Manage Suppliers" icon={stockIcon("store")} onPress={()=>router.push("/stock-v2-suppliers")}/></View>
      {tabs.filter(x=>x!=="PO Corrections").map(x=><View key={x} style={styles.dashboardCard}>
-      <JsplDashboardButton title={x} alertCount={x==="Stock Balances"?missingActiveCount:x==="Spray Planning"?outstandingSprays:undefined}
+      <JsplDashboardButton title={x} icon={stockIcon(stockIcons[x])} alertCount={x==="Stock Balances"?missingActiveCount:x==="Spray Planning"?outstandingSprays:undefined}
        description={x==="POs Outstanding"?String(new Set((snapshot?.orders??[]).filter(o=>o.ordered_quantity>o.received_quantity).map(o=>o.order_id)).size)+" outstanding orders":x==="GRV"?String(snapshot?.pending_invoice_count??0)+" pending invoices":undefined}
        onPress={()=>x==="Spray Planning"?router.push("/stock-v2-spray-planning"):switchTab(x)}/>
      </View>)}</View>

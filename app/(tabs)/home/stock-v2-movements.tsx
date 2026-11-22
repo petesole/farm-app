@@ -1,3 +1,4 @@
+import {stockV2Endpoint} from "@/utils/stock-v2-endpoint";
 import {StockReport} from "@/components/jspl/StockReport";
 import {StockV2Header} from "@/components/jspl/StockV2Header";
 import {useEffect,useRef,useState} from "react";
@@ -8,7 +9,7 @@ import {ThemedView} from "@/components/themed-view";
 import {jsplColors,jsplSpacing,jsplRadii,jsplSizes} from "@/constants/jspl-design";
 import {supabase} from "../../../supabase";
 
-const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
+const endpoint=stockV2Endpoint;
 type Movement={transaction_date:string;trans_id:number;description:string;stock_in:number;stock_out:number;stock_pos:number;unit_price:number|null;price_basis:string;document_number:string};
 type Result={item:{item_name:string;base_unit:string}|null;movements:Movement[];current_stock:number};
 const fmt=(n:number)=>n.toLocaleString("en-GB",{minimumFractionDigits:2,maximumFractionDigits:3});

@@ -1,3 +1,4 @@
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { useEffect, useState } from "react";
 import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import { Redirect, router } from "expo-router";
@@ -30,7 +31,7 @@ export default function MainDashboard() {
         <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Trace" description="TraceCode management" onPress={() => router.push("/(tabs)/field-dashboard")} /></View>
         <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Weighbridge" description="Weighbridge management" onPress={() => router.push("/weighbridge")} /></View>
         <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Fuel" description="Fuel management" onPress={() => router.push("/(tabs)/fuel")} /></View>
-        <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Stock" description="Purchase orders, receiving, issues and balances" onPress={() => router.push("/stock")} /></View>
+        <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Stock" icon={<MaterialIcons name="inventory-2" size={28} color={C.primaryDark}/>} description="Buying, Job Cards, Town Trips and Cash Book" onPress={() => router.push("/stock-dashboard")} /></View>
         <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Labour" description="Daily labour entry and costing" onPress={() => router.push("/(tabs)/labour")} /></View>
         <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Rainfall" description="Record readings and view rainfall reports" onPress={() => router.push("/home/rainfall/rainfall_index")} /></View>
         <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Irrigation" description="Water requirements, schedules and applied irrigation" onPress={() => router.push("/(tabs)/irrigation_main_dashboard")} /></View>

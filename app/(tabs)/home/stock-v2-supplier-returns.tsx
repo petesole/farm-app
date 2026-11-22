@@ -1,3 +1,4 @@
+import {stockV2Endpoint} from "@/utils/stock-v2-endpoint";
 import {StockSelect} from "@/components/jspl/StockWorkflowControls";
 import {stockMutation} from "@/utils/stock-workflow";
 import {parseJsplDateInput,displayJsplDate} from "@/utils/jspl-input";
@@ -9,7 +10,7 @@ import {ThemedText} from "@/components/themed-text";
 import {ThemedView} from "@/components/themed-view";
 import {supabase} from "../../../supabase";
 import {jsplColors} from "@/constants/jspl-design";
-const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
+const endpoint=stockV2Endpoint;
 type Product={item_code:string;item_name:string;quantity:number;base_unit:string;ao_quantity?:number};
 type Receipt={display_no:number;document_id:number;receipt_line_id:number;document_number:string;document_date:string;item_code:string;item_name:string;received_quantity:number;previously_returned:number;original_unit_price:number|null};
 type Return={document_id:number;document_number:string;supplier_name:string;credit_status:string;return_mode:string;lines:{quantity:number;agreed_price:number;item_name:string;inventory_value:number;valuation_difference:number;original_grv_value:number|null;sources:{grv:string;quantity:number}[]}[]};

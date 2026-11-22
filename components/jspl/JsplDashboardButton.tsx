@@ -1,11 +1,13 @@
 import { Pressable, StyleSheet, Text } from 'react-native';
+import type { ReactNode } from 'react';
 import { jsplColors, jsplRadii, jsplSizes, jsplSpacing, jsplType } from '../../constants/jspl-design';
 
-type Props = { title: string; onPress: () => void; description?: string; disabled?: boolean; alertCount?:number };
+type Props = { title: string; onPress: () => void; description?: string; disabled?: boolean; alertCount?:number; icon?:ReactNode };
 /** Standard module dashboard navigation button. Caller supplies verified route action. */
-export function JsplDashboardButton({ title, description, onPress, disabled = false, alertCount }: Props) {
+export function JsplDashboardButton({ title, description, onPress, disabled = false, alertCount, icon }: Props) {
   return <Pressable accessibilityRole="button" disabled={disabled} onPress={onPress}
     style={({ pressed }) => [styles.button, pressed && styles.pressed, disabled && styles.disabled]}>
+    {icon}
     <Text style={styles.title}>{title}{alertCount!=null&&alertCount>0?<Text style={{color:'#B91C1C'}}> ({alertCount})</Text>:null}</Text>
     {!!description && <Text style={styles.description}>{description}</Text>}
   </Pressable>;

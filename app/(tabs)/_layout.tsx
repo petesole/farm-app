@@ -12,6 +12,9 @@ export default function TabsLayout() {
   const [canFuel, setCanFuel] = useState(false);
   const [canLabour, setCanLabour] = useState(false);
   const [canStock, setCanStock] = useState(false);
+  const [canBuy, setCanBuy] = useState(false);
+  const [canWorkshop, setCanWorkshop] = useState(false);
+  const [canDrive, setCanDrive] = useState(false);
   const [canIrrigation, setCanIrrigation] = useState(false);
 
   useEffect(() => {
@@ -34,14 +37,26 @@ export default function TabsLayout() {
         const labourAccess = admin || assigned.includes('manager') || assigned.includes('labour');
         const irrigationAccess = admin || assigned.includes('irrigation');
         let stockAccess=false;
-        try { stockAccess=!!(await stockRequest("?stock_access=1")).access?.is_stock; } catch { /* Fail closed for Stock only. */ }
+        let buyingAccess=false;
+        let workshopAccess=false;
+        let driverAccess=false;
+        try {
+          const access=(await stockRequest("?stock_access=1")).access;
+          stockAccess=!!access?.is_stock;
+          buyingAccess=!!access?.is_buyer;
+          workshopAccess=!!access?.is_workshop;
+          driverAccess=!!access?.is_driver;
+        } catch { /* Existing assigned modules retain access. */ }
         if(!alive)return;
         setCanStock(stockAccess);
+        setCanBuy(buyingAccess);
+        setCanWorkshop(workshopAccess);
+        setCanDrive(driverAccess);
         setIsAdmin(admin);
         setCanFuel(fuelAccess);
         setCanLabour(labourAccess);
         setCanIrrigation(irrigationAccess);
-        setLoggedIn(admin || fuelAccess || labourAccess || irrigationAccess || stockAccess);
+        setLoggedIn(admin || fuelAccess || labourAccess || irrigationAccess || stockAccess || buyingAccess || workshopAccess || driverAccess);
       } catch {
         if (!alive) return;
         setLoggedIn(false);
@@ -69,16 +84,16 @@ export default function TabsLayout() {
     return <Redirect href="/login" />;
   }
 
-  if (canIrrigation && !isAdmin && !canFuel && !canLabour && !canStock && pathname !== "/irrigation_main_dashboard" && !pathname.startsWith("/home/irrigation/")) {
+  if (canIrrigation && !isAdmin && !canFuel && !canLabour && !canStock && !canBuy && !canDrive && !canWorkshop && pathname !== "/irrigation_main_dashboard" && !pathname.startsWith("/home/irrigation/")) {
     return <Redirect href="/irrigation_main_dashboard" />;
   }
 
-  if (canLabour && !isAdmin && !canFuel && !canStock && !canIrrigation && pathname !== "/labour") {
+  if (canLabour && !isAdmin && !canFuel && !canStock && !canIrrigation && !canBuy && !canDrive && !canWorkshop && pathname !== "/labour") {
     return <Redirect href="/labour" />;
   }
 
   return (
-    <Tabs initialRouteName={isAdmin ? "main-dashboard" : canFuel ? "fuel" : canLabour ? "labour" : canIrrigation ? "irrigation_main_dashboard" : "stock-test"} screenOptions={{ headerShown: false, tabBarStyle: { display: "none" } }}>
+    <Tabs initialRouteName={isAdmin ? "main-dashboard" : canFuel ? "fuel" : canLabour ? "labour" : canIrrigation ? "irrigation_main_dashboard" : "stock-dashboard"} screenOptions={{ headerShown: false, tabBarStyle: { display: "none" } }}>
       <Tabs.Screen name="home" options={{ href: null }} />
       <Tabs.Screen name="control-panel" options={{ href: null }} />
       <Tabs.Screen name="companies" options={{ href: null }} />
@@ -95,8 +110,13 @@ export default function TabsLayout() {
       <Tabs.Screen name="wb-admin" options={{ title: "Weighbridge", href: isAdmin && Platform.OS === "web" ? "/wb-admin" : null }} />
       <Tabs.Screen name="fuel" options={{ title: "Fuel", href: canFuel ? "/fuel" : null }} />
       <Tabs.Screen name="stock-test" options={{ href: canStock ? "/stock-test" : null }} />
+      <Tabs.Screen name="stock-dashboard" options={{ href: null }} />
+      <Tabs.Screen name="buying" options={{ href: canBuy || isAdmin ? "/buying" : null }} />
+      <Tabs.Screen name="job-cards" options={{ href: canWorkshop || canBuy || canStock || isAdmin ? "/job-cards" : null }} />
+      <Tabs.Screen name="town-trips" options={{ href: canDrive || canBuy || isAdmin ? "/town-trips" : null }} />
       <Tabs.Screen name="labour" options={{ title: "Labour", href: canLabour && !isAdmin ? "/labour" : null }} />
       <Tabs.Screen name="cashbook" options={{ href: null }} />
+      <Tabs.Screen name="outstanding-issues" options={{ href: null }} />
       <Tabs.Screen
         name="irrigation_main_dashboard"
         options={{ href: canIrrigation && !isAdmin ? "/irrigation_main_dashboard" : null }}

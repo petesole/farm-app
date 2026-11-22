@@ -1,3 +1,4 @@
+import {stockV2Endpoint} from "@/utils/stock-v2-endpoint";
 import {StockV2Header} from "@/components/jspl/StockV2Header";
 import {useEffect,useState} from "react";
 import {useRouter} from "expo-router";
@@ -6,7 +7,7 @@ import {ThemedText} from "@/components/themed-text";
 import {ThemedView} from "@/components/themed-view";
 import {supabase} from "../../../supabase";
 import {jsplColors,jsplSpacing,jsplRadii,jsplSizes} from "@/constants/jspl-design";
-const url="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
+const url=stockV2Endpoint;
 type Contract={contract_id:number;contract_code:string;contract_name:string;active:boolean};
 type Owner={owner_id:number;owner_code:string;owner_name:string;active:boolean;po_required_for_grv:boolean;po_requires_contract:boolean;default_contract_id:number|null;allow_direct_grv:boolean};
 type Trace={tracecode_id:number;tracecode_name:string;contract_id:number|null};

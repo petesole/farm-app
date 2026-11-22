@@ -26,6 +26,7 @@ function landingForRole(roleName: string) {
 
   if (r === "admin") return "/(tabs)/main-dashboard";
   if (r === "sprayer") return "/sprayer";
+  if (r === "buyer" || r === "driver" || r === "workshop") return "/(tabs)/stock-dashboard";
   if (r === "stock") return "/(tabs)/stock-test";
   if (r === "manager") return "/(tabs)/fuel";
   if (r === "rainfall") return "/rainfall-entry";
@@ -75,15 +76,15 @@ export default function LoginScreen() {
         return;
       }
       const roles = (access || []).map((r: string) => norm(r));
-      try { const a=(await stockRequest('?stock_access=1')).access;if(a?.is_stock)roles.push('stock');if(a?.is_sprayer)roles.push('sprayer'); } catch { /* Other assigned modules retain their existing access. */ }
-      if (!roles.some((r: string) => ["admin", "manager", "fuel", "labour", "rainfall", "viewer", "irrigation", "scouting", "scout", "scouter", "stock", "sprayer"].includes(r))) {
+      try { const a=(await stockRequest('?stock_access=1')).access;if(a?.is_stock)roles.push('stock');if(a?.is_buyer)roles.push('buyer');if(a?.is_driver)roles.push('driver');if(a?.is_workshop)roles.push('workshop');if(a?.is_sprayer)roles.push('sprayer'); } catch { /* Other assigned modules retain their existing access. */ }
+      if (!roles.some((r: string) => ["admin", "manager", "fuel", "labour", "rainfall", "viewer", "irrigation", "scouting", "scout", "scouter", "stock", "buyer", "driver", "workshop", "sprayer"].includes(r))) {
         await supabase.auth.signOut();
         setStatus("Your account has no assigned Farm Management role.");
         return;
       }
       if(SPRAYER_APP&&!roles.includes("sprayer")){await supabase.auth.signOut();setStatus("Sprayer access has not been assigned to this account.");return;}
       const role = SPRAYER_APP?"sprayer":
-        ["admin", "manager", "fuel", "labour", "rainfall", "irrigation", "scouting", "scout", "scouter", "viewer", "stock", "sprayer"]
+        ["admin", "manager", "fuel", "labour", "rainfall", "irrigation", "scouting", "scout", "scouter", "viewer", "stock", "buyer", "driver", "workshop", "sprayer"]
           .find((r) => roles.includes(r)) || roles[0];
       if(role==="sprayer")await verifyPhoneAccess();
       await AsyncStorage.setItem(

@@ -1,17 +1,26 @@
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { jsplColors as C, jsplRadii as R, jsplSpacing as S } from "@/constants/jspl-design";
 
 type Props={title:string; dashboard?:boolean; allowMain?:boolean; backLabel?:string; onStock?:()=>void; onRefresh?:()=>void;};
 export function StockV2Header({title,dashboard=false,allowMain=false,backLabel,onStock,onRefresh}:Props){
+  const {from}=useLocalSearchParams<{from?:string}>();
+  const parent=from==="outstanding-issues"?{label:"← Outstanding Issues",route:"/outstanding-issues" as const}
+    :dashboard&&from==="buying"?{label:"← Buying",route:"/buying" as const}
+    :dashboard&&from==="stock-dashboard"?{label:"← Stock",route:"/stock-dashboard" as const}:null;
+  const goBack=onStock??(parent?()=>{
+    if(from!=="stock-dashboard"&&router.canGoBack())router.back();
+    else router.replace(parent.route);
+  }
+    :()=>router.replace(dashboard?"/(tabs)/main-dashboard":"/(tabs)/stock-test"));
   return <View style={styles.header}>
     <Image source={require("../../assets/images/jspl_farm_logo.png")} resizeMode="contain" style={styles.logo}/>
     <View style={styles.left}>
       <Text style={styles.title}>{title}</Text>
     </View>
     <View style={styles.actions}>
-        {!dashboard||allowMain?<Pressable accessibilityRole="button" style={styles.button} onPress={dashboard?()=>router.replace("/(tabs)/main-dashboard"):onStock??(()=>router.replace("/(tabs)/stock-test"))}>
-          <Text style={styles.buttonText}>{backLabel??(dashboard?"← Main":"← Stock")}</Text>
+        {!dashboard||allowMain||parent||onStock?<Pressable accessibilityRole="button" style={styles.button} onPress={goBack}>
+          <Text style={styles.buttonText}>{backLabel??parent?.label??(dashboard?"← Main":"← Stock")}</Text>
         </Pressable>:null}
         {!dashboard&&onRefresh?<Pressable accessibilityRole="button" style={styles.button} onPress={onRefresh}><Text style={styles.buttonText}>↻ Refresh</Text></Pressable>:null}
     </View>

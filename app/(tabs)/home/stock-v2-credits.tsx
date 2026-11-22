@@ -1,3 +1,4 @@
+import {stockV2Endpoint} from "@/utils/stock-v2-endpoint";
 import {StockRecovery} from "@/components/jspl/StockWorkflowControls";
 import {stockContext,stockMutation,stockUUID,ApprovalDocument} from "@/utils/stock-workflow";
 import {StockDocumentSummary,StockButton,StockField,StockSelect,stockStyles} from "@/components/jspl/StockWorkflowControls";
@@ -10,7 +11,7 @@ import {supabase} from "../../../supabase";
 import {jsplColors} from "@/constants/jspl-design";
 
 const creditApi="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-credits";
-const stockApi="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
+const stockApi=stockV2Endpoint;
 type CreditLine={line_id:number;item_code:string;item_name:string;quantity:number;agreed_price:number;inventory_value:number|null;credited_quantity:number;credited_value:number};
 type ReturnRow={document_id:number;document_number:string;document_date:string;owner_code:string;supplier_name:string;return_reference:string;reason:string;lines:CreditLine[]};
 type Allocation={return_line_id:number;quantity:number;unit_credit_price:number};

@@ -1,3 +1,4 @@
+import {stockV2Endpoint} from "@/utils/stock-v2-endpoint";
 import {StockRecovery} from "@/components/jspl/StockWorkflowControls";
 import {stockMutation,stockRequest} from "@/utils/stock-workflow";
 import {StockSelect,StockField} from "@/components/jspl/StockWorkflowControls";
@@ -9,7 +10,7 @@ import {ThemedText} from "@/components/themed-text";
 import {ThemedView} from "@/components/themed-view";
 import {supabase} from "../../../supabase";
 import {jsplColors,jsplSpacing,jsplRadii} from "@/constants/jspl-design";
-const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
+const endpoint=stockV2Endpoint;
 type Line={document_id:number;document_date:string;delivery_note:string;delivery_note_date:string|null;supplier_name:string;owner_code:string;item_code:string;item_name:string;base_unit:string;line_id:number;quantity:number;original_price:number|null;po_price?:number|null;original_price_source?:string|null};
 const dateISO=(value:string)=>parseJsplDateInput(value) ?? null;
 const formatDate=(v:string|null|undefined)=>{if(!v)return "—";const s=String(v);if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(8,10)+"/"+s.slice(5,7)+"/"+s.slice(0,4);return /^\d{2}\/\d{2}\/\d{4}$/.test(s)?s:"—";};
