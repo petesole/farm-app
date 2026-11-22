@@ -10,6 +10,7 @@ async function equipmentSchema(db){
  await db.exec(fs.readFileSync(root+'/supabase/'+migration,'utf8'));
  await db.exec('begin;'+fs.readFileSync(root+'/supabase/migrations/20261116134234_petrol_equipment_register.sql','utf8')+'commit;');
  await db.exec(fs.readFileSync(root+'/supabase/migrations/20261116141338_oil_equipment_only.sql','utf8'));
+ await db.exec(fs.readFileSync(root+'/supabase/migrations/20261122133221_vehicle_ownership_companies.sql','utf8'));
 }
 module.exports={equipmentSchema};
 if(require.main===module)(async()=>{const db=await fixture();let passed=0;

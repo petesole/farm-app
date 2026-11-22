@@ -38,7 +38,10 @@ async function testEquipmentUI(db,admin,stock){
     if(where.length){sql+=' where '+where.map(([k,v])=>{values.push(v);return k+'=$'+values.length}).join(' and ');}
     if(op!=='select')sql+=' returning *';else if(sort)sql+=' order by '+sort;
     return db.query(sql,values).then(r=>({data:single?r.rows[0]:r.rows,error:null})).catch(e=>({data:null,error:{message:e.message}})).then(yes,no);
-   }};return b;},rpc:async()=>({data:(await db.query('select role_name from public.app_user_role where user_id=$1',[actor])).rows.map(r=>r.role_name)}),auth:{getUser:async()=>({data:{user:{id:actor}}}),getSession:async()=>({data:{session:{access_token:'local',user:{id:actor}}}})}}};
+   }};return b;},rpc:async(name)=>name==='vehicle_hire_suppliers' ? db.transaction(async tx=>{
+    await tx.query("select set_config('request.jwt.claim.sub',$1,true)",[actor]);
+    return {data:(await tx.query('select * from public.vehicle_hire_suppliers()')).rows};
+   }) : ({data:(await db.query('select role_name from public.app_user_role where user_id=$1',[actor])).rows.map(r=>r.role_name)}),auth:{getUser:async()=>({data:{user:{id:actor}}}),getSession:async()=>({data:{session:{access_token:'local',user:{id:actor}}}})}}};
   if(name.endsWith('.png'))return 1;
   if(name.startsWith('@/'))name=root+'/'+name.slice(2);
   return oldLoad.call(this,name,parent,isMain);
@@ -69,8 +72,22 @@ async function testEquipmentUI(db,admin,stock){
  await combo('Fuel type','Petrol');await click('Save Vehicle');await until(()=>routing.at(-1)==='/(tabs)/vehicle-management','Vehicle saved to parent list');
  let vehicle=(await db.query("select * from public.vehicle where vehicle_name='Mistblower A'")).rows[0];check(vehicle.fuel_type==='PETROL','Vehicle edit persists petrol classification');
  await render('(tabs)/vehicle-management');await until(()=>document.body.textContent.includes('Mistblower A'),'New equipment visible without browser refresh');check(document.body.textContent.includes('Petrol'),'Vehicle list displays fuel type');
+ const incomplete=[...document.querySelectorAll('span')].find(e=>e.textContent==='Mistblower A (2)');
+ check(!!incomplete&&document.body.textContent.includes('Missing Type, Ownership'),'Active vehicle shows missing count and field names');
  routeParams={id:String(vehicle.vehicle_id),mode:'edit'};await render('(tabs)/vehicle-detail');await until(()=>document.querySelector('input[aria-label="Fuel type"]')?.value==='Petrol','Petrol classification restored on edit');
  await combo('Fuel type','No fuel (e.g. implement)');await click('Save Vehicle');await until(()=>routing.at(-1)==='/(tabs)/vehicle-management','Fuel type correction confirmed');check((await db.query('select fuel_type from public.vehicle where vehicle_id=$1',[vehicle.vehicle_id])).rows[0].fuel_type==='NONE','Vehicle edit supports future non-powered implements');
+ await db.query("insert into stock_v2.supplier(supplier_name) values('Vehicle Hire Fixture')");
+ routeParams={id:String(vehicle.vehicle_id),mode:'edit'};await render('(tabs)/vehicle-detail');
+ await until(()=>document.querySelector('input[aria-label="Vehicle name"]')?.value==='Mistblower A','Existing vehicle opened');
+ await combo('Ownership','Owned');await combo('Owner company','JS');await click('Save Vehicle');
+ await until(()=>routing.at(-1)==='/(tabs)/vehicle-management','Owned vehicle saved');
+ check((await db.query('select owner_code from public.vehicle where vehicle_id=$1',[vehicle.vehicle_id])).rows[0].owner_code==='JS','Company ownership persists on the vehicle');
+ await render('(tabs)/vehicle-management');await until(()=>document.body.textContent.includes('Mistblower A'),'Vehicle list refreshed');
+ routeParams={id:String(vehicle.vehicle_id),mode:'edit'};await render('(tabs)/vehicle-detail');await until(()=>document.querySelector('input[aria-label="Owner company"]')?.value==='JS','Saved owner restored');
+ await combo('Ownership','Hired');await combo('Hire supplier','Vehicle Hire Fixture');await click('Save Vehicle');
+ await until(()=>routing.at(-1)==='/(tabs)/vehicle-management','Hired vehicle saved');
+ const hired=(await db.query('select v.owner_company_id,v.owner_code,s.supplier_name from public.vehicle v left join stock_v2.supplier s on s.supplier_id=v.hire_supplier_id where v.vehicle_id=$1',[vehicle.vehicle_id])).rows[0];
+ check(!hired.owner_company_id&&!hired.owner_code&&hired.supplier_name==='Vehicle Hire Fixture','Switch to hired clears company and saves the hire supplier');
  routeParams={id:'new'};await render('(tabs)/vehicle-type-edit');await until(()=>!button('Save type').disabled,'Type editor ready');await fill('Type name','Mistblower');await fill('Type code','MISTBLOWER');await click('Save type');await until(()=>routing.at(-1)==='/(tabs)/vehicle-types','Type saved');
  await render('(tabs)/vehicle-types');await until(()=>document.body.textContent.includes('Mistblower'),'New vehicle type in list');check(true,'Vehicle type create and return refresh work');
  const type=(await db.query("select * from public.vehicle_type where type_code='MISTBLOWER'")).rows[0];routeParams={id:String(type.vehicle_type_id)};await render('(tabs)/vehicle-type-edit');await until(()=>document.querySelector('input[aria-label="Type name"]')?.value==='Mistblower','Type editor loaded');await fill('Type name','Mistblowers');await click('Save type');await until(()=>routing.at(-1)==='/(tabs)/vehicle-types','Type renamed');check((await db.query('select type_name from public.vehicle_type where vehicle_type_id=$1',[type.vehicle_type_id])).rows[0].type_name==='Mistblowers','Vehicle type rename persists without changing ID');

@@ -14,6 +14,7 @@ export function JsplReturnNavigation(){
   // Promoted irrigation screens provide their own single branded return control.
   if(path.endsWith('/irrigation_main_dashboard')||path.includes('/home/irrigation/'))return null;
   if(path==='/labour'||path==='/labour-reports'||path==='/labour-date-report')return null;
+  if(["/companies","/vehicle-management","/vehicle-detail","/vehicle-types","/vehicle-type-edit"].includes(path))return null;
   const isMain=path.endsWith("/main-dashboard") || path.endsWith("/field-dashboard") || path==="/fuel" || path.endsWith("/fuel") || path==="/weighbridge" || path.endsWith("/wb-admin");
   if(isMain)return null;
   let label="Main";
