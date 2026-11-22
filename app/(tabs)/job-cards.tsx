@@ -13,7 +13,7 @@ type Category={category_id:number;catalogue_group:string;category_name:string};
 type AssetPurchase = {id:string;part_number?:string;item_code:string;item_name:string;active:boolean;document_date:string;supplier_name:string;receipt:string;unit_price:string|null};
 type JobCard = {
   id: string; job_number: number; vehicle_name: string; work_description: string; transaction_date:string; closed_at:string|null; revision:string;card_type:CardType;vehicle_id:number|null;tracecode_id:number|null;
-  parts: {category_id:number;line_purpose?:string;part_id: number; owner_code: string; item_code: string; item_name: string; quantity: number; reserved: number; issued: number; repair_cost: number|null; pending_cost: boolean; unit_price:number|null; direct_expense:boolean; part_number?:string; available?: number; unit: string; sample_details?: string}[];
+  parts: {category_id:number;line_purpose?:string;part_id: number; owner_code: string; item_code: string; item_name: string; quantity: number; reserved: number; issued: number; repair_cost: number|null; pending_cost: boolean; unit_price:number|null; direct_expense:boolean; part_number?:string; available?: number;stock_sources?:{code:string;name:string;available:number}[]; unit: string; sample_details?: string}[];
   purchase_orders: {owner_code: string; status: string; order_number?: string; request_number: number}[];
 };
 type CardData = {
@@ -53,6 +53,7 @@ export default function JobCards() {
   const [reservationPart, setReservationPart] = useState<number|null>(null);
   const [quotePart,setQuotePart]=useState<number|null>(null);
   const [reservationQuantity, setReservationQuantity] = useState('');
+  const [reservationOwner,setReservationOwner]=useState('');
 
   const load = useCallback(async () => {
     try { setData(await stockRequest('?job_cards=1')); }
@@ -125,10 +126,10 @@ export default function JobCards() {
       const quantity=Number(reservationQuantity);
       const {result}=await stockMutation('job-reservation', action==='issue'
         ? {action:'issue_job_part',part_id:partId,quantity}
-        : {action:'reserve_job_part',part_id:partId,quantity_delta:action==='reserve'?quantity:-quantity});
+        : {action:'reserve_job_part',part_id:partId,quantity_delta:action==='reserve'?quantity:-quantity,...(action==='reserve'&&reservationOwner?{owner_code:reservationOwner}:{})});
       setReservationPart(null);
       setReservationQuantity('');
-      setNotice(action==='issue'?'Stock issued · '+result.document_number:action==='reserve'?'Stock reserved.':'Reservation released.');
+      setNotice(action==='issue'?'Stock issued against this Job Card.':action==='reserve'?'Stock reserved.':'Reservation released.');
       await load();
     } catch (failure) {
       setError((failure as Error).message);
@@ -208,8 +209,8 @@ export default function JobCards() {
 
   return <ScrollView contentContainerStyle={styles.page}>
     <StockV2Header title={editing?(editingCard?'Edit Job Card':'New Job Card'):history?opened?"Job Card details":"Historical Job Cards":"Job Cards"} dashboard={from!=='buying'&&from!=='stock'} allowMain={data?.can_main}
-      backLabel={editing?'← Job Cards':history?(opened?'← Historical Job Cards':'← Job Cards'):from==='buying'?'← Buying':undefined}
-      onStock={editing?()=>{if(!busy)closeForm();}:history?()=>{if(opened){setOpened(null);setQuotePart(null);setReservationPart(null);}else setHistory(false);}:from==='buying'?()=>router.replace('/buying'):undefined}/>
+      backLabel={editing?'← Job Cards':history?(opened?'← Historical Job Cards':'← Job Cards'):from==='buying'?'← Buying':from==='direct-issue'?'← Direct Issue':undefined}
+      onStock={editing?()=>{if(!busy)closeForm();}:history?()=>{if(opened){setOpened(null);setQuotePart(null);setReservationPart(null);}else setHistory(false);}:from==='buying'?()=>router.replace('/buying'):from==='direct-issue'?()=>router.back():undefined}/>
     {error ? <><Text style={styles.error}>{error}</Text><StockRecovery scope={reservationPart!==null?'job-reservation':'job-card'} onRecovered={() => void load()}/></> : null}
     {notice ? <Text style={styles.success}>{notice}</Text> : null}
     {data&&!editing&&!history?<View style={styles.row}>
@@ -299,7 +300,9 @@ export default function JobCards() {
       {data.can_buy&&card.parts.length>0?<StockSelect label="Item for purchase history and quotes" value={quotePart}
         options={card.parts.filter(part=>!part.direct_expense).map(part=>({id:part.part_id,label:part.item_name}))}
         onChange={value=>setQuotePart(value==null?null:Number(value))}/>:null}
-      {card.parts.map(part => <View key={part.part_id} style={{gap:8}}>
+      {card.parts.map(part => {
+        const available=part.owner_code?(part.available??0):(part.stock_sources?.find(s=>s.code===reservationOwner)?.available??0);
+        return <View key={part.part_id} style={{gap:8}}>
         <Text style={styles.text}>{part.item_name}{part.owner_code?' · '+part.owner_code:''} · {part.quantity} {part.unit}{part.sample_details ? ' · ' + part.sample_details : ''}</Text>
         {part.line_purpose&&part.line_purpose!==card.work_description?<Text style={styles.muted}>{part.line_purpose}</Text>:null}
         {part.part_number?<Text style={styles.muted}>Part number · {part.part_number}</Text>:null}
@@ -317,17 +320,20 @@ export default function JobCards() {
         {data.can_buy&&!part.direct_expense&&quotePart===part.part_id?<JobPartQuotes key={part.part_id} partId={part.part_id} onUse={quoteId=>router.push({
           pathname:'/stock-v2-purchase-orders',params:{from:'job-card',job:card.id,owner:part.owner_code,part:String(part.part_id),quote:quoteId},
         })}/>:null}
-        {data.can_reserve && !card.closed_at && !!part.owner_code && !part.direct_expense && (reservationPart===part.part_id ? <>
-          <Text style={styles.muted}>{part.available??0} {part.unit} available to reserve</Text>
+        {data.can_reserve && !card.closed_at && (!!part.owner_code||part.stock_sources!=null) && !part.direct_expense && (reservationPart===part.part_id ? <>
+          {!part.owner_code&&part.stock_sources?<StockSelect label="Issue from stock owner" value={reservationOwner||null}
+            options={part.stock_sources.map(s=>({id:s.code,label:s.name+' · '+s.available+' '+part.unit}))}
+            onChange={v=>setReservationOwner(String(v??''))}/>:null}
+          <Text style={styles.muted}>{available} {part.unit} available to reserve</Text>
           <StockField label="Quantity" value={reservationQuantity} numeric onChange={setReservationQuantity}/>
           <View style={styles.row}>
-            <StockButton title="Reserve" disabled={busy||!(Number(reservationQuantity)>0)||Number(reservationQuantity)>Math.min(part.quantity-part.reserved-part.issued,part.available??0)} onPress={()=>void changeReservation(part.part_id,'reserve')}/>
+            <StockButton title="Reserve" disabled={busy||!(Number(reservationQuantity)>0)||Number(reservationQuantity)>Math.min(part.quantity-part.reserved-part.issued,available)} onPress={()=>void changeReservation(part.part_id,'reserve')}/>
             <StockButton title="Release" disabled={busy||!(Number(reservationQuantity)>0)||Number(reservationQuantity)>part.reserved} onPress={()=>void changeReservation(part.part_id,'release')}/>
             <StockButton title="Issue reserved stock" disabled={busy||!(Number(reservationQuantity)>0)||Number(reservationQuantity)>part.reserved} onPress={()=>void changeReservation(part.part_id,'issue')}/>
             <StockButton title="Close" disabled={busy} onPress={()=>setReservationPart(null)}/>
           </View>
-        </> : <StockButton title="Manage reservation" disabled={busy} onPress={()=>{setReservationPart(part.part_id);setReservationQuantity('');}}/>)}
-      </View>)}
+        </> : <StockButton title="Manage reservation" disabled={busy} onPress={()=>{setReservationPart(part.part_id);setReservationQuantity('');setReservationOwner('');}}/>)}
+      </View>;})}
       {card.purchase_orders.map(order => <Text key={order.request_number} style={styles.muted}>
         {order.order_number ?? 'PO request ' + order.request_number} · {order.owner_code} · {order.status==='applied'?'Authorised':order.status}
       </Text>)}

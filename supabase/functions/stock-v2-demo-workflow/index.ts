@@ -32,7 +32,7 @@ Deno.serve(async(req)=>{
    const key=Deno.env.get("JSPL_WORKFLOW_OPENAI_API_KEY"),model=Deno.env.get("JSPL_WORKFLOW_OPENAI_MODEL");
    if(!key||!model)return reply({error:"Ask a question will be available when AI help is configured. The workflow guide is available now."},503);
    const workflow=module==="buying"
-    ?"Admin and Buyer can open Job Cards and submit purchase orders or receipts. Admin authorises POs and enters payment terms. JS requires a supplier. AO may defer supplier selection until receiving. Partial deliveries remain linked to the PO. An admin verifies a receipt before stock posts. A returned receipt can be reopened and corrected by the submitter. Town Trips let admin assign orders and drivers report collection. Buying opens collected orders in Receiving. Buying and Stock can reserve and issue Job Card parts."
+    ?"Admin and Buyer can open Job Cards and submit purchase orders or receipts. Admin authorises POs and enters payment terms. JS requires a supplier. AO may defer supplier selection until receiving. Partial deliveries remain linked to the PO. An admin verifies a receipt before stock posts. A returned receipt can be reopened and corrected by the submitter. Town Trips let admin assign orders and drivers report collection. Buying opens collected orders in Receiving. Buying and Stock can reserve and issue Job Card parts. Lubricants including oils and grease must be issued against an open Job Card. Petrol uses Direct Issue."
     :"Cash Book is admin-only. Quick Cash saves only a date and description for later reconciliation. In Transaction History select the note to match it to a confirmed payment or receipt. Saving or matching a note does not change balances. History starts with the latest transaction, with From and To dates and current balances by currency. Draft payments and receipts affect balances only when confirmed. Trip advances debit the selected account. Reconciliation requires documented spend plus cash returned to equal the advance. Only cash returned credits the account. Labour drafts link to selected source rows and the admin must choose the account in the recorded cost currency. Eligible verified supplier invoices support partial drafts and payments. Trip invoices and credit-linked invoices require separate reconciliation.";
    try{
     const response=await fetch("https://api.openai.com/v1/responses",{
@@ -221,6 +221,11 @@ Deno.serve(async(req)=>{
      'owner_code',replace(o.owner_code,'TEST_',''),'sample_details',p.sample_details,'line_purpose',p.line_purpose,'part_id',p.id,
      'category_id',p.category_id,'unit_price',p.unit_price,'direct_expense',i.buying_direct_expense,'part_number',i.buying_part_number,
      'reserved',r.quantity,'issued',coalesce(u.issued_quantity,0),'repair_cost',u.repair_cost,
+     'stock_sources',case when p.owner_id is null and j.vehicle_id is null and i.input_type='Lubricants' and ${access.is_stock||access.is_buyer} then (
+       select coalesce(jsonb_agg(jsonb_build_object('code',replace(src.owner_code,'TEST_',''),'name',src.owner_name,'available',src.available) order by src.owner_name),'[]'::jsonb)
+       from (select so.owner_code,so.owner_name,stock_v2.available_after_job_reservations(so.owner_id,p.item_id,loc.location_id) as available
+         from stock_v2.owner so cross join stock_v2.location loc where so.active and so.owner_code in ('TEST_JS','TEST_AO') and loc.location_code='TEST_WH') src where src.available>0
+     ) end,
      'pending_cost',coalesce(u.pending_cost_lines,0)>0,'available',case when ${access.is_stock||access.is_buyer} then greatest(0,
       stock_v2.available_after_job_reservations(p.owner_id,p.item_id,
        (select location_id from stock_v2.location where location_code='TEST_WH'))) end) order by p.id)
@@ -1111,6 +1116,15 @@ left join lateral (
     !Number.isFinite(quantity)||Math.abs(quantity)<0.000001||Math.abs(quantity)>100000)
     return reply({error:"Select a part and enter a valid quantity."},400);
    const result=await transaction(async tx=>{
+    if(body.owner_code!=null){
+     if(quantity<=0||!['JS','AO'].includes(body.owner_code))throw Error('Choose the stock owner supplying the lubricant.');
+     const assigned=await tx`update stock_v2.job_card_part p set owner_id=o.owner_id
+       from stock_v2.owner o,stock_v2.item i,stock_v2.job_card j
+       where p.id=${partId} and i.item_id=p.item_id and i.input_type='Lubricants' and j.id=p.job_id and j.vehicle_id is null and j.closed_at is null
+         and o.owner_code='TEST_'||${body.owner_code} and o.active and (p.owner_id is null or p.owner_id=o.owner_id)
+       returning p.id`;
+     if(!assigned.length)throw Error('The stock owner on this Job Card line has changed. Reopen the card.');
+    }
     const [part]=await tx`select (p.requested_quantity-coalesce(u.issued_quantity,0))::float8 as requested,r.quantity::float8 as reserved,
       stock_v2.available_after_job_reservations(p.owner_id,p.item_id,loc.location_id)::float8 as available
       from stock_v2.job_card_part p join stock_v2.job_part_reserved r on r.part_id=p.id
@@ -1185,12 +1199,14 @@ left join lateral (
     const name=String(p.name??"").trim(),number=String(p.part_number??"").trim(),unit=String(p.unit??"").trim();
     if(!category||name.length>150||number.length>100||unit.length>30||(!name&&!number&&!p.item_code))
      throw Error("Select a category and enter a part name or number.");
-    let [item]=await tx`select item_id,item_code,active from stock_v2.item
+    let [item]=await tx`select item_id,item_code,active,input_type from stock_v2.item
       where (${p.item_code??null}::text is not null and item_code=${p.item_code??null})
        or (${number}<>'' and (lower(buying_part_number)=lower(${number}) or lower(item_code)=lower(${number})))
        or (${number}='' and lower(item_name)=lower(${name}))
       order by (lower(buying_part_number)=lower(${number})) desc nulls last,item_id limit 1`;
     if(item&&!item.active)throw Error("This catalogue item is inactive.");
+    if(item&&category.category_name.toLowerCase()==='lubricants'&&item.input_type!=='Lubricants')
+      throw Error('Set the existing stock item’s input type to Lubricants before adding it to this category.');
     if(!item){
      if(!name||!unit)throw Error("Enter the part name and unit of measure.");
      [item]=await tx`insert into stock_v2.item(item_code,item_name,base_unit,input_type,input_category,buying_part_number)

@@ -21,13 +21,22 @@ async function displayFixture(context,role){
   const cashEntry=(day,number)=>({id:'entry-'+number,entry_number:number,reference:'Test receipt '+number,entry_date:day,created_at:day+'T12:00:00Z',kind:'receipt',status:'confirmed',currency:'USD',account_id:'USD-account',amount:'5.00',narrative:'Test deposit '+number});
   const book={accounts:[],entries:[cashEntry('2026-11-10',1),cashEntry('2026-11-19',2)],notes:[],balances:[{currency:'USD',balance:'42.00'},{currency:'ZiG',balance:'5.00'}],
     trips:[],advances:[],tripInvoices:[],counterparties:[],expenses:[]};
+  const lubricant={item_code:'LUBE',item_name:'Gear Oil',base_unit:'L',input_type:'Lubricants',input_category:'Lubricants',active:true,quantity:8,ao_quantity:0};
+  const petrol={...lubricant,item_code:'PET',item_name:'Petrol',input_type:'Fuel',input_category:'Fuel'};
+  const mineral={...lubricant,item_code:'SPRAY',item_name:'Mineral spray oil',input_type:'Chemical',input_category:'Insecticide'};
+  const oilLine={part_id:15,owner_code:'JS',item_code:'LUBE',item_name:'Gear Oil',quantity:5,unit:'L',unit_price:null,category_id:4,reserved:0,issued:0,available:8};
+  const oilCard={id:'fixture-card',job_number:9,transaction_date:'2026-11-20',vehicle_name:'Screen test tractor',work_description:'Service oil',parts:[oilLine],purchase_orders:[]};
   const lookups={
+    workflow_context:{access,documents:[],stocktakes:[],awaiting:0},supplier_list:{suppliers:[]},
+    stock_setup:{owners:[{owner_code:'JS',owner_name:'JS',active:true}],contracts:[]},
+    equipment_catalog:{rows:[{vehicle_id:2,vehicle_name:'Petrol bike',fuel_type:'PETROL'}]},chemical_actives:{rows:[]},
+    snapshot:{items:[lubricant,petrol,mineral],sprays:[],documents:[],orders:[]},
     stock_access:{access},cash_book:book,
     cash_book_supplier_invoices:{invoices:[],creditOptions:[]},outstanding_issues:{counts:{},returned:[]},
-    job_cards:{cards:[],can_create:buyer,can_buy:buyer||admin,can_main:admin,can_reserve:buyer||stores,
+    job_cards:{cards:[oilCard],can_create:buyer,can_buy:buyer||admin,can_main:admin,can_reserve:buyer||stores,
       vehicles:[{vehicle_id:11,vehicle_name:'Screen test tractor',vehicle_type_id:4,vehicle_type:'Tractor',type_code:'TRA',owner_name:'Screen owner',owner_code:'JS',catalogue_group:'vehicle'}],
-      items:[{item_code:'FILTER-A',item_name:'Service filter',base_unit:'each',part_number:'F-12',category_ids:[3]}],
-      categories:[{category_id:3,catalogue_group:'vehicle',category_name:'Filters'}],traces:[]},
+      items:[{item_code:'FILTER-A',item_name:'Service filter',base_unit:'each',part_number:'F-12',category_ids:[3]},{...lubricant,part_number:null,category_ids:[4]}],
+      categories:[{category_id:3,catalogue_group:'vehicle',category_name:'Filters'},{category_id:4,catalogue_group:'vehicle',category_name:'Lubricants'}],traces:[]},
     job_asset_purchase_history:{rows:[{id:'1',item_code:'FILTER-A',item_name:'Service filter',part_number:'F-12',active:true,supplier_name:'Screen supplier',receipt:'GRV-1',document_date:'2026-11-20',unit_price:'12.00'}]},
     town_trips:{trips:[{id:'screen-trip',trip_number:1,trip_date:'2026-11-20',driver_name:'Test driver',orders:[],finalised_at:null}],drivers:[],orders:[],can_create:admin,can_report:driver,can_receive:!driver},
   };
@@ -39,7 +48,16 @@ async function displayFixture(context,role){
     if(u.pathname==='/auth/v1/token')response=session;
     else if(u.pathname==='/auth/v1/user')response=user;
     else if(u.pathname==='/rest/v1/rpc/my_farm_app_roles')response=[role];
-    else if(req.method()==='GET'&&u.pathname.endsWith('/stock-buying-development'))response=lookups[[...u.searchParams.keys()][0]];
+    else if(u.pathname==='/rest/v1/tracecode'||u.pathname==='/rest/v1/crop')response=[];
+    else if(req.method()==='GET'&&u.pathname.endsWith('/stock-buying-development'))response=lookups[[...u.searchParams.keys()][0]||'snapshot'];
+    else if(req.method()==='POST'&&stores&&u.pathname.endsWith('/stock-buying-development')){
+      const body=req.postDataJSON();
+      assert.equal(body.part_id,oilLine.part_id);
+      if(body.action==='reserve_job_part'){oilLine.reserved+=body.quantity_delta;oilLine.available-=body.quantity_delta;}
+      else if(body.action==='issue_job_part'){oilLine.issued+=body.quantity;oilLine.reserved-=body.quantity;}
+      else throw Error('Unexpected Stores action '+body.action);
+      response={success:true,result:{part_id:oilLine.part_id}};
+    }
     else if(req.method()==='POST'&&u.pathname.endsWith('/stock-buying-development')&&admin){
       const {action,payload}=req.postDataJSON();
       if(action==='cash_book_quick_note'){
@@ -186,6 +204,24 @@ async function check(browser, role, width) {
     if(role==='driver')assert.equal(await page.getByText('Add New Trip',{exact:true}).count(),0);
     await click(page,'View Historical Trips');
     if(fixture)await page.getByText(/Trip 1.+Outstanding/).waitFor();
+    if(fixture&&role==='stock'){
+      await page.goto(site+'/stock-test?operation=Direct%20Issue');
+      await page.getByText('Select product ▾',{exact:true}).click();
+      await page.getByText(/^Petrol \(L\).*Available/).first().waitFor();
+      await page.getByText(/^Mineral spray oil \(L\).*Available/).first().waitFor();
+      assert.equal(await page.getByText(/^Gear Oil \(L\).*Available/).count(),0);
+      await page.getByText(/^Petrol \(L\).*Available/).first().click();
+      await page.getByRole('textbox',{name:'Petrol — Equipment',exact:true}).waitFor();
+      await click(page,'Issue lubricants from a Job Card');
+      await click(page,'Job Card 9 · Screen test tractor');
+      await click(page,'Manage reservation');
+      const qty=page.getByRole('textbox',{name:'Quantity',exact:true});
+      await qty.fill('5');await click(page,'Reserve');
+      await page.getByText('5 L reserved · 0 L issued',{exact:true}).waitFor();
+      await click(page,'Manage reservation');
+      await qty.fill('3');await click(page,'Issue reserved stock');
+      await page.getByText('2 L reserved · 3 L issued',{exact:true}).waitFor();
+    }
     for(const key of readings[role])assert(received.has(key),role+' did not load '+key);
     await page.waitForLoadState('networkidle');
     assert.deepEqual(faults,[]);
