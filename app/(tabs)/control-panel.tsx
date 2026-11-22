@@ -22,6 +22,7 @@ export default function ControlPanel() {
      <View style={{width:250,maxWidth:"100%"}}><JsplDashboardButton title="Contracts" description="Manage active and inactive contracts" onPress={()=>router.push({pathname:"/(tabs)/field-control-list",params:{kind:"contract"}})}/></View>
      <View style={{width:250,maxWidth:"100%"}}><JsplDashboardButton title="Crop" description="Add, edit and activate crops" onPress={()=>router.push({pathname:"/(tabs)/field-control-list",params:{kind:"crop"}})}/></View>
      <View style={{width:250,maxWidth:"100%"}}><JsplDashboardButton title="Vehicles" description="Add, edit, discontinue or reactivate vehicles" onPress={()=>router.push("/(tabs)/vehicle-management")}/></View>
+     <View style={{width:250,maxWidth:"100%"}}><JsplDashboardButton title="Companies" onPress={()=>router.push("/(tabs)/companies")}/></View>
      <View style={{width:250,maxWidth:"100%"}}><JsplDashboardButton title="Fields & Tracecodes" description="Existing field controls" onPress={()=>router.push("/(tabs)/fields-control")}/></View>
    </View>
  </ScrollView>;
