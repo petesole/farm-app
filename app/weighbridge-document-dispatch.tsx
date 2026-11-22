@@ -11,7 +11,7 @@ type DocumentRow={source_type:string;source_id:string;document_type:string;stora
 type Kind="customer_dnote"|"outgoing_wb"|"customer_wb"|"grv";
 type Combined={source_type:string;source_id:string;source_signature:string;storage_path:string;created_at:string};
 const circle=(present:boolean)=><View style={{width:27,height:27,borderRadius:14,backgroundColor:present?"#15803d":"#b42318",alignItems:"center",justifyContent:"center",alignSelf:"center"}}><Text style={{color:"white",fontWeight:"800",fontSize:16}}>{present?"✓":"−"}</Text></View>;
-const widths=[39,120,110,110,105,45,45,45,45,100,110];
+const widths=[39,120,200,110,110,105,45,45,45,45,100,110];
 
 const kinds:{id:Kind;label:string}[]=[
  {id:"customer_dnote",label:"DNote"},{id:"outgoing_wb",label:"Outgoing WB slip"},
@@ -73,7 +73,9 @@ export default function DocumentDispatch(){
  const signature=(l:Load)=>kinds.map(k=>available.get(key(l)+":"+k.id)?.storage_path||"").join("|");
  const ready=(l:Load)=>kinds.every(k=>available.has(key(l)+":"+k.id));
  const saved=(l:Load)=>combined.find(c=>c.source_type===l.source_type&&c.source_id===l.source_id&&c.source_signature===signature(l));
- const filtered=useMemo(()=>loads.filter(l=>(customer==="all"||String(l.customer_id)===customer)&&[l.slip_number,l.dnote_number,l.weigh_date].join(" ").toLowerCase().includes(search.toLowerCase())),[loads,customer,search]);
+ const customerNames=useMemo(()=>new Map(customers.map(c=>[c.customer_id,c.customer_name])),[customers]);
+ const customerName=(l:Load)=>l.customer_id==null?"—":customerNames.get(l.customer_id)||"—";
+ const filtered=useMemo(()=>loads.filter(l=>(customer==="all"||String(l.customer_id)===customer)&&[l.slip_number,l.dnote_number,l.weigh_date,l.customer_id==null?"":customerNames.get(l.customer_id)||""].join(" ").toLowerCase().includes(search.toLowerCase())),[loads,customer,search,customerNames]);
  const chosen=loads.filter(l=>selected.includes(key(l)));
  const missing=chosen.flatMap(l=>enabled.filter(k=>!available.has(key(l)+":"+k)).map(k=>l.slip_number+" — "+kinds.find(x=>x.id===k)?.label));
 
@@ -258,7 +260,7 @@ export default function DocumentDispatch(){
   {error?<Text style={{color:"#b42318",marginBottom:10}}>{error}</Text>:null}
   {info?<Text style={{color:"#176541",marginBottom:10}}>{info}</Text>:null}
   <View style={{flexDirection:"row",flexWrap:"wrap",marginBottom:12}}>
-   <TextInput value={search} onChangeText={setSearch} placeholder="Search WB slip, Field DNote or date" style={{borderWidth:1,borderColor:"#cfd7d2",padding:10,borderRadius:6,backgroundColor:"white",minWidth:280,marginRight:10,marginBottom:8}}/>
+   <TextInput value={search} onChangeText={setSearch} placeholder="Search customer, WB slip, Field DNote or date" style={{borderWidth:1,borderColor:"#cfd7d2",padding:10,borderRadius:6,backgroundColor:"white",minWidth:280,marginRight:10,marginBottom:8}}/>
    <Button label="Refresh" click={load} disabled={busy}/>
    <Button label="Select visible" click={()=>setSelected(x=>[...new Set([...x,...filtered.map(key)])])}/>
    <Button label="Clear selection" click={()=>setSelected([])}/>
@@ -271,7 +273,7 @@ export default function DocumentDispatch(){
    <ScrollView horizontal>
     <View>
      <View style={{flexDirection:"row",paddingVertical:11,backgroundColor:"#e4eee7",borderBottomWidth:1,borderColor:"#bdd0c2"}}>
-      {["Select","WB Slip","Field DNote","Date","Nett (t)","D","O","C","G","Combined","Action"].map((label,i)=><Text key={label} style={{width:widths[i],textAlign:i>=5&&i<=9?"center":"left",paddingHorizontal:5,fontWeight:"800",color:C.primaryDark}}>{label}</Text>)}
+      {["Select","WB Slip","Customer","Field DNote","Date","Nett (t)","D","O","C","G","Combined","Action"].map((label,i)=><Text key={label} style={{width:widths[i],textAlign:i>=6&&i<=10?"center":"left",paddingHorizontal:5,fontWeight:"800",color:C.primaryDark}}>{label}</Text>)}
      </View>
      <ScrollView style={{maxHeight:500}}>
      {filtered.map(l=>{
@@ -279,12 +281,13 @@ export default function DocumentDispatch(){
       return <View key={id} style={{flexDirection:"row",alignItems:"center",minHeight:50,borderBottomWidth:1,borderColor:"#e7ebe8",backgroundColor:checked?"#e8f4eb":"white"}}>
        <Pressable onPress={()=>setSelected(xs=>checked?xs.filter(x=>x!==id):[...xs,id])} style={{width:widths[0],alignItems:"center"}}><Text style={{fontSize:20,color:C.primary}}>{checked?"☑":"☐"}</Text></Pressable>
        <Text style={{width:widths[1],paddingHorizontal:5,fontWeight:"700"}}>{l.slip_number}</Text>
-       <Text style={{width:widths[2],paddingHorizontal:5}}>{l.dnote_number||"—"}</Text>
-       <Text style={{width:widths[3],paddingHorizontal:5}}>{l.weigh_date}</Text>
-       <Text style={{width:widths[4],paddingHorizontal:5}}>{(Number(l.net_kg)/1000).toFixed(3)}</Text>
-       {kinds.map((k,i)=><View key={k.id} style={{width:widths[5+i]}}>{circle(available.has(id+":"+k.id))}</View>)}
-       <View style={{width:widths[9],alignItems:"center"}}>{pack?circle(true):complete&&!autoErrors[id]?<Text style={{fontSize:11,color:"#80600e"}}>Building…</Text>:circle(false)}</View>
-       <View style={{width:widths[10],alignItems:"center"}}>
+       <Text style={{width:widths[2],paddingHorizontal:5}}>{customerName(l)}</Text>
+       <Text style={{width:widths[3],paddingHorizontal:5}}>{l.dnote_number||"—"}</Text>
+       <Text style={{width:widths[4],paddingHorizontal:5}}>{l.weigh_date}</Text>
+       <Text style={{width:widths[5],paddingHorizontal:5}}>{(Number(l.net_kg)/1000).toFixed(3)}</Text>
+       {kinds.map((k,i)=><View key={k.id} style={{width:widths[6+i]}}>{circle(available.has(id+":"+k.id))}</View>)}
+       <View style={{width:widths[10],alignItems:"center"}}>{pack?circle(true):complete&&!autoErrors[id]?<Text style={{fontSize:11,color:"#80600e"}}>Building…</Text>:circle(false)}</View>
+       <View style={{width:widths[11],alignItems:"center"}}>
          {l.source_type==="manual"?<Pressable disabled={reprinting.includes(id)} onPress={()=>void makeOutgoing(l,true)} style={{padding:5}}><Text style={{color:C.primary,fontWeight:"700",fontSize:11}}>{reprinting.includes(id)?"Regenerating...":"Reprint M slip"}</Text></Pressable>:null}
          {available.has(id+":outgoing_wb")?<Pressable onPress={()=>void openOutgoing(l)} style={{padding:5}}><Text style={{color:C.primary,fontWeight:"700",fontSize:11}}>Open WB PDF</Text></Pressable>:null}
          {outgoingErrors[id]?<Text style={{color:"#b42318",fontSize:11,maxWidth:110}}>{outgoingErrors[id]}</Text>:null}
@@ -312,3 +315,4 @@ export default function DocumentDispatch(){
   </View>
  </ScrollView>;
 }
+

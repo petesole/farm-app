@@ -9,12 +9,14 @@ export function JsplReturnNavigation(){
   const path=pathname.toLowerCase();
   if(!path || path==="/" || path.startsWith("/login") || path.startsWith("/pending-access") || path.startsWith("/modal"))return null;
   if(path.startsWith("/sprayer"))return null;
+  if(path==="/stock" || path.endsWith("/irrigation_main_dashboard") || path.includes("/home/irrigation/"))return null;
   // Labour screens provide exactly one local top-right return button.
   if(path==="/labour" || path.startsWith("/labour-"))return null;
   // Rainfall screens supply their own return control.
   if(path.includes("/rainfall/") || path==="/rainfall-entry")return null;
   // Stock screens provide their own navigation: Main on Stock Dashboard, Stock on subpages.
   if(path.includes("stock-v2-") || path.endsWith("/stock-test") || /^\/(labour-entry|labour-history|labour-correction)$/.test(path) || path.includes("/home/labour_v2") || path.endsWith("/labour") || path.includes("/home/field-master-dashboard") || path.includes("/home/tracecode-edit") || path.includes("/home/field-edit"))return null;
+  if(["/companies","/vehicle-management","/vehicle-detail","/vehicle-types","/vehicle-type-edit"].includes(path))return null;
   const isMain=path.endsWith("/main-dashboard") || path.endsWith("/field-dashboard") || path==="/fuel" || path.endsWith("/fuel") || path==="/weighbridge" || path.endsWith("/wb-admin");
   if(isMain)return null;
   let label="";

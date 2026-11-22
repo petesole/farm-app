@@ -7,7 +7,7 @@ import {router} from "expo-router";
 import {ThemedText} from "@/components/themed-text";
 import {supabase} from "../../../supabase";
 type Issue={fuel_issue_id:number;fuel_issue_date:string;vehicle_id:number;fuel_issued:number;meter_reading:number|null;notes:string|null};
-type Vehicle={vehicle_id:number;vehicle_name:string;has_meter:boolean|null;meter_type:string|null};
+type Vehicle={vehicle_id:number;vehicle_name:string;fuel_type:string;is_other:boolean;vehicle_discontinued:boolean;has_meter:boolean|null;meter_type:string|null};
 const today=()=>{const d=new Date();return [d.getFullYear(),String(d.getMonth()+1).padStart(2,"0"),String(d.getDate()).padStart(2,"0")].join("-");};
 export default function FuelIssueEdit(){
  const [dateInput,setDateInput]=useState(()=>fuelDateDisplay(today()));
@@ -20,7 +20,7 @@ export default function FuelIssueEdit(){
   setLoading(true);setError("");setEditing(undefined);setDate(d);setDateInput(fuelDateDisplay(d));
   const [a,b]=await Promise.all([
    supabase.from("fuel_issue").select("fuel_issue_id,fuel_issue_date,vehicle_id,fuel_issued,meter_reading,notes").eq("fuel_issue_date",d).order("fuel_issue_id"),
-   supabase.from("vehicle").select("vehicle_id,vehicle_name,has_meter,meter_type").order("vehicle_name")
+   supabase.from("vehicle").select("vehicle_id,vehicle_name,has_meter,meter_type,fuel_type,is_other,vehicle_discontinued").order("vehicle_name")
   ]);
   if(a.error)setError(a.error.message);else setIssues((a.data??[]) as Issue[]);
   if(b.error)setError(b.error.message);else setVehicles((b.data??[]) as Vehicle[]);
@@ -42,7 +42,9 @@ export default function FuelIssueEdit(){
   if(!vehicleId){setError("Select a vehicle.");return;}
   if(!Number.isFinite(qty)||qty<=0){setError("Enter a positive fuel quantity.");return;}
   if(meterValue!==null&&(!Number.isFinite(meterValue)||meterValue<0)){setError("Invalid meter reading.");return;}
-  const vehicle=vehicles.find(v=>v.vehicle_id===vehicleId);
+  const vehicle=vehicles.find(v=>Number(v.vehicle_id)===Number(vehicleId));
+  if((editing===null||vehicleId!==editing.vehicle_id)&&(!vehicle||vehicle.fuel_type!=="DIESEL"||vehicle.vehicle_discontinued)){setError("Select active diesel equipment.");return;}
+  if(vehicle?.is_other&&!notes.replace(/^\[UNPLANNED\]\s*/i,"").trim()){setError("Description required for Other diesel use.");return;}
   if(vehicle?.has_meter&&meterValue===null){setError("Enter the vehicle meter reading.");return;}
   if(vehicle?.has_meter&&meterValue!==null){
    // Compare against the adjacent recorded readings in chronological order.
@@ -85,10 +87,10 @@ export default function FuelIssueEdit(){
   </View>}
   {editing!==undefined&&<View style={s.card}>
    <ThemedText type="subtitle">{editing===null?"Add fuel issue":"Edit issue #"+editing.fuel_issue_id}</ThemedText>
-   <ThemedText>Vehicle</ThemedText><View style={s.picker}><Picker selectedValue={vehicleId} onValueChange={setVehicleId}><Picker.Item label="Select vehicle" value={null}/>{vehicles.map(v=><Picker.Item key={v.vehicle_id} value={v.vehicle_id} label={v.vehicle_name}/>)}</Picker></View>
-   <ThemedText>Litres issued</ThemedText><TextInput style={s.input} value={litres} onChangeText={setLitres} keyboardType="numeric"/>
-   <ThemedText>Meter reading (if vehicle has meter)</ThemedText><TextInput style={s.input} value={meter} onChangeText={setMeter} keyboardType="numeric"/>
-   <ThemedText>Notes</ThemedText><TextInput style={s.input} value={notes} onChangeText={setNotes}/>
+   <ThemedText>Vehicle</ThemedText><View style={s.picker}><Picker selectedValue={vehicleId} onValueChange={v=>setVehicleId(Number(v)>0?Number(v):null)}><Picker.Item label="Select vehicle" value={null}/>{vehicles.filter(v=>(v.fuel_type==="DIESEL"&&!v.vehicle_discontinued)||v.vehicle_id===editing?.vehicle_id).map(v=><Picker.Item key={v.vehicle_id} value={v.vehicle_id} label={v.vehicle_name}/>)}</Picker></View>
+   <ThemedText>Litres issued</ThemedText><TextInput accessibilityLabel="Litres issued" style={s.input} value={litres} onChangeText={setLitres} keyboardType="numeric"/>
+   <ThemedText>Meter reading (if vehicle has meter)</ThemedText><TextInput accessibilityLabel="Vehicle meter reading" style={s.input} value={meter} onChangeText={setMeter} keyboardType="numeric"/>
+   <ThemedText>Notes</ThemedText><TextInput accessibilityLabel="Fuel issue notes" style={s.input} value={notes} onChangeText={setNotes}/>
    <View style={s.row}><Pressable style={s.btn} disabled={saving} onPress={save}><ThemedText>{saving?"Saving…":"Save"}</ThemedText></Pressable><Pressable style={s.btn} onPress={()=>setEditing(undefined)}><ThemedText>Cancel</ThemedText></Pressable></View>
   </View>}
  </ScrollView>;

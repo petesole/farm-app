@@ -1,7 +1,8 @@
+import {stockV2Endpoint} from "@/utils/stock-v2-endpoint";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {supabase} from '@/supabase';
 
-const endpoint='https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow';
+const endpoint=stockV2Endpoint;
 export type ApprovalDocument={id:string;request_number:number;kind:'po'|'credit';status:string;version:number;payload:any;received:boolean;target_order_id:number|null;decision_reason:string|null;audit?:{action:string;created_at:string;reason:string|null}[]};
 export type WorkflowContext={access:{is_admin:boolean;is_stock:boolean;can_main:boolean;can_adjustments?:boolean};adjustment_count?:number;documents:ApprovalDocument[];stocktakes:any[];combined_stocktakes?:any[];awaiting:number};
 export function stockUUID(){return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const r=Math.floor(Math.random()*16);return(c==='x'?r:(r&3)|8).toString(16)});}

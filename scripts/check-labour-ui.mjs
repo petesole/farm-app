@@ -23,24 +23,26 @@ assert.match(tabs, /name=["']labour["']/,"Labour module route must exist");
 const cases = [
   ["app/(tabs)/labour.tsx", "Back to Main", "/(tabs)/main-dashboard", 1],
   ["app/labour-entry.tsx", "Back to Labour", "/(tabs)/labour", 2],
-  ["app/labour-reports.tsx", "Back to Labour", "/(tabs)/labour", 1],
+  ["components/jspl/LabourSeasonReport.tsx", "Back to Labour", "/(tabs)/labour", 1],
   ["app/labour-history.tsx", "Back to Labour", "/(tabs)/labour", 1],
-  ["app/labour-correction.tsx", "Back to Labour", "/(tabs)/labour", 1],
+  ["app/labour-correction.tsx", "Back to History", "/labour-history", 1],
 ];
 for(const [path,label,destination,count] of cases){
   const source=read(path);
   assert.match(source, /<JsplModuleHeader\b/,`${path}: missing common JSPL header`);
   assert.equal((source.match(/<JsplModuleHeader\b/g)||[]).length,count,`${path}: unexpected number of header branches`);
-  assert.ok(source.includes(`backLabel="${label}"`),`${path}: incorrect return label`);
+  if (path === "app/(tabs)/labour.tsx") assert.match(source,/backLabel=\{canReturnToMain\?"Back to Main":undefined\}/);
+  else assert.ok(source.includes(`backLabel="${label}"`),`${path}: incorrect return label`);
   assert.ok(source.includes(`backHref="${destination}"`),`${path}: incorrect return destination`);
   assert.ok(!/<View style=\{styles\.header\}>/.test(source),`${path}: duplicate custom header`);
 }
 const entry=read("app/labour-entry.tsx");
 assert.match(entry,/backLabel=["']Back to Labour Form["']/,"Edit Labour Line must have its own return button");
 assert.match(entry,/onBack=\{clearEntry\}/,"Edit Labour Line must preserve draft by returning to the entry form");
-assert.match(entry,/LABOUR_DEVELOPMENT_PREVIEW_ONLY\s*=\s*true/,"Shared database: development save must remain disabled");
+assert.match(entry,/LABOUR_DEVELOPMENT_PREVIEW_ONLY\s*=\s*process\.env\.EXPO_PUBLIC_LABOUR_LIVE_TEST\s*!==\s*["\x27]1["\x27]/,"Shared database: development save must remain disabled");
 assert.match(entry,/editable=\{!draft\.length\s*&&\s*!busy\s*&&\s*!locked\}/,"Entry date must be held while draft records exist");
-const reports=read("app/labour-reports.tsx");
+assert.match(read("app/labour-reports.tsx"),/export \{default\} from [\x27"]@\/components\/jspl\/LabourSeasonReport[\x27"]/);
+const reports=read("components/jspl/LabourSeasonReport.tsx");
 assert.ok(!/<View style=\{styles\.nav\}>/.test(reports),"Reports must not have a second navigation row");
 
 console.log("JSPL Labour UI contract: PASS (5 routes; shared header, return destinations, no duplicate return, hidden bottom bar, safe preview).");

@@ -54,15 +54,16 @@ export default function LabourMain(){
  })();return()=>{active=false}},[week,previousWeek]);
  const tiles=[
  {title:"Labour Input",description:"Enter daily Labour records",path:"/labour-entry"},
- {title:"Daily Report",description:"Select date, print report",path:"/labour-reports?mode=daily"},
- {title:"Weekly Report",description:"Select week, print or export to Excel",path:"/labour-reports?mode=weekly"},
+ {title:"Labour Reports",description:"Choose Season, Farm, Crop or Trace. Group daily, weekly or monthly.",path:"/labour-reports?mode=daily"},
+
+ {title:"Daily Report",description:"Select an individual date",path:"/labour-date-report"},
  {title:"Input History",description:"Look up historical Labour records",path:"/labour-history"},
- {title:"AO Weekly",description:"Agri Orange weekly Labour report",path:"/labour-reports?mode=ao"},
+
  ];
  return <ScrollView contentContainerStyle={styles.page}>
   <JsplModuleHeader title="Labour" backLabel={canReturnToMain?"Back to Main":undefined} backHref="/(tabs)/main-dashboard" />
   <View style={styles.top}>
-   
+
   </View>
   <View style={styles.grid}>{tiles.map(tile=><Pressable key={tile.title} style={styles.tile} onPress={()=>router.push(tile.path as any)}>
    <Text style={styles.tileName}>{tile.title}</Text><Text style={styles.muted}>{tile.description}</Text>

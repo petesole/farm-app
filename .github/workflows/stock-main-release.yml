@@ -1,0 +1,50 @@
+name: Stock production release checks
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+    paths:
+      - 'app/**stock**'
+      - 'components/jspl/Stock*'
+      - 'utils/stock*'
+      - 'supabase/functions/stock-v2-*/**'
+      - 'tests/stock-workflow/**'
+      - 'app/labour*'
+      - 'app/(tabs)/labour.tsx'
+      - 'components/jspl/LabourPeriodReport.tsx'
+      - 'utils/labour-period-report.ts'
+      - 'lib/labour*'
+      - 'tests/labour-reports.cjs'
+      - 'tests/labour-season-report.cjs'
+      - 'components/jspl/LabourSeasonReport.tsx'
+      - 'utils/labour-season-report.ts'
+      - 'app/(tabs)/main-dashboard.tsx'
+      - 'app/(tabs)/irrigation_main_dashboard.tsx'
+      - 'app/(tabs)/home/irrigation/**'
+      - 'utils/irrigation-access.ts'
+      - 'components/jspl/JsplReturnNavigation.tsx'
+      - 'tests/irrigation-navigation.cjs'
+      - '.github/workflows/stock-main-release.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm ci --prefix tests/stock-workflow --no-audit --no-fund
+      - run: node tests/stock-workflow/run.cjs
+      - run: node tests/stock-workflow/equipment-fuel.cjs
+      - run: node tests/stock-workflow/browser-deployment.cjs
+      - run: node tests/labour-reports.cjs
+      - run: node tests/labour-season-report.cjs
+      - run: node tests/irrigation-navigation.cjs
+      - run: npx tsc --noEmit
+      - run: npm run build:web

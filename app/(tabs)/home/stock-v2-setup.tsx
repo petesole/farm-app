@@ -35,7 +35,7 @@ export default function StockSetup(){
   {contracts.filter(c=>c.active||c.contract_id===value).map(c=>button((c.contract_id===value?"✓ ":"")+c.contract_code,()=>onSelect(c.contract_id)))}
  </View>;
  return <ThemedView style={styles.root}><ScrollView contentContainerStyle={styles.page}>
-  <StockV2Header title="Stock Setup" onRefresh={()=>void reload()}/> 
+  <StockV2Header title="Stock Setup" onRefresh={()=>void reload()}/>
 
   <ThemedText style={styles.title}>Stock V2 · Configuration</ThemedText>
   <ThemedText>Test owners and contracts only. Existing Access records are unchanged.</ThemedText>

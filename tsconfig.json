@@ -2,18 +2,25 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
-    // Resolve platform-specific native types; Metro still selects .web files for web builds.
-    "moduleSuffixes": [".native", ""],
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./*"]
-    }
+      "@/*": [
+        "./*"
+      ]
+    },
+    "moduleSuffixes": [
+      ".native",
+      ""
+    ]
   },
-  "exclude": ["node_modules", "supabase/functions"],
   "include": [
     "**/*.ts",
     "**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "supabase/functions"
   ]
 }

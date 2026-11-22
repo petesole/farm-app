@@ -26,7 +26,7 @@ test("Labour screens use one aligned header and no bottom tabs", async ({ page }
     await expect(back).toBeVisible();
     const title = route === "/labour" ? "Labour" :
       route === "/labour-entry" ? "Labour Form" :
-      route === "/labour-history" ? "Labour Input History" : "Daily Labour Report";
+      route === "/labour-history" ? "Labour Input History" : "Labour Reports";
     const heading = page.getByText(title, { exact: true }).first();
     await expect(heading).toBeVisible();
     const h = await heading.boundingBox();

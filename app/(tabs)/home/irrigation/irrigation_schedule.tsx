@@ -1,588 +1,154 @@
-import {fuelDateISO} from "../fuel_admin_dates";
 import { supabase } from "@/supabase";
+import { verifiedIrrigationRoles } from "@/utils/irrigation-access";
+import { JsplModuleHeader } from "@/components/jspl/JsplModuleHeader";
+import { jsplColors as C } from "@/constants/jspl-design";
 import { useFocusEffect } from "@react-navigation/native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
-type ScheduleRow = {
+type Programme = {
+  trace: string | null;
+  crop: string | null;
+  last_irrigation_date: string | null;
+  daily_req: number | null;
+  acc_req: number | null;
+  net_mm: number | null;
+  next_app: string | null;
+  next_app_mm: number | null;
+};
+type Schedule = {
   irrigation_schedule_id: number;
-  tracecode_id: number;
   scheduled_date: string;
   planned_mm: number;
   status: string;
 };
-
-function toNum(v: any) {
-  const n = typeof v === "string" ? Number(v) : v;
-  return Number.isFinite(n) ? n : NaN;
+const displayDate = (s?:string|null) => {
+  if(!s)return "—";
+  const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  return m?m[3]+"/"+m[2]+"/"+m[1]:s;
+};
+const number=(v:number|null|undefined)=>v==null?"—":Number(v).toFixed(1);
+function dateISO(s:string):string|null {
+  const m=/^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?$/.exec(s.trim());
+  if(!m)return null;
+  const d=Number(m[1]),mo=Number(m[2]),y=m[3]?Number(m[3]):new Date().getFullYear();
+  const date=new Date(y,mo-1,d);
+  if(date.getFullYear()!==y||date.getMonth()!==mo-1||date.getDate()!==d)return null;
+  return y+"-"+String(mo).padStart(2,"0")+"-"+String(d).padStart(2,"0");
 }
-
-function pad2(n: number) {
-  return String(n).padStart(2, "0");
-}
-
-function isoToDmy(iso: string) {
-  if (!iso) return "";
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim());
-  if (!m) return iso;
-  return `${m[3]}/${m[2]}/${m[1]}`;
-}
-
-function dmyToIso(dmy: string) { return fuelDateISO(dmy); }
-
-function withTimeout<T>(fn: () => PromiseLike<T>, ms: number) {
-  return Promise.race([
-    Promise.resolve(fn()),
-    new Promise<T>((_, reject) => setTimeout(() => reject(new Error("Request timed out")), ms)),
-  ]);
-}
-
-export default function IrrigationSchedule() {
-  const { tracecode_id } = useLocalSearchParams<{ tracecode_id?: string }>();
-  const tracecodeId = Number(tracecode_id);
-
-  const [rows, setRows] = useState<ScheduleRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  const [roleName, setRoleName] = useState<string>("unknown");
-  const isAdmin = roleName === "admin";
-  const canEdit = isAdmin;
-
-  const [tracecodeName, setTracecodeName] = useState("");
-  const [cropName, setCropName] = useState("");
-
-  const [newDate, setNewDate] = useState("");
-  const [newMm, setNewMm] = useState("");
-
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editDate, setEditDate] = useState<string>("");
-  const [editMm, setEditMm] = useState<string>("");
-
-  const goBackDashboard = useCallback(() => {
-    router.replace("/(tabs)/irrigation_main_dashboard");
-  }, []);
-
-  const fetchRole = useCallback(async () => {
-    const { data: auth } = await supabase.auth.getUser();
-    const uid = auth?.user?.id;
-    if (!uid) return;
-
-    const { data, error } = await supabase
-      .from("app_user_role")
-      .select("role_name")
-      .eq("user_id", uid)
-      .maybeSingle();
-
-    if (error) {
-      setRoleName("unknown");
-      return;
-    }
-    setRoleName(String(data?.role_name ?? "unknown").trim().toLowerCase());
-  }, []);
-
-  const fetchTraceInfo = useCallback(async () => {
-    if (!Number.isFinite(tracecodeId)) return;
-
-    const { data, error } = await supabase
-      .from("tracecode")
-      .select("tracecode_name, crop:crop_id (crop_name)")
-      .eq("tracecode_id", tracecodeId)
-      .single();
-
-    if (error) return;
-
-    if (data) {
-      setTracecodeName((data as any).tracecode_name ?? "");
-      setCropName((data as any).crop?.crop_name ?? "");
-    }
-  }, [tracecodeId]);
-
-  const fetchSchedules = useCallback(async () => {
-    if (!Number.isFinite(tracecodeId)) {
-      setLoading(false);
-      setRows([]);
-      return;
-    }
-
-    setLoading(true);
-
-    const { data, error } = await supabase
-      .from("irrigation_schedule")
-      .select("irrigation_schedule_id, tracecode_id, scheduled_date, planned_mm, status")
-      .eq("tracecode_id", tracecodeId)
-      .order("scheduled_date", { ascending: true })
-      .order("irrigation_schedule_id", { ascending: true });
-
-    if (error) {
-      Alert.alert("Error", error.message);
-      setRows([]);
-    } else {
-      setRows((data ?? []) as ScheduleRow[]);
-    }
-
-    setLoading(false);
-  }, [tracecodeId]);
-
-  useFocusEffect(
-    useCallback(() => {
-      fetchRole();
-      fetchTraceInfo();
-      fetchSchedules();
-    }, [fetchRole, fetchTraceInfo, fetchSchedules])
-  );
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await fetchSchedules();
-    setRefreshing(false);
-  }, [fetchSchedules]);
-
-  const addSchedule = async () => {
-    if (!canEdit) return Alert.alert("Access denied", "Only admin can add schedules.");
-
-    const iso = dmyToIso(newDate);
-    const mm = toNum(newMm);
-
-    if (!iso) return Alert.alert("Invalid date", "Use DD/MM/YYYY or D/M (e.g. 5/12)");
-    if (!Number.isFinite(mm) || mm <= 0) return Alert.alert("Invalid mm", "Must be > 0");
-
+export default function IrrigationProgramme(){
+  const {tracecode_id}=useLocalSearchParams<{tracecode_id?:string}>();
+  const traceId=Number(tracecode_id);
+  const [admin,setAdmin]=useState(false);
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState("");
+  const [programme,setProgramme]=useState<Programme|null>(null);
+  const [schedules,setSchedules]=useState<Schedule[]>([]);
+  const [date,setDate]=useState("");
+  const [mm,setMm]=useState("");
+  const [saving,setSaving]=useState(false);
+  const back=()=>router.replace("/(tabs)/irrigation_main_dashboard");
+  const refresh=useCallback(async()=>{
+    setLoading(true);setError("");
+    try{
+      const roles=await verifiedIrrigationRoles(supabase);
+      const canManage=roles.includes("admin");
+      setAdmin(canManage);
+      if(!canManage)throw new Error("Only Admin can manage irrigation scheduling.");
+      if(!Number.isInteger(traceId)||traceId<=0)throw new Error("Invalid field.");
+      const [dashboard,plans]=await Promise.all([
+        supabase.from("irrigation_dashboard_cache")
+          .select("trace,crop,last_irrigation_date,daily_req,acc_req,net_mm,next_app,next_app_mm")
+          .eq("tracecode_id",traceId).single(),
+        supabase.from("irrigation_schedule")
+          .select("irrigation_schedule_id,scheduled_date,planned_mm,status")
+          .eq("tracecode_id",traceId).order("scheduled_date",{ascending:true}),
+      ]);
+      if(dashboard.error)throw dashboard.error;
+      if(plans.error)throw plans.error;
+      setProgramme(dashboard.data as Programme);
+      setSchedules((plans.data??[]) as Schedule[]);
+    }catch(e:any){setError(e?.message??"Unable to load irrigation programme.");}
+    finally{setLoading(false);}
+  },[traceId]);
+  useFocusEffect(useCallback(()=>{void refresh();},[refresh]));
+  const save=async()=>{
+    if(!admin||saving)return;
+    const iso=dateISO(date),amount=Number(mm);
+    const today=new Date();
+    const min=today.getFullYear()+"-"+String(today.getMonth()+1).padStart(2,"0")+"-"+String(today.getDate()).padStart(2,"0");
+    if(!iso||iso<min)return Alert.alert("Invalid date","Plan a date today or later.");
+    if(!mm.trim()||!Number.isFinite(amount)||amount<=0||amount>200)
+      return Alert.alert("Invalid amount","Enter planned irrigation in mm (1–200).");
     setSaving(true);
-    try {
-      const res: any = await withTimeout(
-        () =>
-          supabase.from("irrigation_schedule").insert({
-            tracecode_id: tracecodeId,
-            scheduled_date: iso,
-            planned_mm: mm,
-            status: "planned",
-          }),
-        15000
-      );
-
-      setSaving(false);
-
-      if (res?.error) return Alert.alert("Save failed", res.error.message);
-
-      setNewDate("");
-      setNewMm("");
-      router.replace("/(tabs)/irrigation_main_dashboard");
-    } catch (e: any) {
-      setSaving(false);
-      Alert.alert("Timeout", "It may have saved. Going back to dashboard.");
-      router.replace("/(tabs)/irrigation_main_dashboard");
-    }
+    try{
+      const {error:saveError}=await supabase.from("irrigation_schedule")
+        .insert({tracecode_id:traceId,scheduled_date:iso,planned_mm:amount,status:"planned"});
+      if(saveError)throw saveError;
+      setDate("");setMm("");
+      await refresh();
+      Alert.alert("Saved","Planned irrigation added.");
+    }catch(e:any){Alert.alert("Not saved",e?.message??"Please retry.");}
+    finally{setSaving(false);}
   };
-
-  const startEdit = (row: ScheduleRow) => {
-    if (!canEdit) return;
-    if (!["planned", "scheduled"].includes(String(row.status))) return;
-
-    setEditingId(row.irrigation_schedule_id);
-    setEditDate(isoToDmy(row.scheduled_date));
-    setEditMm(String(row.planned_mm));
-  };
-
-  const cancelEdit = () => {
-    setEditingId(null);
-    setEditDate("");
-    setEditMm("");
-  };
-
-  const saveEdit = async () => {
-    if (!canEdit) return;
-    if (editingId === null) return;
-
-    const iso = dmyToIso(editDate);
-    const mm = toNum(editMm);
-
-    if (!iso) return Alert.alert("Invalid date", "Use DD/MM/YYYY or D/M (e.g. 5/12)");
-    if (!Number.isFinite(mm) || mm <= 0) return Alert.alert("Invalid mm", "Must be > 0");
-
-    setSaving(true);
-    try {
-      const res: any = await withTimeout(
-        () =>
-          supabase
-            .from("irrigation_schedule")
-            .update({ scheduled_date: iso, planned_mm: mm })
-            .eq("irrigation_schedule_id", editingId)
-            .in("status", ["planned", "scheduled"]),
-        15000
-      );
-
-      setSaving(false);
-
-      if (res?.error) return Alert.alert("Save failed", res.error.message);
-
-      cancelEdit();
-      fetchSchedules();
-    } catch (e: any) {
-      setSaving(false);
-      Alert.alert("Timeout", "Edit may have saved. Refreshing list.");
-      cancelEdit();
-      fetchSchedules();
-    }
-  };
-
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#fff" />
-        <Text style={styles.loadingText}>Loading…</Text>
-      </View>
-    );
-  }
-
-  return (
-    <FlatList
-      style={styles.screen}
-      data={rows}
-      keyExtractor={(x) => String(x.irrigation_schedule_id)}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" />}
-      ListHeaderComponent={
-        <View style={styles.header}>
-          <View style={styles.topRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.traceName}>{tracecodeName}</Text>
-              <Text style={styles.cropName}>{cropName}</Text>
-            </View>
-
-            <Pressable onPress={goBackDashboard} style={styles.cancelBtn}>
-              <Text style={styles.cancelText}>Cancel</Text>
-            </Pressable>
-          </View>
-
-          <Text style={styles.role}>Role: {isAdmin ? "admin ✓" : "view only"}</Text>
-
-          <View style={styles.addBox}>
-            <Text style={styles.addTitle}>Add planned irrigation</Text>
-
-            <View style={styles.addRow}>
-              <TextInput
-                value={newDate}
-                onChangeText={setNewDate}
-                onBlur={()=>{const d=dmyToIso(newDate);if(d)setNewDate(isoToDmy(d));}}
-                placeholder="DD/MM/YYYY"
-                placeholderTextColor="#888"
-                editable={canEdit && !saving}
-                style={[styles.input, styles.phoneInputWide]}
-              />
-
-              <TextInput
-                value={newMm}
-                onChangeText={setNewMm}
-                placeholder="planned mm"
-                placeholderTextColor="#888"
-                keyboardType="decimal-pad"
-                editable={canEdit && !saving}
-                style={[styles.input, styles.phoneInputNarrow]}
-              />
-
-              <Pressable
-                onPress={addSchedule}
-                disabled={!canEdit || saving}
-                style={[styles.btn, (!canEdit || saving) && styles.dimmed]}
-              >
-                <Text style={styles.btnText}>{saving ? "Saving…" : "Add"}</Text>
-              </Pressable>
-            </View>
-          </View>
+  const edit=(id:number)=>router.push({pathname:"/(tabs)/home/irrigation/irrigation_schedule_edit",params:{irrigation_schedule_id:String(id),tracecode_id:String(traceId)}});
+  return <ScrollView style={styles.screen} contentContainerStyle={styles.body}>
+    <JsplModuleHeader title="Irrigation Programme" subtitle={programme?.trace+" · "+programme?.crop} backLabel="Back to Irrigation" onBack={back}/>
+    {loading?<ActivityIndicator size="large" />:error?<Text style={styles.error}>{error}</Text>:<>
+      <View style={styles.card}>
+        <Text style={styles.title}>Calculated field requirement</Text>
+        <Text style={styles.help}>Requirements recalculate from recorded irrigation, rainfall and daily pan evaporation.</Text>
+        <View style={styles.stats}>
+          <Stat label="Last irrigated" value={displayDate(programme?.last_irrigation_date)}/>
+          <Stat label="Daily requirement" value={number(programme?.daily_req)+" mm"}/>
+          <Stat label="Accumulated" value={number(programme?.acc_req)+" mm"}/>
+          <Stat label="Net requirement" value={number(programme?.net_mm)+" mm"}/>
+          <Stat label="Next planned" value={displayDate(programme?.next_app)}/>
+          <Stat label="Next planned mm" value={number(programme?.next_app_mm)+" mm"}/>
         </View>
-      }
-      renderItem={({ item }) => {
-        const canInlineEdit = canEdit && ["planned", "scheduled"].includes(String(item.status));
-        const isEditing = editingId === item.irrigation_schedule_id;
-
-        return (
-          <View style={styles.card}>
-            <View style={styles.rowTop}>
-              <Text style={styles.date}>{isoToDmy(item.scheduled_date)}</Text>
-              <Text style={styles.status}>{String(item.status)}</Text>
-            </View>
-
-            {!isEditing ? (
-              <>
-                <Text style={styles.cardText}>Planned: {item.planned_mm} mm</Text>
-
-                {canInlineEdit ? (
-                  <View style={styles.actionRow}>
-                    <Pressable
-                      onPress={() => startEdit(item)}
-                      disabled={saving}
-                      style={[styles.smallBtn, styles.outlineBtn]}
-                    >
-                      <Text style={styles.outlineBtnText}>Edit</Text>
-                    </Pressable>
-                  </View>
-                ) : null}
-              </>
-            ) : (
-              <>
-                <View style={styles.editRow}>
-                  <TextInput
-                    value={editDate}
-                    onChangeText={setEditDate}
-                    onBlur={()=>{const d=dmyToIso(editDate);if(d)setEditDate(isoToDmy(d));}}
-                    placeholder="DD/MM/YYYY"
-                    placeholderTextColor="#888"
-                    editable={!saving}
-                    style={[styles.input, styles.phoneInputWide]}
-                  />
-                  <TextInput
-                    value={editMm}
-                    onChangeText={setEditMm}
-                    placeholder="planned mm"
-                    placeholderTextColor="#888"
-                    keyboardType="decimal-pad"
-                    editable={!saving}
-                    style={[styles.input, styles.phoneInputNarrow]}
-                  />
-                </View>
-
-                <View style={styles.actionRow}>
-                  <Pressable
-                    onPress={cancelEdit}
-                    disabled={saving}
-                    style={[styles.smallBtn, saving && styles.dimmed]}
-                  >
-                    <Text style={styles.smallBtnText}>Cancel</Text>
-                  </Pressable>
-
-                  <Pressable
-                    onPress={saveEdit}
-                    disabled={saving}
-                    style={[styles.smallBtnPrimary, saving && styles.dimmed]}
-                  >
-                    <Text style={styles.smallBtnPrimaryText}>{saving ? "Saving…" : "Save"}</Text>
-                  </Pressable>
-                </View>
-              </>
-            )}
+      </View>
+      <View style={styles.card}>
+        <Text style={styles.title}>Plan next irrigation</Text>
+        <Text style={styles.label}>Date (DD/MM/YYYY)</Text>
+        <TextInput value={date} onChangeText={setDate} style={styles.input} placeholder="DD/MM/YYYY"/>
+        <Text style={styles.label}>Planned mm</Text>
+        <TextInput value={mm} onChangeText={setMm} style={styles.input} keyboardType="decimal-pad" placeholder="mm"/>
+        <Pressable onPress={save} disabled={saving} style={[styles.button,saving&&styles.disabled]}>
+          <Text style={styles.buttonText}>{saving?"Saving…":"Save Plan"}</Text>
+        </Pressable>
+      </View>
+      <View style={styles.card}>
+        <Text style={styles.title}>Irrigation programme entries</Text>
+        {!schedules.length?<Text>No planned irrigation records.</Text>:schedules.map(r=><View style={styles.item} key={r.irrigation_schedule_id}>
+          <View style={{flex:1}}>
+            <Text style={styles.itemText}>{displayDate(r.scheduled_date)} · {number(r.planned_mm)} mm</Text>
+            <Text style={styles.help}>{r.status}</Text>
           </View>
-        );
-      }}
-      contentContainerStyle={{ paddingBottom: 24 }}
-    />
-  );
+          {["planned","scheduled"].includes(String(r.status).toLowerCase())?
+            <Pressable onPress={()=>edit(r.irrigation_schedule_id)} style={styles.edit}><Text style={styles.editText}>Edit</Text></Pressable>:null}
+        </View>)}
+      </View>
+    </>}
+  </ScrollView>;
 }
-
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: "#000",
-  },
-
-  center: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#000",
-  },
-
-  loadingText: {
-    marginTop: 10,
-    color: "#fff",
-  },
-
-  header: {
-    padding: 16,
-    backgroundColor: "#000",
-  },
-
-  topRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
-    marginBottom: 8,
-  },
-
-  cancelBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#ddd",
-    backgroundColor: "#fff",
-  },
-
-  cancelText: {
-    fontWeight: "900",
-    color: "#000",
-  },
-
-  traceName: {
-    fontSize: 22,
-    fontWeight: "900",
-    color: "red",
-  },
-
-  cropName: {
-    fontSize: 18,
-    fontWeight: "900",
-    color: "red",
-    marginBottom: 10,
-  },
-
-  role: {
-    marginBottom: 10,
-    fontWeight: "800",
-    color: "#fff",
-  },
-
-  addBox: {
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "#e6e6e6",
-    borderRadius: 10,
-    backgroundColor: "#000",
-  },
-
-  addTitle: {
-    fontWeight: "900",
-    marginBottom: 8,
-    color: "#fff",
-  },
-
-  addRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    alignItems: "center",
-  },
-
-  editRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginTop: 6,
-    alignItems: "center",
-  },
-
-  input: {
-    borderWidth: 1,
-    borderColor: "#ccc",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    color: "#fff",
-    backgroundColor: "#000",
-    minHeight: 44,
-  },
-
-  phoneInputWide: {
-    flexGrow: 1,
-    flexShrink: 1,
-    minWidth: 140,
-  },
-
-  phoneInputNarrow: {
-    flexGrow: 1,
-    flexShrink: 1,
-    minWidth: 110,
-  },
-
-  btn: {
-    backgroundColor: "#fff",
-    minHeight: 44,
-    minWidth: 72,
-    paddingHorizontal: 14,
-    justifyContent: "center",
-    alignItems: "center",
-    borderRadius: 8,
-  },
-
-  btnText: {
-    color: "#000",
-    fontWeight: "900",
-  },
-
-  card: {
-    marginHorizontal: 16,
-    marginTop: 10,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "#e6e6e6",
-    borderRadius: 10,
-    backgroundColor: "#000",
-  },
-
-  rowTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 6,
-  },
-
-  date: {
-    fontWeight: "900",
-    color: "#fff",
-  },
-
-  status: {
-    fontWeight: "900",
-    opacity: 0.8,
-    color: "#fff",
-  },
-
-  cardText: {
-    color: "#fff",
-  },
-
-  actionRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 10,
-    flexWrap: "wrap",
-  },
-
-  smallBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: "#eee",
-  },
-
-  smallBtnText: {
-    fontWeight: "900",
-    color: "#000",
-  },
-
-  smallBtnPrimary: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 8,
-    backgroundColor: "#fff",
-  },
-
-  smallBtnPrimaryText: {
-    color: "#000",
-    fontWeight: "900",
-  },
-
-  outlineBtn: {
-    backgroundColor: "transparent",
-    borderWidth: 1,
-    borderColor: "#fff",
-  },
-
-  outlineBtnText: {
-    fontWeight: "900",
-    color: "#fff",
-  },
-
-  dimmed: {
-    opacity: 0.4,
-  },
+function Stat({label,value}:{label:string;value:string}){
+  return <View style={styles.stat}><Text style={styles.help}>{label}</Text><Text style={styles.itemText}>{value}</Text></View>;
+}
+const styles=StyleSheet.create({
+  screen:{flex:1,backgroundColor:C.background},body:{padding:16,paddingBottom:40},
+  card:{padding:16,backgroundColor:C.surface,borderWidth:1,borderColor:C.border,borderRadius:12,marginTop:12},
+  title:{fontSize:18,fontWeight:"800",color:C.primaryDark,marginBottom:8},
+  label:{fontWeight:"700",color:C.text,marginTop:10,marginBottom:5},
+  help:{color:C.textSecondary,marginVertical:4},
+  stats:{flexDirection:"row",flexWrap:"wrap",gap:10,marginTop:8},
+  stat:{width:"47%",padding:10,backgroundColor:C.background,borderRadius:8},
+  input:{borderWidth:1,borderColor:C.border,borderRadius:8,padding:12,backgroundColor:"#fff",color:C.text},
+  button:{backgroundColor:C.primaryDark,alignItems:"center",padding:14,borderRadius:8,marginTop:16},
+  buttonText:{color:"#fff",fontWeight:"800"},disabled:{opacity:0.5},
+  item:{flexDirection:"row",alignItems:"center",paddingVertical:12,borderBottomWidth:1,borderBottomColor:C.border},
+  itemText:{fontWeight:"700",color:C.text},
+  edit:{borderWidth:1,borderColor:C.primaryDark,borderRadius:8,paddingHorizontal:12,paddingVertical:9},
+  editText:{fontWeight:"700",color:C.primaryDark},
+  error:{color:"#b00020",marginTop:12},
 });

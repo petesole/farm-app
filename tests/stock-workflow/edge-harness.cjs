@@ -5,7 +5,8 @@ function edge(db,name,actor,options={}){
  sql.json=v=>JSON.stringify(v);sql.end=async()=>{};sql.begin=async fn=>connection.transaction(async tx=>fn(makeSQL(tx)));
  return sql;};const sql=makeSQL(db);
  let handler;const code=ts.transpileModule(fs.readFileSync(root+'/supabase/functions/'+name+'/index.ts','utf8').replace(/^import .*\r?\n/gm,''),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
- vm.runInNewContext(code,{exports:{},Request,Response,URL,Error,console,Deno:{env:{get:()=> 'local-test'},serve:fn=>{handler=fn}},createClient:()=>({auth:{getUser:async()=>({data:{user:actor?{id:actor}:null},error:options.authError})}}),postgres:()=>sql});
+ const shared={exports:{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync(root+'/supabase/functions/_shared/spray-allocation.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,shared);
+ vm.runInNewContext(code,{allocateSpray:shared.exports.allocateSpray,exports:{},Request,Response,URL,Error,console,Deno:{env:{get:()=> 'local-test'},serve:fn=>{handler=fn}},createClient:()=>({auth:{getUser:async()=>({data:{user:actor?{id:actor}:null},error:options.authError})}}),postgres:()=>sql});
  return async(query='',body)=>{const res=await handler(new Request('http://local/'+name+query,{method:body?'POST':'GET',headers:{authorization:'Bearer local','content-type':'application/json'},...(body?{body:JSON.stringify(body)}:{})}));return {status:res.status,body:await res.json()}};
 }
 module.exports={edge};

@@ -36,14 +36,15 @@ function zip(files:{name:string;data:string}[]):Uint8Array{
  return out;
 }
 function col(i:number):string{let s="";while(i>0){i--;s=String.fromCharCode(65+i%26)+s;i=Math.floor(i/26)}return s}
-function cell(ref:string,raw:unknown,header=false,field=""):string{
- if(raw===undefined||raw===null||raw==="")return '<c r="'+ref+'"/>';
+function cell(ref:string,raw:unknown,header=false,field="",subtotal=false):string{
+ if(raw===undefined||raw===null||raw==="")return '<c r="'+ref+'"'+(subtotal?' s="4"':'')+'/>';
+ if(field==='labour_date'&&typeof raw==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(raw))return '<c r="'+ref+'" s="3"><v>'+((Date.parse(raw+'T00:00:00Z')-Date.UTC(1899,11,30))/86400000)+'</v></c>';
  const numberField=["labour_qty","total_labour_qty","kgs","total_kgs","unit_cost","avg_kgs_per_person","total_cost","cost_per_ha"].includes(field);
  if((numberField || typeof raw === "number") && Number.isFinite(Number(raw))){
   const n=Number(raw);
-  return '<c r="'+ref+'" s="'+(["unit_cost","total_cost","cost_per_ha"].includes(field)?"2":"0")+'"><v>'+n+'</v></c>';
+  return '<c r="'+ref+'" s="'+(["unit_cost","total_cost","cost_per_ha"].includes(field)?subtotal?'5':'2':subtotal?'4':'0')+'"><v>'+n+'</v></c>';
  }
- return '<c r="'+ref+'" t="inlineStr"'+(header?' s="1"':'')+'><is><t xml:space="preserve">'+xml(String(raw))+'</t></is></c>';
+ return '<c r="'+ref+'" t="inlineStr"'+(subtotal?' s="4"':header?' s="1"':'')+'><is><t xml:space="preserve">'+xml(String(raw))+'</t></is></c>';
 }
 function worksheet(title:string,columns:LabourExcelColumn[],rows:AnyRow[],total?:number):string{
  const lastCol=col(columns.length),rowXML:string[]=[];
@@ -51,11 +52,11 @@ function worksheet(title:string,columns:LabourExcelColumn[],rows:AnyRow[],total?
  rowXML.push('<row r="2" ht="22" customHeight="1">'+columns.map((c,i)=>cell(col(i+1)+"2",c.label,true)).join("")+'</row>');
  rows.forEach((row,i)=>{
   const ri=i+3;
-  rowXML.push('<row r="'+ri+'">'+columns.map((c,j)=>cell(col(j+1)+ri,row[c.field],false,c.field)).join("")+'</row>');
+  rowXML.push('<row r="'+ri+'">'+columns.map((c,j)=>cell(col(j+1)+ri,row[c.field],false,c.field,row._kind==='subtotal')).join("")+'</row>');
  });
  const lastRow=rows.length+(total===undefined?2:3);
  if(total!==undefined)rowXML.push('<row r="'+lastRow+'">'+cell("A"+lastRow,"Grand Total",true)+cell(lastCol+lastRow,total,false,"total_cost")+'</row>');
- const widths=columns.map((c,i)=>'<col min="'+(i+1)+'" max="'+(i+1)+'" width="'+(/Activity/.test(c.label)?34:/Field|Crop/.test(c.label)?18:15)+'" customWidth="1"/>').join("");
+ const widths=columns.map((c,i)=>'<col min="'+(i+1)+'" max="'+(i+1)+'" width="'+(/Activity|Allocation/i.test(c.label)?34:/Status/i.test(c.label)?50:/Field|Crop|Trace|Farm/i.test(c.label)?22:16)+'" customWidth="1"/>').join("");
  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
  +'<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
  +'<dimension ref="A1:'+lastCol+lastRow+'"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="2" topLeftCell="A3" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
@@ -63,12 +64,12 @@ function worksheet(title:string,columns:LabourExcelColumn[],rows:AnyRow[],total?
  +'<mergeCells count="1"><mergeCell ref="A1:'+lastCol+'1"/></mergeCells></worksheet>';
 }
 const styles='<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
- +'<numFmts count="1"><numFmt numFmtId="164" formatCode="&quot;$&quot;#,##0.00"/></numFmts>'
- +'<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font></fonts>'
- +'<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF25633A"/><bgColor indexed="64"/></patternFill></fill></fills>'
+ +'<numFmts count="2"><numFmt numFmtId="164" formatCode="&quot;$&quot;#,##0.00"/><numFmt numFmtId="165" formatCode="dd/mm/yyyy"/></numFmts>'
+ +'<fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FF173E27"/><name val="Calibri"/></font></fonts>'
+ +'<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF25633A"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE9F1EB"/><bgColor indexed="64"/></patternFill></fill></fills>'
  +'<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
  +'<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
- +'<cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="1" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs></styleSheet>';
+ +'<cellXfs count="6"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="1" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="0" fontId="2" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="164" fontId="2" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1" applyNumberFormat="1"/></cellXfs></styleSheet>';
 export function labourWorkbookBytes(title:string,columns:LabourExcelColumn[],rows:AnyRow[],total?:number):Uint8Array{
  if(!columns.length)throw Error("No Excel report columns.");
  const files=[

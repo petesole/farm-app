@@ -18,7 +18,7 @@ export default function Suppliers(){
  const save=async(c:Supplier)=>{setBusy(true);setError("");setNotice("");try{await call("save_supplier",c);setCurrent(null);setNotice("Supplier saved");await refresh()}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
  const button=(label:string,click:()=>void)=><Pressable style={styles.button} onPress={click}><ThemedText>{label}</ThemedText></Pressable>;
  return <ThemedView style={styles.root}><ScrollView contentContainerStyle={styles.page}>
-  <StockV2Header title="Stock Suppliers" onRefresh={()=>void refresh()}/> 
+  <StockV2Header title="Stock Suppliers" onRefresh={()=>void refresh()}/>
   <View style={styles.line}>{button("＋ Add Supplier",()=>setCurrent({supplier_id:0,supplier_name:"",active:true}))}</View>
   <ThemedText style={styles.title}>Manage Suppliers</ThemedText><ThemedText>Editable Stock V2 supplier catalogue, initially copied from the existing supplier list. Existing public and Access supplier records are unchanged.</ThemedText>
   {busy?<ActivityIndicator/>:null}{error?<ThemedText style={styles.error}>{error}</ThemedText>:null}{notice?<ThemedText style={styles.success}>{notice}</ThemedText>:null}

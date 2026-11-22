@@ -13,8 +13,10 @@
 
 - Use the established JSPL dark-green theme, white working surfaces and shared design tokens/components. Do not create independent colour schemes or layouts.
 - Place the **JSPL logo at the top-left**. Use **one navigation control at the top-right**; do not duplicate Back/Main controls at the top, bottom, or in a global bar. Main dashboard contains module/project launch buttons.
+- **No bottom tab bar or bottom navigation buttons anywhere in the app.** Keep module access on the main dashboard; preserve routes for programmatic navigation, but hide the bottom tab navigator on web and mobile.
 - Main dashboard → module dashboard → individual screen. Show **Back to Main** on a module dashboard only for users whose assigned role has access to Main. Hide it for users assigned to a specific job or module, such as Labour Inputters. Working screens still have **Back to their module dashboard** (or the agreed parent list). Use at most one visible return control, with the correct destination. Avoid legacy/duplicate routes.
 - **All filters use searchable combo boxes/dropdown selectors**, never a screenful of filter buttons, unless the user explicitly requests an exception. This includes filters for crop, trace, date, product, supplier, status, and other dimensions.
+- **Approved exception — Fuel Issue screen only:** Vehicle Type may remain a row of separate filter buttons. This exception applies only to this filter on this screen; every other filter still follows the searchable dropdown rule unless separately approved. The vehicle list must still update to the selected type and show only matching vehicles.
 - **Dependent filters must reflect actual matching records under every other active selection.** Example: selecting a trace narrows dates to dates with records for that trace; selecting a date likewise narrows trace/product choices. No irrelevant or empty choices. Recompute and clear/repair invalid selections when upstream filters change.
 - Default to active crops, traces and applicable master records, with clearly designated historical/inactive access when required. Sort intelligibly (A–Z for named options unless the workflow requires otherwise).
 - Display dates as **dd/mm/yyyy** throughout. Accept shorthand such as `2/2` and interpret it as `02/02` in the current year; validate real calendar dates. Store database dates in appropriate native/ISO formats, and format only at UI boundaries.
@@ -53,14 +55,23 @@
 - Use development/test paths and reversible migrations where possible. Protect current production behaviour. Do not deploy or publish without instruction.
 - Fix root causes rather than repeated patches. Use available existing tools, libraries and proven workflows where they shorten delivery and improve reliability.
 
-## 6. Verification is mandatory
+## 6. Development-only role preview and multi-responsibility users
+
+- Model individuals as **one user account with multiple assignable operational responsibilities and explicit action-level permissions**. Do not force one job title per person; for example, one user may operate both Weighbridge and Fuel. Dashboards show the workflows relevant to their actual assignments.
+- For development testing, provide a **Test User Role** searchable dropdown on each module/project dashboard with only the roles relevant to that module. The dropdown is visible and usable **only by a server-verified Admin** and **only in a separately verified development/test environment**; do not rely solely on hiding a control or on a client-side flag. Never expose it in production builds.
+- Default to the signed-in Admin's actual role. Changing the preview should immediately update the module's visible actions, fields and workflow presentation without signing out, and remain selected when navigating within that module. Show a clear **Development Test Mode / Previewing: [role]** indicator and provide a reset to the real role.
+- **The preview is UI simulation only, never impersonation or authorization.** It must not change JWT claims, Supabase/RLS policies, stored user roles, record ownership, audit identities or backend privileges. Previewed functions must not cause unauthorized or misleading writes.
+- Validate real data access and write restrictions separately with authenticated test accounts holding the actual role assignments. Do not claim role/permission testing passed based solely on the dropdown.
+- Any modules that span multiple jobs must respect multi-role combinations rather than assuming one mutually exclusive role per user.
+
+## 7. Verification is mandatory
 
 - Test complete transactions end-to-end with realistic data and the actual intended role: create; save; return; list visibility; edit; refresh; filtering; sorting; partial processing; exceptions; cancellation; corrections; reporting and exports.
 - Check balances, totals, dates, ownership, audit records, related modules and regressions against other working screens.
 - Test navigation on both web and intended mobile/offline contexts where applicable; check sync and conflict behaviour for offline workflows.
 - Never describe a screen, workflow or module as **complete**, **working** or **tested** without the relevant test evidence. State precisely what was changed, tested, passed, failed, and remains unverified. Database table existence or code inspection alone is not a functional test.
 
-## 7. Communication and acceptance criteria
+## 8. Communication and acceptance criteria
 
 - Keep responses direct, short and operational. Present the whole solution and important consequences rather than a stream of unplanned fixes.
 - Do not repeatedly ask for information already provided or override agreed decisions.

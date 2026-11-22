@@ -12,9 +12,12 @@ type Props = {
   includeInactive?: boolean;
   placeholder?: string;
   disabled?: boolean;
+  hideLabel?: boolean;
+  onCreate?: (query:string)=>void;
+  createLabel?: string;
 };
 export function JsplSearchCombo({ label, selector, options, value, onChange,
-  includeInactive = false, placeholder = 'Search...', disabled = false }: Props) {
+  includeInactive = false, placeholder = 'Search...', disabled = false, hideLabel = false, onCreate, createLabel='+ Add New' }: Props) {
   const selected = options.find(o => o.id === value);
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState(false);
@@ -22,7 +25,7 @@ export function JsplSearchCombo({ label, selector, options, value, onChange,
     filterJsplOptions(options, selector, query, includeInactive),
     [options, selector, query, includeInactive]);
   return <View style={styles.wrapper}>
-    <Text style={styles.label}>{label}</Text>
+    {!hideLabel && <Text style={styles.label}>{label}</Text>}
     <View style={styles.inputRow}>
       <TextInput accessibilityLabel={label} editable={!disabled}
         value={expanded ? query : selected?.label ?? ''}
@@ -40,6 +43,7 @@ export function JsplSearchCombo({ label, selector, options, value, onChange,
         filtered.map(o => <Pressable key={String(o.id)} accessibilityRole="button"
           onPress={() => { onChange(o.id); setExpanded(false); setQuery(''); }}
           style={styles.option}><Text style={styles.optionText}>{o.label}</Text></Pressable>)}
+      {onCreate&&<Pressable accessibilityRole="button" onPress={()=>{onCreate(query.trim());setExpanded(false)}} style={styles.option}><Text style={styles.optionText}>{createLabel}{query.trim()?' — '+query.trim():''}</Text></Pressable>}
       <Pressable onPress={() => setExpanded(false)} style={styles.dismiss}>
         <Text style={styles.dismissText}>Close</Text>
       </Pressable>

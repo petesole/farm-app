@@ -7,7 +7,7 @@ import {supabase} from "@/supabase";
 import {JsplModuleHeader} from "@/components/jspl/JsplModuleHeader";
 import {jsplColors as C,jsplSpacing as S,jsplRadii as R} from "@/constants/jspl-design";
 
-type FuelType='DIESEL'|'PETROL'|'NONE';
+import {FuelType} from "@/utils/equipment-fuel";
 type Ref={id:number;label:string};
 type Vehicle={ownership_status:'owned'|'hired'|null;owner_company_id:number|null;hire_supplier_id:number|null;fuel_type:FuelType;is_other:boolean;vehicle_id:number;vehicle_name:string;vehicle_model:string|null;vehicle_assignment_id:number|null;tractor_size:number|null;consumption:number|null;vehicle_discontinued:boolean;has_meter:boolean;meter_type:string|null;vehicle_type_id:number|null;tractor_class_id:number|null};
 export default function VehicleDetail(){
@@ -78,7 +78,7 @@ export default function VehicleDetail(){
   {input("Vehicle name",row.vehicle_name||"",v=>set("vehicle_name",v))}
   {input("Vehicle model",row.vehicle_model||"",v=>set("vehicle_model",v))}
   <JsplSearchCombo label="Ownership" selector="product" value={row.ownership_status??null}
-    onChange={value=>setRow(current=>({...current,ownership_status:value as Vehicle['ownership_status'],owner_company_id:null,hire_supplier_id:null}))}
+    onChange={value=>setRow(current=>current.ownership_status===value?current:{...current,ownership_status:value as Vehicle['ownership_status'],owner_company_id:null,hire_supplier_id:null})}
     options={[{id:'owned',label:'Owned'},{id:'hired',label:'Hired'}]}/>
   {row.ownership_status==='owned'?picker('Owner company',row.owner_company_id,value=>set('owner_company_id',value),owners):null}
   {row.ownership_status==='hired'?picker('Hire supplier',row.hire_supplier_id,value=>set('hire_supplier_id',value),suppliers):null}

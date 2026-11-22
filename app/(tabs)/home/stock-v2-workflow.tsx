@@ -1,3 +1,8 @@
+import {JsplSearchCombo} from "@/components/jspl/JsplSearchCombo";
+import {StockProductEditor} from '@/components/jspl/StockProductEditor';
+import {stockRequest} from '@/utils/stock-workflow';
+import {Equipment,equipmentIssueKind,eligibleEquipment,validEquipmentDestination} from "@/utils/equipment-fuel";
+import {stockV2Endpoint} from "@/utils/stock-v2-endpoint";
 import {stockMutation} from "@/utils/stock-workflow";
 import {StockRecovery,StockSelect} from "@/components/jspl/StockWorkflowControls";
 import {stockContext,WorkflowContext} from "@/utils/stock-workflow";
@@ -13,10 +18,12 @@ import { jsplColors, jsplDashboardTheme, jsplRadii, jsplSpacing, jsplSizes } fro
 import { parseJsplDateInput, displayJsplDate } from "@/utils/jspl-input";
 import { useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, TextInput, View, useWindowDimensions } from "react-native";
 import { supabase } from "../../../supabase";
 
-const endpoint="https://azxaymxnicrsezeoxiau.supabase.co/functions/v1/stock-v2-demo-workflow";
+const endpoint=stockV2Endpoint;
+type ChemicalActive={name:string;amount:string;unit:"g/L"|"g/kg"};
+type ChemicalActiveRow={item_code:string;active_name:string;concentration:number;concentration_unit:"g/L"|"g/kg"};
 type Item={item_code:string;item_name:string;base_unit:string;active:boolean;opening_heyshott_quantity:number|null;opening_ao_quantity:number|null;historical_unit_cost:number|null;quantity:number;ao_quantity:number;input_type:string|null;input_category:string|null;active_ingredient:string|null;last_purchase_price:number|null;weighted_average_price:number|null;last_purchase_supplier:string|null};
 type OrderLine={owner_code:string;contract_id:number|null;order_id:number;order_number:string;supplier_name:string;item_code:string;item_name:string;base_unit:string;ordered_quantity:number;received_quantity:number;ordered_unit_price:number|null;status:string};
 type SprayLine={job_id:number;external_tracecode_id:number;tracecode_name:string;item_code:string;item_name:string;area_ha:number;rate_per_ha:number;planned_quantity:number;issued_quantity:number;status:string};
@@ -24,8 +31,8 @@ type Doc={document_id:number;document_type:string;document_number:string;item_na
 type Snapshot={items:Item[];orders:OrderLine[];sprays:SprayLine[];documents:Doc[];pending_invoice_count?:number;outstanding_spray_count?:number;sprayers?:{setup_name:string;water_litres_per_ha:number}[]};
 type Trace={tracecode_id:number;tracecode_name:string;tracecode_size:number;crop_id:number|null};
 type Crop={crop_id:number;crop_name:string};
-type Line={id:number;item_code:string;quantity:string;unit_price:string;rate_per_ha:string;mix_instruction:string};
-const emptyLine=(id:number,item_code=""):Line=>({id,item_code,quantity:"",unit_price:"",rate_per_ha:"",mix_instruction:""});
+type Line={equipment_id:string;equipment_other:string;id:number;item_code:string;quantity:string;unit_price:string;rate_per_ha:string;mix_instruction:string};
+const emptyLine=(id:number,item_code=""):Line=>({id,item_code,equipment_id:"",equipment_other:"",quantity:"",unit_price:"",rate_per_ha:"",mix_instruction:""});
 const uuid=()=>"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const r=Math.floor(Math.random()*16);return(c==="x"?r:(r&3)|8).toString(16)});
 const number=(x:string)=>Number(x);
 const currency=(n:number)=>Number.isFinite(n)?n.toFixed(2):"—";
@@ -33,7 +40,7 @@ const tabs=["Purchase Orders","POs Outstanding","GRV","Stock Balances","Spray Pl
 // Screen states also include the retained Planned Issue flow, beyond the dashboard buttons.
 type Tab=typeof tabs[number]|"Planned Issue";
 function Field({label,value,onChange,numeric=false,date=false}:{label:string;value:string;onChange:(v:string)=>void;numeric?:boolean;date?:boolean}){
- return <View style={styles.field}><ThemedText style={styles.label}>{label}</ThemedText><TextInput style={styles.input} value={value} onChangeText={onChange} onBlur={date?()=>{const iso=parseJsplDateInput(value);if(iso)onChange(displayJsplDate(iso));}:undefined} placeholder={date?"d/m (year optional)":undefined} keyboardType={date?"numbers-and-punctuation":numeric?"decimal-pad":"default"}/></View>;
+ return <View style={styles.field}><ThemedText style={styles.label}>{label}</ThemedText><TextInput accessibilityLabel={label} style={styles.input} value={value} onChangeText={onChange} onBlur={date?()=>{const iso=parseJsplDateInput(value);if(iso)onChange(displayJsplDate(iso));}:undefined} placeholder={date?"d/m (year optional)":undefined} keyboardType={date?"numbers-and-punctuation":numeric?"decimal-pad":"default"}/></View>;
 }
 export default function StockV2Workflow(){
  const router=useRouter();
@@ -44,11 +51,39 @@ export default function StockV2Workflow(){
  const {width,height}=useWindowDimensions();
  const watermarkSize=Math.min(650,Math.max(240,width-48),Math.max(240,height-48));
  const [tab,setTab]=useState<Tab|null>(null),[snapshot,setSnapshot]=useState<Snapshot|null>(null);
+ const [chemicalActives,setChemicalActives]=useState<Record<string,ChemicalActive[]>>({});
+ const [activeItem,setActiveItem]=useState<Item|null>(null);
+ const [productEditor,setProductEditor]=useState<{product:any}|null>(null);
+ const editProduct=async(p:Item)=>{try{const catalog=await stockRequest('?product_catalog=1');const product=catalog.items.find((x:any)=>x.item_code===p.item_code);if(!product)throw Error('Product not found');setProductEditor({product})}catch(e){setStatus((e as Error).message)}};
+ const [activeRows,setActiveRows]=useState<ChemicalActive[]>([]);
+ const [activeSaving,setActiveSaving]=useState(false),[activeError,setActiveError]=useState("");
+ const [activesReady,setActivesReady]=useState(false);
+ const isChemical=(p:Item)=>/chemic|herbicide|fungicide|insecticide|pesticide|spray chemical/i.test((p.input_type??"")+" "+(p.input_category??""));
+ const hasStock=(p:Item)=>p.quantity>0||p.ao_quantity>0;
+ const activeComplete=(p:Item)=>{const a=chemicalActives[p.item_code]??[];return a.length>0&&a.every(x=>x.name.trim()&&Number.isFinite(Number(x.amount))&&Number(x.amount)>0&&["g/L","g/kg"].includes(x.unit))};
+ const activeMissing=(p:Item)=>isChemical(p)&&hasStock(p)&&!activeComplete(p);
+ const openActive=(p:Item)=>{setActiveItem(p);setActiveRows(chemicalActives[p.item_code]?.map(x=>({...x}))??[{name:"",amount:"",unit:p.base_unit.toLowerCase().includes("kg")?"g/kg":"g/L"}]);setActiveError("")};
+ const saveActive=async()=>{
+  if(!activeItem||activeSaving)return;
+  if(!activeRows.length||activeRows.some(a=>!a.name.trim()||!Number.isFinite(Number(a.amount))||Number(a.amount)<=0)||new Set(activeRows.map(a=>a.name.trim().toLowerCase())).size!==activeRows.length){setActiveError("Enter a unique name and positive concentration for each active.");return}
+  setActiveSaving(true);setActiveError("");
+  try{
+   const response=await fetch(endpoint+"?chemical_actives=1",{method:"POST",headers:{authorization:"Bearer "+await token(),"content-type":"application/json"},body:JSON.stringify({item_code:activeItem.item_code,actives:activeRows})});
+   const result=await response.json();if(!response.ok||!result.saved)throw Error(result.error||"Save not confirmed");
+   const check=await fetch(endpoint+"?chemical_actives=1",{headers:{authorization:"Bearer "+await token()}});
+   const actual=await check.json();if(!check.ok||!Array.isArray(actual.rows))throw Error("Saved but refresh not confirmed. Reopen the balance screen.");
+   const mapped:Record<string,ChemicalActive[]>={};
+   (actual.rows as ChemicalActiveRow[]).forEach(a=>(mapped[a.item_code]??=[]).push({name:a.active_name,amount:String(a.concentration),unit:a.concentration_unit}));
+   setChemicalActives(mapped);setActiveItem(null);setActiveRows([]);
+  }catch(e){setActiveError(e instanceof Error?e.message:String(e))}finally{setActiveSaving(false)}
+ };
+
+ const [equipment,setEquipment]=useState<Equipment[]>([]),[equipmentError,setEquipmentError]=useState("");
  const [traces,setTraces]=useState<Trace[]>([]),[crops,setCrops]=useState<Crop[]>([]);
  const [owners,setOwners]=useState<{owner_code:string;owner_name:string;active:boolean;po_requires_contract:boolean;allow_direct_grv:boolean;po_required_for_grv:boolean;default_contract_id:number|null}[]>([]);
  const [contracts,setContracts]=useState<{contract_id:number;contract_code:string;active:boolean}[]>([]);
  const [suppliers,setSuppliers]=useState<{supplier_id:number;supplier_name:string;active:boolean}[]>([]);
- const [ownerCode,setOwnerCode]=useState(""),[contractId,setContractId]=useState<number|null>(null);
+ const [ownerCode,setOwnerCode]=useState("JS"),[contractId,setContractId]=useState<number|null>(null);
  const [busy,setBusy]=useState(false),[status,setStatus]=useState(""),[confirmed,setConfirmed]=useState(false);
  const [latestIssueDocument,setLatestIssueDocument]=useState<number|null>(null);
  const [lines,setLines]=useState<Line[]>([emptyLine(1)]),[nextLine,setNextLine]=useState(2);
@@ -72,6 +107,12 @@ export default function StockV2Workflow(){
   setOwners(config.owners??[]);setContracts(config.contracts??[]);
   const r=await fetch(endpoint,{headers:{authorization:"Bearer "+await token()}});
   const d=await r.json();if(!r.ok)throw Error(d.error||"Unable to read Stock V2");setSnapshot(d);
+  const activeResponse=await fetch(endpoint+"?chemical_actives=1",{headers:{authorization:"Bearer "+await token()}});
+  const activeResult=await activeResponse.json();
+  if(!activeResponse.ok||!Array.isArray(activeResult.rows))throw Error(activeResult.error||"Unable to load chemical active data");
+  const activeMap:Record<string,ChemicalActive[]>={};
+  (activeResult.rows as ChemicalActiveRow[]).forEach(a=>(activeMap[a.item_code]??=[]).push({name:a.active_name,amount:String(a.concentration),unit:a.concentration_unit}));
+  setChemicalActives(activeMap);setActivesReady(!activeResult.unavailable);
  }catch(e){setStatus(e instanceof Error?e.message:String(e))}finally{if(show)setBusy(false)}};
  useEffect(()=>{(async()=>{
   const [t,c]=await Promise.all([
@@ -80,6 +121,9 @@ export default function StockV2Workflow(){
   ]);
   setTraces((t.data??[]) as Trace[]);setCrops((c.data??[]) as Crop[]);
  })()},[]);
+ useEffect(()=>{if(tab!=="Direct Issue")return;let alive=true;
+  (async()=>{try{const r=await fetch(endpoint+"?equipment_catalog=1",{headers:{authorization:"Bearer "+await token()}});const d=await r.json();if(!r.ok||!Array.isArray(d.rows))throw Error(d.error||"Equipment list unavailable");if(alive){setEquipment(d.rows.map((v:any)=>({...v,vehicle_id:Number(v.vehicle_id)})));setEquipmentError("");}}catch(e){if(alive){setEquipment([]);setEquipmentError("Equipment list unavailable: "+(e instanceof Error?e.message:String(e)));}}})();return()=>{alive=false};
+ },[tab]);
  const resetEdit=()=>{setConfirmed(false);setRequest(null)};
  const owner=owners.find(o=>o.owner_code===ownerCode);
  const effectiveContract=owner?.default_contract_id??contractId;
@@ -87,13 +131,18 @@ export default function StockV2Workflow(){
  const ownerReady=!!owner?.active;
  const contractReady=!!effectiveContract&&contracts.some(c=>c.contract_id===effectiveContract&&(c.active||tab==="POs Outstanding"));
  const selectOwner=(code:string)=>{setOwnerCode(code);setContractId(null);setOrderId(null);setSupplier("");setLines([emptyLine(nextLine)]);setNextLine(x=>x+1);resetEdit()};
- const changeLine=(id:number,key:keyof Line,value:string)=>{setLines(old=>old.map(l=>l.id===id?{...l,[key]:value}:l));resetEdit()};
+ const changeLine=(id:number,key:keyof Line,value:string)=>{setLines(old=>old.map(l=>l.id===id?{...l,[key]:value,...(key==="item_code"?{equipment_id:"",equipment_other:""}:{}),...(key==="equipment_id"&&value!=="other"?{equipment_other:""}:{})}:l));resetEdit()};
  const addLine=()=>{setLines(old=>[...old,emptyLine(nextLine)]);setNextLine(n=>n+1);resetEdit()};
  const removeLine=(id:number)=>{setLines(old=>old.filter(l=>l.id!==id));resetEdit()};
  const switchTab=(v:Tab|null)=>{if(v==="Purchase Orders"||v==="PO Corrections"){router.push("/stock-v2-purchase-orders");return;}if(v==="POs Outstanding"){router.push("/stock-v2-po-receiving");return;}if(v==="GRV"){router.push("/stock-v2-grv-outstanding");return;}if(v==="Stock Transfer"){router.push("/stock-v2-owner-transactions");return;}if(v==="Corrections"){router.push("/(tabs)/home/stock-v2-corrections");return;}if(v==="Supplier Returns"){router.push("/(tabs)/home/stock-v2-supplier-returns");return;}if(v==="Stock Take"){router.push("/(tabs)/home/stock-v2-stocktake");return;}setTab(v);if(v==="Planned Issue")void refresh(false);setLines([emptyLine(nextLine)]);setNextLine(n=>n+1);setOrderId(null);setJobId(null);setDropdown(null);setStatus("");setReceiptMode("dnote");setInvoiceNumber("");setDeliveryNote("");resetEdit()};
  const products=snapshot?.items??[];
+ const showEquipmentColumn=tab==="Direct Issue"&&lines.some(l=>!!equipmentIssueKind(products.find(p=>p.item_code===l.item_code)));
+ const showOtherColumn=showEquipmentColumn&&lines.some(l=>l.equipment_id==="other");
+ const issueNeedsTrace=lines.some(l=>equipmentIssueKind(products.find(p=>p.item_code===l.item_code))!=="OIL");
+ const missingActiveCount=activesReady?products.filter(activeMissing).length:0;
+ const activeDescription=(p:Item)=>chemicalActives[p.item_code]?.map(a=>a.name+" "+a.amount+" "+a.unit).join(" + ")||"—";
  const issueStock=(p?:Item)=>{const n=Number(ownerCode==="AO"?p?.ao_quantity:p?.quantity);return Number.isFinite(n)?Math.max(0,n):0};
- const stockLabel=(p:Item)=>issueStock(p).toLocaleString("en-GB",{maximumFractionDigits:6})+" "+p.base_unit;
+ const stockLabel=(p:Item)=>issueStock(p).toLocaleString("en-GB",{minimumFractionDigits:3,maximumFractionDigits:3})+" "+p.base_unit;
  const inputTypes=[...new Set(products.filter(p=>(!categoryFilter||p.input_category===categoryFilter)&&(stockFilter==="all"||(stockFilter==="stock"?(p.quantity>0||p.ao_quantity>0):(p.quantity<=0&&p.ao_quantity<=0)))).map(x=>x.input_type).filter((x):x is string=>!!x))].sort();
  const inputCategories=[...new Set(products.filter(p=>(!typeFilter||p.input_type===typeFilter)&&(stockFilter==="all"||(stockFilter==="stock"?(p.quantity>0||p.ao_quantity>0):(p.quantity<=0&&p.ao_quantity<=0)))).map(x=>x.input_category).filter((x):x is string=>!!x))].sort();
  const balanceRows=products.filter(p=>(!typeFilter||p.input_type===typeFilter)&&(!categoryFilter||p.input_category===categoryFilter)&&(stockFilter==="all"||(stockFilter==="stock"?(p.quantity>0||p.ao_quantity>0):(p.quantity<=0&&p.ao_quantity<=0))));
@@ -109,7 +158,9 @@ export default function StockV2Workflow(){
  },[snapshot]);
  const outstandingSprays=snapshot?.outstanding_spray_count??jobs.filter(j=>j.lines.length>0&&Math.min(...j.lines.map(l=>l.rate_per_ha>0?Math.max(0,(l.planned_quantity-l.issued_quantity)/l.rate_per_ha):0))>0.0001).length;
  const selectedJob=jobs.find(x=>x.id===jobId);
- const activeTraces=traces.filter(t=>(cropId===null||(cropId===-1?t.crop_id==null:t.crop_id===cropId))&&(t.crop_id==null||crops.some(c=>c.crop_id===t.crop_id)));
+ const isWorkshop=(t:Trace)=>["WORKSHOPHS","HSWORKSHOP"].includes(t.tracecode_name.replace(/[^a-z0-9]/gi,"").toUpperCase());
+ const traceLabel=(t:Trace)=>isWorkshop(t)?"HS Workshop":t.tracecode_name;
+ const activeTraces=traces.filter(t=>isWorkshop(t)?(cropId===null||cropId===-1):(cropId===null||(cropId===-1?t.crop_id==null:t.crop_id===cropId))&&(t.crop_id==null||crops.some(c=>c.crop_id===t.crop_id)));
  const choosePO=(po:typeof orders[number])=>{setCheckedPOItems([]);setOrderId(po.id);setContractId(po.contract_id);setSupplier(po.supplier);setLines(po.lines.filter(x=>x.received_quantity<x.ordered_quantity).map((x,i)=>({...emptyLine(nextLine+i,x.item_code),quantity:"",unit_price:""})));setNextLine(n=>n+po.lines.length);setDropdown(null);resetEdit()};
  const chooseJob=(job:typeof jobs[number])=>{setJobId(job.id);setTraceId(job.lines[0].external_tracecode_id);setLines(job.lines.filter(x=>x.planned_quantity>x.issued_quantity).map((x,i)=>({...emptyLine(nextLine+i,x.item_code),quantity:String(Number((x.planned_quantity-x.issued_quantity).toFixed(4))),rate_per_ha:String(x.rate_per_ha)})));setNextLine(n=>n+job.lines.length);setDropdown(null);resetEdit()};
  const menu=(id:string,title:string,choices:{label:string;value:string;onSelect:()=>void}[],searchable=false)=> <View style={styles.dropdown}>
@@ -120,6 +171,7 @@ export default function StockV2Workflow(){
  </View>;
  const lineCells=(l:Line,locked=false)=>{
   const product=products.find(p=>p.item_code===l.item_code);
+  const equipmentKind=equipmentIssueKind(product);
   const reference=tab==="POs Outstanding"&&!directGrv?selectedPO?.lines.find(x=>x.item_code===l.item_code):tab==="Planned Issue"?selectedJob?.lines.find(x=>x.item_code===l.item_code):null;
   const max=tab==="POs Outstanding"&&!directGrv&&reference?(reference as OrderLine).ordered_quantity-(reference as OrderLine).received_quantity:tab==="Planned Issue"&&reference?(reference as SprayLine).planned_quantity-(reference as SprayLine).issued_quantity:tab==="Direct Issue"&&product?issueStock(product):null;
   const grvSelectable=tab==="POs Outstanding"&&!directGrv;
@@ -133,6 +185,11 @@ export default function StockV2Workflow(){
    {tab==="POs Outstanding"&&!directGrv?<><View style={styles.numberColumn}><ThemedText>{(reference as OrderLine)?.ordered_quantity??"—"}</ThemedText></View><View style={styles.numberColumn}><ThemedText>{(reference as OrderLine)?.received_quantity??"—"}</ThemedText></View><View style={styles.numberColumn}><ThemedText>{currency((reference as OrderLine)?.ordered_unit_price??NaN)}</ThemedText></View></>:null}
    {tab==="Planned Issue"?<View style={styles.numberColumn}><ThemedText>{max?.toFixed(2)??"—"}</ThemedText></View>:null}
    <View style={styles.numberColumn}><TextInput style={[styles.tableInput,grvSelectable&&enabled?{backgroundColor:"#fff4cb",borderColor:"#e5a700",borderWidth:2}:null,{textAlign:"right",fontVariant:["tabular-nums"]}]} accessibilityLabel={tab==="Direct Issue"?"Quantity to issue "+l.item_code:undefined} editable={enabled} keyboardType="decimal-pad" value={l.quantity} onChangeText={v=>changeLine(l.id,"quantity",v)} placeholder="Quantity" placeholderTextColor="#777"/></View>
+   {showEquipmentColumn?<View style={styles.equipmentColumn}>
+    {equipmentKind?<><JsplSearchCombo label={(product?.item_name??"Product")+" — Equipment"} hideLabel selector="product" placeholder="Choose vehicle / equipment" value={l.equipment_id||null} disabled={busy||!!equipmentError} onChange={v=>changeLine(l.id,"equipment_id",String(v??""))} options={[...eligibleEquipment(equipment,equipmentKind).map(v=>({id:String(v.vehicle_id),label:v.vehicle_name})),{id:"other",label:"Other"}]}/>
+    {equipmentError?<ThemedText style={styles.alert}>{equipmentError}</ThemedText>:null}</>:<ThemedText>—</ThemedText>}
+   </View>:null}
+   {showOtherColumn?<View style={styles.otherColumn}>{equipmentKind&&l.equipment_id==="other"?<TextInput accessibilityLabel="Other description (required)" style={styles.tableInput} editable={!busy} value={l.equipment_other} onChangeText={v=>changeLine(l.id,"equipment_other",v)} placeholder="Other description (required)"/>:<ThemedText>—</ThemedText>}</View>:null}
    {tab==="Purchase Orders"||tab==="POs Outstanding"?<><View style={styles.numberColumn}><TextInput style={[styles.tableInput,grvSelectable&&enabled?{backgroundColor:"#fff4cb",borderColor:"#e5a700",borderWidth:2}:null]} editable={enabled} keyboardType="decimal-pad" value={l.unit_price} onChangeText={v=>changeLine(l.id,"unit_price",v)} placeholder="Unit price" placeholderTextColor="#777"/></View><View style={styles.numberColumn}><ThemedText>{currency(number(l.quantity)*number(l.unit_price))}</ThemedText></View></>:null}
    {tab==="Direct Issue"?<View style={[styles.numberColumn,{width:210}]}><TextInput style={styles.tableInput} value={l.mix_instruction} onChangeText={v=>changeLine(l.id,"mix_instruction",v)} placeholder="e.g. 1 L / 16 L knapsack" /></View>:null}
    {max!==null&&max!==undefined&&number(l.quantity)>max?<ThemedText style={styles.alert}>{tab==="Direct Issue"?"Exceeds available stock":"Over outstanding"}</ThemedText>:null}
@@ -141,12 +198,14 @@ export default function StockV2Workflow(){
  };
  const action=tab==="Purchase Orders"?"order":tab==="POs Outstanding"?(directGrv?"direct_grv":"grv"):tab==="Planned Issue"?"planned_issue":"direct_issue";
  const selectedLines=tab==="POs Outstanding"&&!directGrv?lines.filter(l=>checkedPOItems.includes(l.item_code)):lines;
- const normalizedLines=selectedLines.map(l=>({item_code:l.item_code,quantity:number(l.quantity),...(["Purchase Orders","POs Outstanding"].includes(tab ?? "")?{unit_price:l.unit_price.trim()?number(l.unit_price):null}:{}),...(tab==="Direct Issue"?{mix_instruction:l.mix_instruction.trim()||null}:{})}));
- const payload={owner_code:ownerCode,contract_id:effectiveContract,supplier,order_date:parseJsplDateInput(orderDate),order_id:orderId,job_id:jobId,tracecode_id:traceId,area_ha:part.trim()?number(part):number(area),part_label:part.trim()?"Part "+part.trim()+" ha":"Whole tracecode",spray_type:sprayType,water_rate:number(water),delivery_note:deliveryNote,invoice_number:invoiceNumber,receipt_mode:receiptMode,receipt_date:parseJsplDateInput(receiptDate),lines:normalizedLines};
+ const normalizedLines=selectedLines.map(l=>({item_code:l.item_code,quantity:number(l.quantity),...(["Purchase Orders","POs Outstanding"].includes(tab ?? "")?{unit_price:l.unit_price.trim()?number(l.unit_price):null}:{}),...(tab==="Direct Issue"?{mix_instruction:l.mix_instruction.trim()||null,...(equipmentIssueKind(products.find(p=>p.item_code===l.item_code))?{equipment_id:l.equipment_id&&l.equipment_id!=="other"?Number(l.equipment_id):null,equipment_other:l.equipment_id==="other"?l.equipment_other.trim():null}:{})}:{})}));
+ const payload={owner_code:ownerCode,contract_id:effectiveContract,supplier,order_date:parseJsplDateInput(orderDate),order_id:orderId,job_id:jobId,tracecode_id:tab==="Direct Issue"&&!issueNeedsTrace?null:traceId,area_ha:part.trim()?number(part):number(area),part_label:part.trim()?"Part "+part.trim()+" ha":"Whole tracecode",spray_type:sprayType,water_rate:number(water),delivery_note:deliveryNote,invoice_number:invoiceNumber,receipt_mode:receiptMode,receipt_date:parseJsplDateInput(receiptDate),lines:normalizedLines};
  const valid=(tab!=="POs Outstanding"||(!!parseJsplDateInput(receiptDate)&&(receiptMode==="dnote"?!!deliveryNote.trim():!!invoiceNumber.trim())&&(receiptMode==="dnote"||selectedLines.every(l=>l.unit_price.trim()!==""&&Number(l.unit_price)>0))))&&!!snapshot&&(tab!=="Purchase Orders"&&tab!=="POs Outstanding"||ownerReady)&&
  (tab!=="Purchase Orders"||(contractReady&&!!supplier.trim()))&&
  (tab!=="POs Outstanding"||!directGrv||(contractReady&&!!supplier.trim()))&&(tab!=="Purchase Orders"||!!parseJsplDateInput(orderDate))&&selectedLines.length>0&&selectedLines.length<=30&&new Set(selectedLines.map(l=>l.item_code)).size===selectedLines.length&&selectedLines.every(l=>{
   if(!products.some(p=>p.item_code===l.item_code&&p.active))return false;
+  const kind=equipmentIssueKind(products.find(p=>p.item_code===l.item_code));
+  if(tab==="Direct Issue"&&kind&&(equipmentError||!validEquipmentDestination(equipment,kind,l.equipment_id==="other"?"other":l.equipment_id?Number(l.equipment_id):null,l.equipment_other)))return false;
   const n=number(l.quantity);
   if(!Number.isFinite(n)||n<=0)return false;
   if(tab==="Direct Issue"&&n>issueStock(products.find(p=>p.item_code===l.item_code)))return false;
@@ -155,7 +214,7 @@ export default function StockV2Workflow(){
   if(tab==="POs Outstanding"&&!directGrv&&(!ref||n>(ref as OrderLine).ordered_quantity-(ref as OrderLine).received_quantity))return false;
   if(tab==="Planned Issue"&&(!ref||n>(ref as SprayLine).planned_quantity-(ref as SprayLine).issued_quantity))return false;
   return true;
- })&&(tab!=="POs Outstanding"||directGrv||!!selectedPO)&&(tab!=="Planned Issue"||!!selectedJob)&&(tab!=="Direct Issue"||!!traceId);
+ })&&(tab!=="POs Outstanding"||directGrv||!!selectedPO)&&(tab!=="Planned Issue"||!!selectedJob)&&(tab!=="Direct Issue"||ownerReady)&&(tab!=="Direct Issue"||!issueNeedsTrace||!!traceId);
  const submit=async()=>{if(!valid||!confirmed||busy)return;setBusy(true);setStatus("");
   const req=request&&request.action===action&&JSON.stringify(request.payload)===JSON.stringify(payload)?request:{action,payload,id:uuid()};setRequest(req);
   try{
@@ -193,9 +252,9 @@ export default function StockV2Workflow(){
      {workflow?.access.is_admin?<View style={styles.dashboardCard}><JsplDashboardButton title={"Awaiting Approval ("+workflow.awaiting+")"} description="Purchase orders, credit notes and counted stocktakes" onPress={()=>router.push("/stock-v2-approvals")}/></View>:null}
      <View style={styles.dashboardCard}><JsplDashboardButton title="Supplier Credit Notes" onPress={()=>router.push("/(tabs)/home/stock-v2-credits")}/></View>
      {workflow?.access.can_adjustments?<View style={styles.dashboardCard}><JsplDashboardButton title="Stock Adjustment" alertCount={workflow.adjustment_count??0} onPress={()=>router.push("/stock-v2-adjustments")}/></View>:null}
-     {workflow?.access.is_admin?<><View style={styles.dashboardCard}><JsplDashboardButton title="GRV Corrections" onPress={()=>router.push("/stock-v2-grv-corrections")}/></View><View style={styles.dashboardCard}><JsplDashboardButton title="Sprayer Completions" onPress={()=>router.push("/stock-v2-sprayer-completions")}/></View><View style={styles.dashboardCard}><JsplDashboardButton title="Stock Staff Access" onPress={()=>router.push("/stock-v2-staff")}/></View></>:null}
+     {workflow?.access.is_admin?<><View style={styles.dashboardCard}><JsplDashboardButton title="GRV Corrections" onPress={()=>router.push("/stock-v2-grv-corrections")}/></View><View style={styles.dashboardCard}><JsplDashboardButton title="Stock Staff Access" onPress={()=>router.push("/stock-v2-staff")}/></View></>:null}
      {tabs.filter(x=>x!=="PO Corrections").map(x=><View key={x} style={styles.dashboardCard}>
-      <JsplDashboardButton title={x} alertCount={x==="Spray Planning"?outstandingSprays:undefined}
+      <JsplDashboardButton title={x} alertCount={x==="Stock Balances"?missingActiveCount:x==="Spray Planning"?outstandingSprays:undefined}
        description={x==="POs Outstanding"?String(new Set((snapshot?.orders??[]).filter(o=>o.ordered_quantity>o.received_quantity).map(o=>o.order_id)).size)+" outstanding orders":x==="GRV"?String(snapshot?.pending_invoice_count??0)+" pending invoices":undefined}
        onPress={()=>x==="Spray Planning"?router.push("/stock-v2-spray-planning"):switchTab(x)}/>
      </View>)}</View>
@@ -208,28 +267,33 @@ export default function StockV2Workflow(){
   {status?<View style={styles.notice}><ThemedText>{status}</ThemedText></View>:null}
   {latestIssueDocument&&tab===null?<Pressable style={styles.submit} onPress={()=>router.push({pathname:"/stock-v2-issue-slip",params:{documentId:String(latestIssueDocument)}})}><ThemedText style={styles.submitText}>Print Latest Issue Slip</ThemedText></Pressable>:null}
   {tab===null?null:tab==="Stock Balances"?<View style={styles.sheet}>
-   {header("STOCK BALANCES",["Stock Owners: JS / AO","Warehouse: TEST_WH"])}
+   {workflow?.access.is_stock||workflow?.access.is_admin?<Pressable style={styles.add} onPress={()=>setProductEditor({product:null})}><ThemedText>+ New Product</ThemedText></Pressable>:null}
+   {header("STOCK BALANCES",["Stock Owners: JS / AO","Warehouse: Stores"])}
    <View style={styles.filters}>
     <StockSelect label="Stock status" value={stockFilter} options={[{id:'stock',label:'In Stock'},{id:'none',label:'No Stock'},{id:'all',label:'All'}]} onChange={v=>{setStockFilter(v as 'stock'|'none'|'all');setTypeFilter('');setCategoryFilter('')}}/>
     {menu("balanceType",typeFilter||"All input types",[{label:"All input types",value:"all",onSelect:()=>setTypeFilter("")},...inputTypes.map(t=>({label:t,value:t,onSelect:()=>{setTypeFilter(t);setCategoryFilter("")}}))],true)}
     {menu("balanceCategory",categoryFilter||"All input categories",[{label:"All input categories",value:"all",onSelect:()=>setCategoryFilter("")},...inputCategories.map(x=>({label:x,value:x,onSelect:()=>{setCategoryFilter(x);setTypeFilter("")}}))],true)}
    </View>
-   <StockReport compact title="Stock Balances" rows={balanceRows}
+   {!activesReady?<ThemedText style={{color:"#be2525",fontWeight:"700"}}>Active ingredient register is not installed yet; complete the database migration first.</ThemedText>:null}
+   {missingActiveCount>0?<ThemedText style={{color:"#be2525",fontWeight:"700"}}>({missingActiveCount}) chemical products missing active details</ThemedText>:null}
+   <StockReport compact title="Stock Balances" rows={balanceRows} highlightRow={activeMissing}
     columns={[
       {key:"item",title:"Product",width:240,value:x=>x.item_name},
-      {key:"ai",title:"Active Ingredient",width:210,value:x=>x.active_ingredient||"—"},
+      {key:"ai",title:"Active Ingredient",width:250,value:x=>activeDescription(x)},
       {key:"js_qty",title:"JS On Hand",kind:"number",width:110,value:x=>x.quantity},
       {key:"js_mov",title:"JS Movements",width:116,value:()=>"Movements",onPress:x=>router.push({pathname:"/stock-v2-movements",params:{item_code:x.item_code,owner:"JS"}})},
       {key:"ao_qty",title:"AO On Hand",kind:"number",width:110,value:x=>x.ao_quantity},
       {key:"ao_mov",title:"AO Movements",width:116,value:()=>"Movements",onPress:x=>router.push({pathname:"/stock-v2-movements",params:{item_code:x.item_code,owner:"AO"}})},
       {key:"unit",title:"Unit",width:75,value:x=>x.base_unit},
+      {key:"edit_product",title:"Product Details",width:120,filterable:false,value:()=>workflow?.access.is_admin?'Edit Product':'—',onPress:x=>workflow?.access.is_admin&&void editProduct(x)},
+      {key:"active_action",title:"Active Details",width:120,filterable:false,value:x=>isChemical(x)?(chemicalActives[x.item_code]?.length?"Edit Active":"Add Active"):"—",onPress:x=>isChemical(x)&&openActive(x)},
       {key:"last",title:"JS Last Purchase Price",kind:"number",width:160,value:x=>x.last_purchase_price},
       {key:"supplier",title:"JS Last Purchase Supplier",width:210,value:x=>x.last_purchase_supplier||"—"},
       {key:"avg",title:"JS Weighted Avg Price*",kind:"number",width:170,value:x=>x.weighted_average_price}
      ]}/>
 
   </View>:<View style={styles.sheet}>
-   {header(tab.toUpperCase(),[tab==="Direct Issue"?"Owner: "+(ownerCode||"JS"):"Owner: TEST_JS","Warehouse: TEST_WH","Date: "+new Date().toLocaleDateString("en-GB")])}
+   {header(tab.toUpperCase(),[tab==="Direct Issue"?"Owner: "+(ownerCode||"JS"):"Owner: JS","Warehouse: Stores","Date: "+new Date().toLocaleDateString("en-GB")])}
    {(tab==="Purchase Orders"||tab==="POs Outstanding")?<View style={{gap:10,paddingBottom:14}}>
      <ThemedText style={styles.label}>1. Stock Owner</ThemedText>
      {menu("owner",owner?owner.owner_name:"Choose Stock Owner",owners.filter(o=>o.active).map(o=>({label:o.owner_name,value:o.owner_code,onSelect:()=>selectOwner(o.owner_code)})))}
@@ -267,14 +331,16 @@ export default function StockV2Workflow(){
    </>:null}
    {tab==="Planned Issue"?<>{menu("jobs",selectedJob?"Spray job #"+selectedJob.id+" — "+selectedJob.trace:"Choose outstanding spray programme",jobs.map(j=>({label:"Job #"+j.id+" · "+j.trace+" · "+j.lines.length+" products",value:String(j.id),onSelect:()=>chooseJob(j)})),true)}</>:null}
    {tab==="Direct Issue"?<View style={styles.filters}>
-    {menu("crops",cropId===-1?"No Crop":crops.find(c=>c.crop_id===cropId)?.crop_name??"All crops",[{label:"All crops / No Crop",value:"all",onSelect:()=>{setCropId(null);setTraceId(null)}},{label:"No Crop",value:"no-crop",onSelect:()=>{setCropId(-1);setTraceId(null)}},...crops.map(c=>({label:c.crop_name,value:String(c.crop_id),onSelect:()=>{setCropId(c.crop_id);setTraceId(null)}}))])}
-    {menu("traces",currentTrace?.tracecode_name??"Choose active tracecode",activeTraces.map(t=>({label:t.tracecode_name,value:String(t.tracecode_id),onSelect:()=>{setTraceId(t.tracecode_id);setArea(String(t.tracecode_size??""));setPart("");}})),true)}
+    <StockSelect label="Stock owner" value={ownerCode} onChange={v=>selectOwner(String(v??""))} options={owners.filter(o=>o.active).map(o=>({id:o.owner_code,label:o.owner_name}))}/>
+    {issueNeedsTrace?<>{menu("crops",cropId===-1?"No Crop":crops.find(c=>c.crop_id===cropId)?.crop_name??"All crops",[{label:"All crops / No Crop",value:"all",onSelect:()=>{setCropId(null);setTraceId(null)}},{label:"No Crop",value:"no-crop",onSelect:()=>{setCropId(-1);setTraceId(null)}},...crops.map(c=>({label:c.crop_name,value:String(c.crop_id),onSelect:()=>{setCropId(c.crop_id);setTraceId(null)}}))])}
+    {menu("traces",currentTrace?traceLabel(currentTrace):"Choose active tracecode",activeTraces.map(t=>({label:traceLabel(t),value:String(t.tracecode_id),onSelect:()=>{setTraceId(t.tracecode_id);setArea(String(t.tracecode_size??""));setPart("");}})),true)}</>:null}
    </View>:null}
+   {tab==="Direct Issue"&&lines.some(l=>equipmentIssueKind(products.find(p=>p.item_code===l.item_code)))?<ThemedText>Choose equipment for each oil or fuel line; Other requires a description. Oils are allocated to equipment only. Petrol requires a field/trace; choose HS Workshop for general use.</ThemedText>:null}
    {((tab!=="Purchase Orders"&&tab!=="POs Outstanding")||(ownerReady&&(tab==="Purchase Orders"?contractReady:directGrv?contractReady:documentReady&&!!selectedPO)))?<><View style={styles.productSectionHeading}><ThemedText style={styles.section}>Product lines</ThemedText></View>
-   <ScrollView horizontal nestedScrollEnabled contentContainerStyle={{minWidth:tab==="POs Outstanding"&&!directGrv?1130:tab==="Purchase Orders"?790:tab==="Planned Issue"?710:650}}>
+   <ScrollView horizontal nestedScrollEnabled contentContainerStyle={{minWidth:tab==="POs Outstanding"&&!directGrv?1130:tab==="Purchase Orders"?790:tab==="Planned Issue"?710:showEquipmentColumn?(showOtherColumn?1189:949):650}}>
     <View style={{flex:1}}>
      <View style={styles.lineHeader}>
-      {(tab==="POs Outstanding"&&!directGrv?["Select","Product","Ordered","Prev. rec.","PO price","Actual Qty","Actual Price","Line total"]:tab==="Planned Issue"?["Product","Outstanding","Qty issue"]:tab==="Purchase Orders"?["Product","Qty ordered","Unit price","Line total"]:directGrv?["Product","Qty received","Actual price","Line total"]:["Product","Qty issue","Mix Rate (optional)"]).map((x,i)=><View key={i} style={x==="Select"?{width:55}:x==="Product"?styles.productColumn:styles.numberColumn}><ThemedText style={styles.gridHeading}>{x}</ThemedText></View>)}
+      {(tab==="POs Outstanding"&&!directGrv?["Select","Product","Ordered","Prev. rec.","PO price","Actual Qty","Actual Price","Line total"]:tab==="Planned Issue"?["Product","Outstanding","Qty issue"]:tab==="Purchase Orders"?["Product","Qty ordered","Unit price","Line total"]:directGrv?["Product","Qty received","Actual price","Line total"]:["Product","Qty issue",...(showEquipmentColumn?["Vehicle / Equipment"]:[]),...(showOtherColumn?["Other description"]:[]),"Mix Rate (optional)"]).map((x,i)=><View key={i} style={x==="Select"?{width:55}:x==="Product"?styles.productColumn:x==="Vehicle / Equipment"?styles.equipmentColumn:x==="Other description"?styles.otherColumn:x==="Mix Rate (optional)"?[styles.numberColumn,{width:210}]:styles.numberColumn}><ThemedText style={styles.gridHeading}>{x}</ThemedText></View>)}
       {(directGrv||!["POs Outstanding","Planned Issue"].includes(tab ?? ""))?<View style={styles.removeColumn}/>:null}
      </View>
      {lines.map(l=>lineCells(l,(tab==="POs Outstanding"&&!directGrv)||tab==="Planned Issue"))}
@@ -289,9 +355,32 @@ export default function StockV2Workflow(){
    {(tab==="Purchase Orders"||(tab==="POs Outstanding"&&receiptMode==="invoice"))?<ThemedText style={styles.total}>Document total: {currency(lines.reduce((s,l)=>s+number(l.quantity)*number(l.unit_price||"0"),0))}</ThemedText>:null}
    <ThemedText style={styles.label}>Products on this document: {lines.filter(l=>products.some(p=>p.item_code===l.item_code)&&Number(l.quantity)>0).length} / {lines.length}</ThemedText>
    {status.startsWith("Save not confirmed")?<View style={styles.errorPanel}><ThemedText style={styles.errorText}>{status}</ThemedText></View>:null}
-  <View style={styles.footer}><Pressable onPress={()=>setConfirmed(x=>!x)} style={styles.confirm}><ThemedText>{confirmed?"☑":"☐"} Confirm TEST transaction</ThemedText></Pressable><Pressable disabled={!valid||!confirmed||busy} onPress={submit} style={[styles.submit,(!valid||!confirmed||busy)&&styles.off]}><ThemedText style={styles.submitText}>{busy?"Posting…":tab==="POs Outstanding"?(receiptMode==="dnote"?"Post DNote":"Post Invoice GRV"):"Post "+tab}</ThemedText></Pressable></View>
+  <View style={styles.footer}><Pressable onPress={()=>setConfirmed(x=>!x)} style={styles.confirm}><ThemedText>{confirmed?"☑":"☐"} Confirm transaction</ThemedText></Pressable><Pressable disabled={!valid||!confirmed||busy} onPress={submit} style={[styles.submit,(!valid||!confirmed||busy)&&styles.off]}><ThemedText style={styles.submitText}>{busy?"Posting…":tab==="POs Outstanding"?(receiptMode==="dnote"?"Post DNote":"Post Invoice GRV"):"Post "+tab}</ThemedText></Pressable></View>
    {!valid?<ThemedText style={styles.alert}>Complete the required fields, product and positive quantities before posting.</ThemedText>:null}</>:<ThemedText style={styles.muted}>Select Stock Owner and Contract first, then supplier or outstanding PO.</ThemedText>}
   </View>}
+ {productEditor?<StockProductEditor product={productEditor.product} onCancel={()=>setProductEditor(null)} onSaved={async product=>{const data=await stockRequest();if(!data.items?.some((p:any)=>p.item_code===product.item_code))throw Error('Product saved; list refresh not confirmed. Verify Save to return.');setSnapshot(data);const actual=await stockRequest('?chemical_actives=1');const mapped:Record<string,ChemicalActive[]>={};(actual.rows as ChemicalActiveRow[]).forEach(a=>(mapped[a.item_code]??=[]).push({name:a.active_name,amount:String(a.concentration),unit:a.concentration_unit}));setChemicalActives(mapped);setStockFilter('all');setTypeFilter('');setCategoryFilter('');setProductEditor(null)}}/>:null}
+ <Modal visible={!!activeItem} transparent animationType="fade" onRequestClose={()=>!activeSaving&&setActiveItem(null)}>
+   <View style={{flex:1,backgroundColor:"rgba(0,0,0,0.5)",justifyContent:"center",padding:20}}>
+    <View style={{backgroundColor:"#fff",borderRadius:10,padding:18,maxWidth:660,width:"100%",alignSelf:"center",maxHeight:"85%"}}>
+     <ThemedText style={{fontSize:19,fontWeight:"700",marginBottom:12}}>Active Ingredients — {activeItem?.item_name}</ThemedText>
+     <ScrollView keyboardShouldPersistTaps="handled">
+      {activeRows.map((a,i)=><View key={i} style={{flexDirection:"row",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+       <View style={{width:100}}><ThemedText style={styles.label}>Unit</ThemedText><JsplSearchCombo label={"Unit "+(i+1)} hideLabel selector="product" value={a.unit} options={[{id:"g/L",label:"L"},{id:"g/kg",label:"kg"}]} disabled={activeSaving} onChange={unit=>setActiveRows(old=>old.map((x,j)=>j===i?{...x,unit:unit==="g/kg"?"g/kg":"g/L"}:x))}/></View>
+       <View style={{minWidth:160,flex:2}}><ThemedText style={styles.label}>Active Ingredient</ThemedText><JsplSearchCombo label={"Active ingredient "+(i+1)} hideLabel selector="product" value={a.name} disabled={activeSaving} options={[...new Set([...Object.values(chemicalActives).flat().map(x=>x.name),...activeRows.map(x=>x.name)].filter(Boolean))].sort().map(name=>({id:name,label:name}))} onChange={name=>setActiveRows(old=>old.map((x,j)=>j===i?{...x,name:String(name??'')}:x))} onCreate={name=>{if(name)setActiveRows(old=>old.map((x,j)=>j===i?{...x,name}:x))}} createLabel="+ Add New Active Ingredient"/></View>
+       <View style={{minWidth:100,flex:1}}><ThemedText style={styles.label}>Quantity (g)</ThemedText><TextInput accessibilityLabel={"Quantity (g) "+(i+1)} placeholder="Quantity (g)" keyboardType="decimal-pad" value={a.amount} editable={!activeSaving} onChangeText={amount=>setActiveRows(old=>old.map((x,j)=>j===i?{...x,amount}:x))} style={{borderWidth:1,borderColor:"#bbb",padding:10}}/></View>
+       <Pressable accessibilityLabel={"Remove active "+(i+1)} onPress={()=>setActiveRows(old=>old.filter((_,j)=>j!==i))}><ThemedText style={{color:"#b31b1b"}}>Remove</ThemedText></Pressable>
+      </View>)}
+      <ThemedText style={{marginBottom:12}}>L = grams per litre (g/L). kg = grams per kilogram (g/kg).</ThemedText>
+      <Pressable onPress={()=>setActiveRows(old=>[...old,{name:"",amount:"",unit:activeItem?.base_unit.toLowerCase().includes("kg")?"g/kg":"g/L"}])} style={{padding:11,alignSelf:"flex-start",backgroundColor:"#e5eee7",borderRadius:5}}><ThemedText>+ Add Another Active</ThemedText></Pressable>
+      {activeError?<ThemedText style={{color:"#be2525",marginTop:12}}>{activeError}</ThemedText>:null}
+     </ScrollView>
+     <View style={{flexDirection:"row",justifyContent:"flex-end",gap:12,marginTop:16}}>
+      <Pressable disabled={activeSaving} onPress={()=>setActiveItem(null)} style={{padding:12}}><ThemedText>Cancel</ThemedText></Pressable>
+      <Pressable disabled={activeSaving} onPress={()=>void saveActive()} style={{padding:12,backgroundColor:"#145b35",borderRadius:5,opacity:activeSaving?0.5:1}}><ThemedText style={{color:"#fff",fontWeight:"700"}}>{activeSaving?"Saving…":"Save Active Details"}</ThemedText></Pressable>
+     </View>
+    </View>
+   </View>
+  </Modal>
  </ScrollView></ThemedView>
 }
 const styles=StyleSheet.create({
@@ -299,5 +388,5 @@ const styles=StyleSheet.create({
 grvDocumentFields:{flexDirection:"row",flexWrap:"wrap",alignItems:"flex-start",gap:jsplSpacing.lg,marginBottom:jsplSpacing.md},grvDocumentField:{flexGrow:1,flexBasis:260,minWidth:235},outstandingPOHeader:{flexDirection:"row",flexWrap:"wrap",alignItems:"center",gap:jsplSpacing.md,justifyContent:"flex-start",marginTop:jsplSpacing.sm},
  grvHelp:{marginTop:jsplSpacing.lg,paddingVertical:jsplSpacing.sm,paddingHorizontal:jsplSpacing.md,backgroundColor:jsplColors.background,borderRadius:jsplRadii.sm},poHeaderFields:{flexDirection:"row",flexWrap:"wrap",alignItems:"flex-start",gap:24,paddingBottom:20,marginBottom:12,borderBottomWidth:1,borderBottomColor:jsplColors.border},poSupplier:{flex:2,minWidth:270},poDate:{flex:1,minWidth:235},productSectionHeading:{paddingTop:14,paddingBottom:12,marginTop:12},sprayFields:{flexDirection:"row",flexWrap:"wrap",alignItems:"flex-end",gap:12},readOnly:{padding:12,backgroundColor:"#e7edf2",borderWidth:1,borderColor:"#b0bfcb",borderRadius:4,minHeight:43},errorPanel:{backgroundColor:"#fff0ed",borderWidth:1,borderColor:"#bf4436",padding:12,borderRadius:5},errorText:{color:"#8a241a",fontWeight:"700"},
  home:{gap:jsplDashboardTheme.sectionGap,paddingVertical:jsplSpacing.lg},homeTitle:{fontSize:jsplDashboardTheme.headingSize,fontWeight:"700",color:jsplDashboardTheme.heading},homeGrid:{flexDirection:"row",flexWrap:"wrap",gap:jsplDashboardTheme.cardGap},dashboardCard:{flexGrow:1,flexBasis:jsplDashboardTheme.cardPreferredWidth,minWidth:jsplDashboardTheme.cardMinWidth},homeButton:{flexGrow:1,flexBasis:230,minWidth:210,minHeight:100,borderWidth:1,borderColor:"#9cb0c0",borderRadius:8,backgroundColor:"#edf3f8",padding:18,flexDirection:"row",alignItems:"center",justifyContent:"space-between"},homeButtonText:{fontSize:18,fontWeight:"700",color:"#244d69"},homeArrow:{fontSize:30,color:"#537a96"},back:{alignSelf:"flex-start",backgroundColor:jsplColors.successTint,borderWidth:1,borderColor:jsplColors.border,borderRadius:jsplRadii.md,paddingVertical:10,paddingHorizontal:16},backText:{fontWeight:"700",color:jsplColors.primaryDark},
- pickerPanel:{padding:12,borderWidth:1,borderColor:"#9babb8",borderRadius:5,gap:8,maxWidth:540},pickerTop:{flexDirection:"row",justifyContent:"space-between"},productColumn:{width:260,paddingHorizontal:6,justifyContent:"center"},numberColumn:{width:135,paddingHorizontal:6,justifyContent:"center"},removeColumn:{width:44},root:{flex:1,backgroundColor:jsplColors.background},page:{padding:jsplSpacing.xl,gap:jsplSpacing.lg,paddingBottom:50,backgroundColor:"transparent"},title:{fontSize:23,fontWeight:"700",color:jsplColors.primaryDark},muted:{fontSize:12,color:"#82888f"},nav:{flexDirection:"row",flexWrap:"wrap",borderBottomWidth:2,borderColor:"#486986"},navTab:{backgroundColor:"#e7ebf0",paddingVertical:11,paddingHorizontal:16,borderTopLeftRadius:4,borderTopRightRadius:4},navActive:{backgroundColor:"#345f81"},navActiveText:{color:"white",fontWeight:"700"},navActions:{flexDirection:"row",alignItems:"center",flexWrap:"wrap",gap:12},poChoices:{backgroundColor:"#fff",maxHeight:210,overflow:"hidden",marginBottom:12},refresh:{alignSelf:"flex-start",minHeight:jsplSizes.buttonHeight,justifyContent:"center",paddingHorizontal:jsplSpacing.md,borderWidth:1,borderColor:jsplColors.border,borderRadius:jsplRadii.sm},notice:{borderWidth:1,borderColor:"#a3b4c1",padding:10,borderRadius:5},sheet:{padding:jsplSpacing.lg,borderWidth:1,borderColor:jsplColors.border,borderRadius:jsplRadii.md,gap:jsplSpacing.md,backgroundColor:"rgba(255,255,255,0.65)"},documentHead:{gap:6,borderBottomWidth:1,borderColor:"#b5bfc9",paddingBottom:10},heading:{fontSize:17,fontWeight:"700"},headerDetails:{flexDirection:"row",flexWrap:"wrap",gap:16},detail:{fontSize:12,color:"#697b87"},field:{flex:1,gap:jsplSpacing.sm,minWidth:150},label:{fontWeight:"600",fontSize:13},input:{minHeight:jsplSizes.inputHeight,paddingHorizontal:jsplSpacing.md,paddingVertical:9,borderWidth:1,borderColor:jsplColors.border,borderRadius:jsplRadii.md,color:"#222",backgroundColor:"#fff"},filters:{flexDirection:"row",flexWrap:"wrap",gap:12},dropdown:{flex:1,minWidth:210,maxWidth:500,gap:4},selector:{padding:10,borderWidth:1,borderColor:"#9aabb7",borderRadius:4},choices:{padding:6,borderWidth:1,borderColor:"#bbc3cb",borderRadius:4,gap:4},choice:{padding:10,borderBottomWidth:1,borderColor:"#e6e7e9"},section:{fontSize:14,fontWeight:"700",marginTop:6},lineHeader:{flexDirection:"row",paddingVertical:10,backgroundColor:jsplColors.successTint},gridHeading:{fontSize:12,fontWeight:"700",paddingHorizontal:5},line:{flexDirection:"row",alignItems:"center",borderBottomWidth:1,borderColor:"#d9dfe4",paddingVertical:6},cell:{paddingHorizontal:4},tableInput:{minHeight:44,padding:9,borderWidth:1,borderColor:jsplColors.border,borderRadius:jsplRadii.md,backgroundColor:"#fff",color:"#111"},remove:{paddingHorizontal:8},alert:{color:"#a93525"},add:{borderWidth:1,borderColor:"#a7b8c4",padding:10,alignSelf:"flex-start",borderRadius:5},total:{fontWeight:"700",textAlign:"right"},footer:{flexDirection:"row",flexWrap:"wrap",justifyContent:"flex-end",gap:15,alignItems:"center"},confirm:{padding:12,borderWidth:1,borderColor:"#9babb9",borderRadius:4},submit:{backgroundColor:jsplColors.primary,paddingVertical:13,paddingHorizontal:25,borderRadius:5},submitText:{color:"white",fontWeight:"700"},off:{backgroundColor:"#a9adb0"},gridHead:{flexDirection:"row",backgroundColor:jsplColors.successTint,paddingVertical:8},registerRow:{flexDirection:"row",paddingVertical:8,borderBottomWidth:1,borderColor:"#e2e6e8",gap:5}
+ equipmentColumn:{width:300,paddingHorizontal:6,justifyContent:"center",flexShrink:0},otherColumn:{width:240,paddingHorizontal:6,justifyContent:"center",flexShrink:0},pickerPanel:{padding:12,borderWidth:1,borderColor:"#9babb8",borderRadius:5,gap:8,maxWidth:540},pickerTop:{flexDirection:"row",justifyContent:"space-between"},productColumn:{width:260,paddingHorizontal:6,justifyContent:"center"},numberColumn:{width:135,paddingHorizontal:6,justifyContent:"center"},removeColumn:{width:44},root:{flex:1,backgroundColor:jsplColors.background},page:{padding:jsplSpacing.xl,gap:jsplSpacing.lg,paddingBottom:50,backgroundColor:"transparent"},title:{fontSize:23,fontWeight:"700",color:jsplColors.primaryDark},muted:{fontSize:12,color:"#82888f"},nav:{flexDirection:"row",flexWrap:"wrap",borderBottomWidth:2,borderColor:"#486986"},navTab:{backgroundColor:"#e7ebf0",paddingVertical:11,paddingHorizontal:16,borderTopLeftRadius:4,borderTopRightRadius:4},navActive:{backgroundColor:"#345f81"},navActiveText:{color:"white",fontWeight:"700"},navActions:{flexDirection:"row",alignItems:"center",flexWrap:"wrap",gap:12},poChoices:{backgroundColor:"#fff",maxHeight:210,overflow:"hidden",marginBottom:12},refresh:{alignSelf:"flex-start",minHeight:jsplSizes.buttonHeight,justifyContent:"center",paddingHorizontal:jsplSpacing.md,borderWidth:1,borderColor:jsplColors.border,borderRadius:jsplRadii.sm},notice:{borderWidth:1,borderColor:"#a3b4c1",padding:10,borderRadius:5},sheet:{padding:jsplSpacing.lg,borderWidth:1,borderColor:jsplColors.border,borderRadius:jsplRadii.md,gap:jsplSpacing.md,backgroundColor:"rgba(255,255,255,0.65)"},documentHead:{gap:6,borderBottomWidth:1,borderColor:"#b5bfc9",paddingBottom:10},heading:{fontSize:17,fontWeight:"700"},headerDetails:{flexDirection:"row",flexWrap:"wrap",gap:16},detail:{fontSize:12,color:"#697b87"},field:{flex:1,gap:jsplSpacing.sm,minWidth:150},label:{fontWeight:"600",fontSize:13},input:{minHeight:jsplSizes.inputHeight,paddingHorizontal:jsplSpacing.md,paddingVertical:9,borderWidth:1,borderColor:jsplColors.border,borderRadius:jsplRadii.md,color:"#222",backgroundColor:"#fff"},filters:{flexDirection:"row",flexWrap:"wrap",gap:12},dropdown:{flex:1,minWidth:210,maxWidth:500,gap:4},selector:{padding:10,borderWidth:1,borderColor:"#9aabb7",borderRadius:4},choices:{padding:6,borderWidth:1,borderColor:"#bbc3cb",borderRadius:4,gap:4},choice:{padding:10,borderBottomWidth:1,borderColor:"#e6e7e9"},section:{fontSize:14,fontWeight:"700",marginTop:6},lineHeader:{flexDirection:"row",paddingVertical:10,backgroundColor:jsplColors.successTint},gridHeading:{fontSize:12,fontWeight:"700",paddingHorizontal:5},line:{flexDirection:"row",alignItems:"center",borderBottomWidth:1,borderColor:"#d9dfe4",paddingVertical:6},cell:{paddingHorizontal:4},tableInput:{minHeight:44,padding:9,borderWidth:1,borderColor:jsplColors.border,borderRadius:jsplRadii.md,backgroundColor:"#fff",color:"#111"},remove:{paddingHorizontal:8},alert:{color:"#a93525"},add:{borderWidth:1,borderColor:"#a7b8c4",padding:10,alignSelf:"flex-start",borderRadius:5},total:{fontWeight:"700",textAlign:"right"},footer:{flexDirection:"row",flexWrap:"wrap",justifyContent:"flex-end",gap:15,alignItems:"center"},confirm:{padding:12,borderWidth:1,borderColor:"#9babb9",borderRadius:4},submit:{backgroundColor:jsplColors.primary,paddingVertical:13,paddingHorizontal:25,borderRadius:5},submitText:{color:"white",fontWeight:"700"},off:{backgroundColor:"#a9adb0"},gridHead:{flexDirection:"row",backgroundColor:jsplColors.successTint,paddingVertical:8},registerRow:{flexDirection:"row",paddingVertical:8,borderBottomWidth:1,borderColor:"#e2e6e8",gap:5}
 });
