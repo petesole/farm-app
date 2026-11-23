@@ -12,7 +12,7 @@ type Details={
 };
 const blank={supplier_id:'',reference:'',date:'',currency:'',unit_price:''};
 
-export function JobPartQuotes({partId,onUse}:{partId:number;onUse:(quoteId:string)=>void}){
+export function JobPartQuotes({partId,readOnly=false,onUse}:{partId:number;readOnly?:boolean;onUse:(quoteId:string)=>void}){
   const [details,setDetails]=useState<Details>();
   const [draft,setDraft]=useState(blank);
   const [busy,setBusy]=useState(false);
@@ -47,9 +47,9 @@ export function JobPartQuotes({partId,onUse}:{partId:number;onUse:(quoteId:strin
       <Text style={styles.title}>Supplier quotations</Text>
       {details.quotes.map(quote=><View key={quote.id} style={styles.row}>
         <Text style={styles.text}>{quote.supplier_name} · {quote.quote_reference} · {displayJsplDate(quote.quote_date)} · {quote.currency} {quote.unit_price} per unit</Text>
-        <StockButton title="Use quotation" disabled={busy} onPress={()=>onUse(quote.id)}/>
+        {!readOnly?<StockButton title="Use quotation" disabled={busy} onPress={()=>onUse(quote.id)}/>:null}
       </View>)}
-      <StockSelect label="Quote supplier" value={draft.supplier_id} options={details.suppliers.map(record=>({id:record.supplier_id,label:record.supplier_name}))}
+      {!readOnly?<><StockSelect label="Quote supplier" value={draft.supplier_id} options={details.suppliers.map(record=>({id:record.supplier_id,label:record.supplier_name}))}
         onChange={value=>edit('supplier_id',String(value??''))}/>
       <StockField label="Quote reference" value={draft.reference} onChange={value=>edit('reference',value)}/>
       <StockField label="Quote date (dd/mm/yyyy)" value={draft.date} onChange={value=>edit('date',value)}/>
@@ -57,7 +57,7 @@ export function JobPartQuotes({partId,onUse}:{partId:number;onUse:(quoteId:strin
         onChange={value=>edit('currency',String(value??''))}/>
       <StockField label="Quoted unit price" value={draft.unit_price} numeric onChange={value=>edit('unit_price',value)}/>
       <StockButton title="Save quotation" disabled={busy||!draft.supplier_id||!draft.reference.trim()||!date||!draft.currency||!(Number(draft.unit_price)>0)}
-        onPress={()=>void save()}/>
+        onPress={()=>void save()}/></>:null}
     </>:null}
   </View>;
 }

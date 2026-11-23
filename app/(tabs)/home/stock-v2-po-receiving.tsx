@@ -4,7 +4,7 @@ import {StockSelect} from "@/components/jspl/StockWorkflowControls";
 import {StockRecovery} from "@/components/jspl/StockWorkflowControls";
 import {parseJsplDateInput,displayJsplDate} from "@/utils/jspl-input";
 import {StockV2Header} from "@/components/jspl/StockV2Header";
-import {useEffect,useMemo,useState} from "react";
+import {useEffect,useMemo,useRef,useState} from "react";
 import {ActivityIndicator,Pressable,ScrollView,StyleSheet,TextInput,View} from "react-native";
 import {ThemedText} from "@/components/themed-text";
 import {ThemedView} from "@/components/themed-view";
@@ -20,7 +20,7 @@ type MyReceipt={
  id:string;request_number:number;status:"pending"|"returned";decision_reason?:string;town_trip_id?:string|null;
  receipt_action:string;
  payload:{owner_code:string;supplier:string;receipt_date:string;invoice_date?:string;invoice_number?:string;delivery_note?:string;
-  lines?:ReceiptEntry[];po_allocations?:ReceiptEntry[];allocations?:ReceiptEntry[];invoice_lines?:{item_code:string;unit_price:number}[]};
+  source_credit_id?:number|null;credit_link_reason?:string;lines?:ReceiptEntry[];po_allocations?:ReceiptEntry[];allocations?:ReceiptEntry[];invoice_lines?:{item_code:string;unit_price:number}[]};
 };
 const dateISO=(value:string)=>parseJsplDateInput(value) ?? null;
 const money=(n:number)=>Number.isFinite(n)?n.toFixed(2):"0.00";
@@ -29,7 +29,8 @@ const shortDNote=(value:string,id:number)=>{const v=String(value??"").trim();ret
 const shortDate=(value:string|null|undefined)=>{if(!value)return "—";const v=String(value);if(/^\d{4}-\d{2}-\d{2}/.test(v))return v.slice(8,10)+"/"+v.slice(5,7)+"/"+v.slice(0,4);if(/^\d{2}\/\d{2}\/\d{4}/.test(v))return v.slice(0,10);return "—";};
 const supplierKey=(name:string|null|undefined)=>String(name??"").trim().toLowerCase();
 export default function GRVOutstanding(){
- const {from,trip,order,owner:initialOwner,supplier:initialSupplier}=useLocalSearchParams<{from?:string;trip?:string;order?:string;owner?:string;supplier?:string}>();
+ const {from,trip,order,owner:initialOwner,supplier:initialSupplier,receipt:receiptId}=useLocalSearchParams<{from?:string;trip?:string;order?:string;owner?:string;supplier?:string;receipt?:string}>();
+ const openedReceipt=useRef<string|null>(null);
  const [mounted,setMounted]=useState(false);
  useEffect(()=>setMounted(true),[]);
  const tripOrder=mounted&&from==="town-trip"?Number(order):null;
@@ -56,17 +57,18 @@ export default function GRVOutstanding(){
 
  }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
  useEffect(()=>{void load()},[]);
- const owners=["JS","AO"];
+ const owners=[...new Set([...po.filter(line=>line.status==="approved"&&Number(line.ordered_quantity)>Number(line.received_quantity)).map(line=>line.owner_code),...dn.filter(line=>line.quantity>0).map(line=>line.owner_code),...(owner?[owner]:[])])].sort();
  const ownerCount=(code:string)=>new Set(po.filter(x=>x.owner_code===code&&x.status==="approved"&&Number(x.ordered_quantity)>Number(x.received_quantity)).map(x=>x.order_id)).size;
  const suppliers=useMemo(()=>{
   const matchingOrders=po.filter(x=>x.owner_code===owner&&x.status==="approved"&&Number(x.ordered_quantity)>Number(x.received_quantity)
    &&(!tripOrder||Number(x.order_id)===tripOrder));
   const names=matchingOrders.flatMap(x=>x.supplier_name?.trim()?[x.supplier_name.trim()]:[]);
+  if(!tripOrder)names.push(...dn.filter(line=>line.owner_code===owner&&line.quantity>0).map(line=>line.supplier_name));
   if(owner==="AO"&&matchingOrders.some(x=>x.supplier_name===null)){
    names.push(...supplierMaster.filter(x=>x.active).map(x=>x.supplier_name));
   }
   return [...new Map(names.map(name=>[supplierKey(name),name])).values()].sort((a,b)=>a.localeCompare(b));
- },[po,owner,supplierMaster,tripOrder]);
+ },[po,dn,owner,supplierMaster,tripOrder]);
  const matchesSupplier=(line:POLine,name:string)=>supplierKey(line.supplier_name)===supplierKey(name)
   || (line.owner_code==="AO"&&line.supplier_name===null&&supplierMaster.some(x=>x.active&&supplierKey(x.supplier_name)===supplierKey(name)));
  const outstandingDN=dn.filter(x=>!tripOrder&&x.owner_code===owner&&supplierKey(x.supplier_name)===supplierKey(supplier));
@@ -101,6 +103,12 @@ export default function GRVOutstanding(){
   setDate(displayJsplDate(p.receipt_date??p.invoice_date??""));setNumber(p.invoice_number??p.delivery_note??"");setNoPO(direct);
   setChosen(Object.fromEntries(restored.map(line=>[line.key,line])));
  };
+ useEffect(()=>{
+  if(!mounted||busy||!receiptId||openedReceipt.current===receiptId)return;
+  const receipt=myReceipts.find(item=>item.id===receiptId&&item.status==="returned");
+  if(receipt){openedReceipt.current=receiptId;reopenReceipt(receipt);}
+ },[mounted,busy,receiptId,myReceipts]);
+ const linkedCredit=correction?.payload.source_credit_id&&correction.payload.owner_code===owner&&supplierKey(correction.payload.supplier)===supplierKey(supplier)?correction.payload.source_credit_id:null;
  const cancelCorrection=()=>{setCorrection(null);setChosen({});setSupplier("");setType("");setNumber("");setDate("");setNoPO(false);setError("");};
  const receiptTrip=correction?.town_trip_id??(tripOrder?trip:undefined);
  const correctionReference={...(correction?{replaces_id:correction.id}:{}),...(receiptTrip?{town_trip_id:receiptTrip}:{})};
@@ -113,7 +121,7 @@ export default function GRVOutstanding(){
    grouped.set(line.item_code,{item_code:line.item_code,invoice_quantity:(prior?.invoice_quantity??0)+quantity,unit_price:price});
    if(line.kind==="PO"){const v=receipts.get(line.item_code);receipts.set(line.item_code,{item_code:line.item_code,quantity:(v?.quantity??0)+quantity});}
   }
-  const payload={owner_code:owner,supplier,invoice_number:number.trim(),invoice_date:dateISO(date),receipt_date:dateISO(date),
+  const payload={...(linkedCredit?{source_credit_id:linkedCredit,credit_link_reason:correction?.payload.credit_link_reason}:{}),owner_code:owner,supplier,invoice_number:number.trim(),invoice_date:dateISO(date),receipt_date:dateISO(date),
    invoice_lines:[...grouped.values()],allocations:lines.filter(x=>x.kind==="DN").map(x=>({line_id:Number(x.key.slice(3)),quantity:Number(x.quantity)})),
    new_receipts:[...receipts.values()],
    po_allocations:lines.filter(x=>x.kind==="PO").map(x=>({order_line_id:x.orderLineId,item_code:x.item_code,quantity:Number(x.quantity)}))};
@@ -140,6 +148,7 @@ export default function GRVOutstanding(){
 
   {busy?<ActivityIndicator/>:null}{error?<><ThemedText style={s.warning}>{error}</ThemedText><StockRecovery scope="receiving" onRecovered={()=>void load()}/></>:null}{success?<ThemedText>{success}</ThemedText>:null}
   {correction?<View style={s.panel}><ThemedText>Correcting receipt {correction.request_number} · {correction.decision_reason}</ThemedText>
+    {correction.payload.source_credit_id?<ThemedText>{linkedCredit?"This invoice retains its linked supplier credit.":"Changing the owner or supplier removes the original credit link."}</ThemedText>:null}
     {selection("cancel-correction","Cancel correction",false,cancelCorrection)}</View>:myReceipts.map(receipt=><View key={receipt.id} style={s.panel}>
     <ThemedText>Receipt {receipt.request_number} · {receipt.payload.delivery_note??receipt.payload.invoice_number} · {receipt.status==="pending"?"Awaiting verification":"Returned"}</ThemedText>
     {receipt.status==="returned"?<><ThemedText>{receipt.decision_reason}</ThemedText>
@@ -147,7 +156,7 @@ export default function GRVOutstanding(){
   </View>)}
   {tripOrder?<ThemedText style={s.label}>Town Trip · {shortPO(tripOrder)}</ThemedText>:null}
   <StockSelect label="Stock owner" value={owner} options={owners.map(x=>({id:x,label:x+" ("+ownerCount(x)+")"}))} onChange={v=>{setOwner(String(v??''));setSupplier('');setType('');setChosen({});setNoPO(false)}}/>
-  {!!owner?<StockSelect label="Supplier" value={supplier} options={suppliers.map(x=>({id:x,label:x}))} onChange={v=>{setSupplier(String(v??''));setType(v?'dnote':'');setChosen({});setNoPO(false)}}/>:null}
+  {!!owner?<StockSelect label="Supplier" value={supplier} options={suppliers.map(x=>({id:x,label:x}))} onChange={v=>{setSupplier(String(v??''));setType(!v?'':po.some(line=>line.owner_code===owner&&matchesSupplier(line,String(v))&&line.status==='approved'&&Number(line.ordered_quantity)>Number(line.received_quantity)&&(!tripOrder||Number(line.order_id)===tripOrder))?'dnote':'grv');setChosen({});setNoPO(false)}}/>:null}
   {!!supplier?<StockSelect label="Document type" value={type} options={[{id:'dnote',label:'Delivery Note'},{id:'grv',label:'Invoice GRV'}]} onChange={v=>{setType(v as 'dnote'|'grv');setChosen({});setNoPO(false)}}/>:null}
 
   {!!type?<View style={s.panel}><ThemedText style={s.label}>Date</ThemedText><TextInput style={[s.input,s.required]} value={date} onChangeText={setDate} onBlur={()=>{const parsed=parseJsplDateInput(date);if(parsed)setDate(displayJsplDate(parsed));}} placeholder="d/m (year optional)"/></View>:null}
@@ -178,7 +187,7 @@ export default function GRVOutstanding(){
   <ThemedText>{lines.length} line(s) to save — only checked rows will be saved.</ThemedText>
   {!hasPO&&!outstandingDN.length?<ThemedText>No outstanding documents for this supplier.</ThemedText>:null}
   <Pressable disabled={busy} onPress={()=>{setError("");if(!valid){setError(!dateISO(date)?"Enter a valid date.":!number.trim()?"Enter the document number.":!lines.length?"Tick at least one outstanding line.":"Complete all highlighted cells on the selected lines.");return;}if(type==="grv")void submitCombined();else void submitDNote()}} style={[s.submit,busy&&s.disabled]}>
-  <ThemedText style={s.submitText}>{type==="grv"?"SAVE INVOICE GRV":"SAVE DELIVERY NOTE"}</ThemedText></Pressable>
+  <ThemedText style={s.submitText}>{type==="grv"?"Submit invoice for verification":"Submit delivery note for verification"}</ThemedText></Pressable>
   </View>:null}
  </ScrollView></ThemedView>;
 }

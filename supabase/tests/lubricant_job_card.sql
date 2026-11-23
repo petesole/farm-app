@@ -4,7 +4,7 @@ set local lock_timeout='4s';
 set local statement_timeout='55s';
 do $test$
 declare
-  buyer uuid; stores uuid; tractor bigint; own bigint; own_code text; wh bigint; trace bigint; petrol bigint;
+  buyer uuid; stores uuid; admin_user uuid; tractor bigint; own bigint; own_code text; wh bigint; trace bigint; petrol bigint;
   job uuid:=gen_random_uuid(); code text:='QA-LUB-'||job; day date:=(now() at time zone 'Africa/Harare')::date;
   oil bigint; cat bigint; line bigint; doc bigint; movement_line bigint; part bigint;
   posted jsonb; op uuid:=gen_random_uuid(); general_job uuid:=gen_random_uuid(); general_part bigint; before_petrol numeric;
@@ -78,6 +78,56 @@ begin
     or (select quantity from stock_v2.job_part_reserved where part_id=part)<>2
     or not exists(select from stock_v2.job_part_issue x join stock_v2.document_line l using(line_id)
       where x.operation_id=op and x.issued_by=stores and l.quantity=3 and l.equipment_id=tractor) then raise exception 'Equipment partial issue or replay failed'; end if;
+
+  -- A partial issue keeps its original quantity and cost when Buyer or Admin cancels the rest.
+  begin
+    perform stock_v2.cancel_job_part_balance(buyer,part,2,'Service complete');
+    raise exception 'Cancelled a reserved balance' using errcode='23514';
+  exception when raise_exception then if sqlerrm not like 'Release the reserved%' then raise; end if; end;
+  insert into stock_v2.job_part_reservation_event(id,part_id,quantity_delta,actor) values(gen_random_uuid(),part,-2,stores);
+  begin
+    perform stock_v2.cancel_job_part_balance(stores,part,2,'Service complete');
+    raise exception 'Stores cancelled a part' using errcode='23514';
+  exception when raise_exception then if sqlerrm not like 'Buyer or Admin%' then raise; end if; end;
+  begin
+    perform stock_v2.cancel_job_part_balance(buyer,part,5,'Service complete');
+    raise exception 'Accepted a stale remaining quantity' using errcode='23514';
+  exception when raise_exception then if sqlerrm not like 'The balance changed%' then raise; end if; end;
+  begin
+    perform stock_v2.cancel_job_part_balance(buyer,part,2,'  ');
+    raise exception 'Accepted a blank reason' using errcode='23514';
+  exception when raise_exception then if sqlerrm not like 'Enter a cancellation reason%' then raise; end if; end;
+  select id into strict admin_user from auth.users where (stock_v2.workflow_access(id)->>'is_admin')::boolean limit 1;
+  begin
+    perform stock_v2.cancel_job_part_balance(admin_user,part,2,'Admin cancellation');
+    if not exists(select from stock_v2.job_part_cancellation where part_id=part and cancelled_by=admin_user) then raise exception 'Admin cancellation failed'; end if;
+    raise exception 'Undo only the Admin test' using errcode='ZX001';
+  exception when sqlstate 'ZX001' then null; end;
+  perform stock_v2.cancel_job_part_balance(buyer,part,2,'Service complete');
+  if not exists(select from stock_v2.job_part_cancellation where part_id=part and quantity=2 and reason='Service complete' and cancelled_by=buyer)
+    or (select requested_quantity from stock_v2.job_card_part where id=part)<>5
+    or (select issued_quantity from stock_v2.job_part_usage where part_id=part)<>3
+    or (select quantity from stock_v2.quantity_balance where item_id=oil and owner_id=own and location_id=wh)<>7
+    then raise exception 'Cancellation changed the request, the issue or warehouse stock'; end if;
+  begin
+    perform stock_v2.cancel_job_part_balance(buyer,part,2,'Repeated');
+    raise exception 'Cancelled the same remainder twice' using errcode='23514';
+  exception when raise_exception then if sqlerrm not like 'This part balance has already%' then raise; end if; end;
+  begin
+    insert into stock_v2.job_part_reservation_event(id,part_id,quantity_delta,actor) values(gen_random_uuid(),part,1,stores);
+    raise exception 'Reserved cancelled stock' using errcode='23514';
+  exception when raise_exception then if sqlerrm not like 'The remaining Job Card%' then raise; end if; end;
+  begin
+    perform stock_v2.buying_workflow_command(buyer,gen_random_uuid(),'save',jsonb_build_object('id',gen_random_uuid(),'kind','po',
+      'payload',jsonb_build_object('owner_code',own_code,'supplier',(select supplier_name from stock_v2.supplier where active limit 1),
+      'order_date',day,'source_job_card_id',job,'contract_id',(select contract_id from stock_v2.contracts where active limit 1),
+      'lines',jsonb_build_array(jsonb_build_object('item_code',code,'quantity',2)))));
+    raise exception 'Purchased a cancelled balance' using errcode='23514';
+  exception when raise_exception then if sqlerrm not like 'Remove the cancelled Job Card part%' then raise; end if; end;
+  begin
+    update stock_v2.job_card_part set requested_quantity=7 where id=part;
+    raise exception 'Edited the original cancelled quantity' using errcode='23514';
+  exception when raise_exception then if sqlerrm not like 'Keep the original request%' then raise; end if; end;
 
   insert into stock_v2.job_card(id,card_type,tracecode_id,work_description,requested_by) values(general_job,'general',trace,'Workshop top-up',buyer);
   insert into stock_v2.job_card_part(job_id,item_id,category_id,requested_quantity) select general_job,oil,category_id,1 from stock_v2.buying_category

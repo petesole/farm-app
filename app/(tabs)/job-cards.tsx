@@ -13,8 +13,9 @@ type CardType='general'|'asset'|'irrigation';
 type Category={category_id:number;catalogue_group:string;category_name:string;stock_only:boolean};
 type AssetPurchase = {id:string;part_number?:string;item_code:string;item_name:string;active:boolean;document_date:string;supplier_name:string;receipt:string;unit_price:string|null};
 type JobCard = {
+  clearance_reason?:string|null;
   id: string; job_number: number; vehicle_name: string; work_description: string; transaction_date:string; closed_at:string|null; revision:string;card_type:CardType;vehicle_id:number|null;tracecode_id:number|null;
-  parts: {category_id:number;line_purpose?:string;part_id: number; owner_code: string; owner_name?:string; issue_enabled?:boolean; item_code: string; item_name: string; quantity: number; reserved: number; issued: number; repair_cost: number|null; pending_cost: boolean; unit_price:number|null; price_supplier_id:string|null; price_supplier_name:string|null; direct_expense:boolean; part_number?:string; available?: number;stock_sources?:{code:string;name:string;available:number}[]; unit: string; sample_details?: string}[];
+  parts: {category_id:number;line_purpose?:string;part_id: number; cancelled_quantity?:number; cancellation_reason?:string; cancelled_at?:string; remaining_quantity?:number; owner_code: string; owner_name?:string; issue_enabled?:boolean; item_code: string; item_name: string; quantity: number; reserved: number; issued: number; repair_cost: number|null; pending_cost: boolean; unit_price:number|null; price_supplier_id:string|null; price_supplier_name:string|null; direct_expense:boolean; part_number?:string; available?: number;stock_sources?:{code:string;name:string;available:number}[]; unit: string; sample_details?: string}[];
   purchase_orders: {owner_code: string; status: string; order_number?: string; request_number: number}[];
 };
 type CardData = {
@@ -66,6 +67,7 @@ export default function JobCards() {
   const [notice, setNotice] = useState('');
   const [reservationPart, setReservationPart] = useState<number|null>(null);
   const [quotePart,setQuotePart]=useState<number|null>(null);
+  const [cancelPart,setCancelPart]=useState<{id:number;quantity:number;reason:string}|null>(null);
   const [reservationQuantity, setReservationQuantity] = useState('');
   const [reservationOwner,setReservationOwner]=useState('');
 
@@ -138,6 +140,14 @@ export default function JobCards() {
     }
   }
 
+  async function cancelBalance(){
+    if(busy||!cancelPart)return;
+    setBusy(true);setError('');setNotice('');
+    try{
+      await stockMutation('job-card',{action:'cancel_job_part_balance',part_id:cancelPart.id,quantity:cancelPart.quantity,reason:cancelPart.reason.trim()});
+      setCancelPart(null);setNotice('Remaining quantity cancelled.');await load();
+    }catch(failure){setError((failure as Error).message);}finally{setBusy(false);}
+  }
   async function changeReservation(partId: number, action: 'reserve'|'release'|'issue') {
     if (busy) return;
     setBusy(true);
@@ -368,12 +378,14 @@ export default function JobCards() {
       <Text style={styles.text}>{displayJsplDate(card.transaction_date)} · {card.closed_at?'Finalised':'Open'}</Text><Text style={styles.text}>{card.work_description}</Text>
       {data.can_buy&&!card.closed_at?<View style={styles.row}>
         <StockButton title="Edit Job Card" disabled={busy} onPress={()=>openSaved(card)}/>
-        <StockButton title={confirmClose?'Confirm finalisation':'Finalise Job Card'} disabled={busy} onPress={()=>confirmClose?void finalise(card):setConfirmClose(true)}/>
+        <StockButton title={confirmClose?'Confirm finalisation':'Finalise Job Card'} disabled={busy||!!card.clearance_reason} onPress={()=>confirmClose?void finalise(card):setConfirmClose(true)}/>
       </View>:null}
+      {!card.closed_at&&card.clearance_reason?<Text style={styles.muted}>{card.clearance_reason}</Text>:null}
       {data.can_buy&&card.parts.length>0?<StockSelect label="Item for purchase history and quotes" value={quotePart}
         options={card.parts.filter(part=>!part.direct_expense).map(part=>({id:part.part_id,label:part.item_name}))}
         onChange={value=>setQuotePart(value==null?null:Number(value))}/>:null}
       {card.parts.map(part => {
+        const outstanding=part.remaining_quantity??part.quantity-part.issued-(part.cancelled_quantity??0);
         const available=part.owner_code?(part.available??0):(part.stock_sources?.find(s=>s.code===reservationOwner)?.available??0);
         return <View key={part.part_id} style={{gap:8}}>
         <Text style={styles.text}>{part.item_name}{part.owner_code?' · '+(part.owner_name||part.owner_code):''} · {part.quantity} {part.unit}{part.sample_details ? ' · ' + part.sample_details : ''}</Text>
@@ -389,13 +401,20 @@ export default function JobCards() {
         </View>:<StockButton title="Edit unit price" disabled={busy} onPress={()=>setPriceEdit({id:part.part_id,value:String(part.unit_price??''),supplier:part.price_supplier_id??null})}/>):null}
         {part.direct_expense?<Text style={styles.muted}>Direct expense</Text>:null}
         <Text style={styles.muted}>{part.reserved} {part.unit} reserved · {part.issued} {part.unit} issued</Text>
+        {part.cancelled_quantity?<Text style={styles.muted}>{part.cancelled_quantity} {part.unit} cancelled · {part.cancellation_reason}{part.cancelled_at?' · '+displayJsplDate(part.cancelled_at.slice(0,10)):''}</Text>:null}
+        {data.can_buy&&!card.closed_at&&!part.direct_expense&&outstanding>0?(cancelPart?.id===part.part_id?<View style={{gap:8}}>
+          <Text style={styles.text}>Cancel the remaining {cancelPart.quantity} {part.unit} of {part.item_name}?</Text>
+          <StockField label="Cancellation reason" value={cancelPart.reason} onChange={reason=>setCancelPart({...cancelPart,reason})}/>
+          <View style={styles.row}><StockButton title="Confirm cancellation" disabled={busy||!cancelPart.reason.trim()||cancelPart.reason.trim().length>500} onPress={()=>void cancelBalance()}/>
+          <StockButton title="Keep requested quantity" disabled={busy} onPress={()=>setCancelPart(null)}/></View>
+        </View>:<StockButton title="Cancel remaining quantity" disabled={busy||part.reserved>0} onPress={()=>{setError('');setCancelPart({id:part.part_id,quantity:outstanding,reason:''});}}/>):null}
         {part.issued>0 ? <Text style={styles.text}>
           {part.repair_cost===null?'Inventory cost pending':'Parts cost '+Number(part.repair_cost).toFixed(2)+(part.pending_cost?' (provisional)':'')}
         </Text> : null}
-        {data.can_buy&&!part.direct_expense&&quotePart===part.part_id?<JobPartQuotes key={part.part_id} partId={part.part_id} onUse={quoteId=>router.push({
+        {data.can_buy&&!part.direct_expense&&quotePart===part.part_id?<JobPartQuotes key={part.part_id} partId={part.part_id} readOnly={!!card.closed_at||outstanding<=0} onUse={quoteId=>router.push({
           pathname:'/stock-v2-purchase-orders',params:{from:'job-card',returnTo,job:card.id,owner:part.owner_code,part:String(part.part_id),quote:quoteId},
         })}/>:null}
-        {data.can_reserve && !card.closed_at && (!!part.owner_code||part.stock_sources!=null) && !part.direct_expense && (reservationPart===part.part_id ? <>
+        {data.can_reserve && !card.closed_at && (outstanding>0||part.reserved>0) && (!!part.owner_code||part.stock_sources!=null) && !part.direct_expense && (reservationPart===part.part_id ? <>
           {part.owner_code&&part.issue_enabled===false?<Text style={styles.error}>This company is not enabled to own stock.</Text>:null}
           {!part.owner_code&&part.stock_sources?<StockSelect label="Issue from stock owner" value={reservationOwner||null}
             options={part.stock_sources.map(s=>({id:s.code,label:s.name+' · '+s.available+' '+part.unit}))}
@@ -403,7 +422,7 @@ export default function JobCards() {
           <Text style={styles.muted}>{available} {part.unit} available to reserve</Text>
           <StockField label="Quantity" value={reservationQuantity} numeric onChange={setReservationQuantity}/>
           <View style={styles.row}>
-            <StockButton title="Reserve" disabled={busy||(!!part.owner_code&&part.issue_enabled===false)||!(Number(reservationQuantity)>0)||Number(reservationQuantity)>Math.min(part.quantity-part.reserved-part.issued,available)} onPress={()=>void changeReservation(part.part_id,'reserve')}/>
+            <StockButton title="Reserve" disabled={busy||(!!part.owner_code&&part.issue_enabled===false)||!(Number(reservationQuantity)>0)||Number(reservationQuantity)>Math.min(outstanding-part.reserved,available)} onPress={()=>void changeReservation(part.part_id,'reserve')}/>
             <StockButton title="Release" disabled={busy||!(Number(reservationQuantity)>0)||Number(reservationQuantity)>part.reserved} onPress={()=>void changeReservation(part.part_id,'release')}/>
             <StockButton title="Issue reserved stock" disabled={busy||part.issue_enabled===false||!(Number(reservationQuantity)>0)||Number(reservationQuantity)>part.reserved} onPress={()=>void changeReservation(part.part_id,'issue')}/>
             <StockButton title="Close" disabled={busy} onPress={()=>setReservationPart(null)}/>
@@ -414,7 +433,7 @@ export default function JobCards() {
         <Text style={styles.muted}>{order.order_number ?? 'PO Request ' + order.request_number} · {order.owner_code} · {order.status==='applied'?'Approved':order.status==='pending'?'Awaiting Admin approval':order.status}</Text>
         {canApprove&&order.status==='pending'?<StockButton title={'Review & Approve PO '+order.request_number} onPress={()=>router.push(purchaseOrderApproval(returnTo,String(order.request_number)))}/>:null}
       </View>)}
-      {data.can_buy&&!card.closed_at ? [...new Set(card.parts.filter(part=>!part.direct_expense).map(part => part.owner_code))].map(owner => (
+      {data.can_buy&&!card.closed_at ? [...new Set(card.parts.filter(part=>!part.direct_expense&&(part.remaining_quantity??part.quantity-part.issued-(part.cancelled_quantity??0))>part.reserved).map(part => part.owner_code))].map(owner => (
         <StockButton key={owner} title={owner?'Purchase parts · '+owner:'Purchase parts · choose owner'} onPress={() => router.push({
           pathname:'/stock-v2-purchase-orders', params:{from:'job-card', returnTo, job:card.id, owner},
         })}/>

@@ -25,7 +25,7 @@ export default function GRVOutstanding(){
  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[success,setSuccess]=useState("");
  const load=async()=>{setBusy(true);try{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");const r=await fetch(endpoint+"?outstanding_dnotes=1",{headers:{authorization:"Bearer "+session.access_token}});const d=await r.json();if(!r.ok)throw Error(d.error||"Unable to load outstanding D Notes");setRows(d.rows??[]);setCredits((await stockRequest("?linked_credit_options=1")).rows??[]);}catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
  useEffect(()=>{void load()},[]);
- const owners=["JS","AO"];
+ const owners=[...new Set(rows.filter(row=>row.quantity>0).map(row=>row.owner_code))].sort();
  const ownerCount=(code:string)=>new Set(rows.filter(x=>x.owner_code===code).map(x=>x.document_id)).size;
  const suppliers=useMemo(()=>[...new Set(rows.filter(x=>x.owner_code===owner).map(x=>x.supplier_name))].sort(),[rows,owner]);
  const outstanding=rows.filter(x=>x.owner_code===owner&&x.supplier_name===supplier).sort((a,b)=>String(a.delivery_note_date||a.document_date).localeCompare(String(b.delivery_note_date||b.document_date))||a.document_id-b.document_id||a.line_id-b.line_id);
@@ -38,9 +38,9 @@ export default function GRVOutstanding(){
   const grouped=new Map<string,{item_code:string;invoice_quantity:number;unit_price:number}>();
   for(const line of included){const price=Number(prices[line.line_id]);const prev=grouped.get(line.item_code);if(prev&&prev.unit_price!==price)throw Error("Different prices for the same product must be invoiced separately.");grouped.set(line.item_code,{item_code:line.item_code,invoice_quantity:(prev?.invoice_quantity??0)+Number(quantities[line.line_id]??line.quantity),unit_price:price});}
   const payload={source_credit_id:sourceCredit,credit_link_reason:linkReason,owner_code:owner,supplier,invoice_number:invoice.trim(),invoice_date:dateISO(date),receipt_date:dateISO(date),invoice_lines:[...grouped.values()],allocations:included.map(x=>({line_id:x.line_id,quantity:Number(quantities[x.line_id]??x.quantity)})),new_receipts:[],po_allocations:[]};
-  const posted=await stockMutation("combined-grv",{action:"combined_grv",payload});
+  const queued=await stockMutation("combined-grv",{action:"combined_grv",payload});
   setSourceCredit(null);setLinkReason("");
-  setSupplier("");setInvoice("");setDate("");setPrices({});setQuantities({});setChecked([]);setSuccess(posted.result.valuation_pending?"Partial invoice recorded. Remaining receipt quantities stay outstanding; final valuation awaits the remaining invoices.":"GRV posted and valued without receiving stock again.");await load();
+  setSupplier("");setInvoice("");setDate("");setPrices({});setQuantities({});setChecked([]);setSuccess("Receipt "+queued.result.request_number+" submitted for Admin verification.");await load();
  }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
  const choice=(id:string,selected:boolean,onPress:()=>void,label:string)=><Pressable key={id} onPress={onPress} style={[s.option,selected&&s.active]}><ThemedText style={selected?s.activeText:undefined}>{label}</ThemedText></Pressable>;
  return <ThemedView style={s.root}><ScrollView contentContainerStyle={s.page} keyboardShouldPersistTaps="handled">
@@ -56,7 +56,7 @@ export default function GRVOutstanding(){
     {outstanding.map(x=><View key={x.line_id} style={s.trow}><Pressable style={s.tcell} onPress={()=>setChecked(old=>old.includes(x.line_id)?old.filter(id=>id!==x.line_id):[...old,x.line_id])}><ThemedText style={{fontSize:22,color:jsplColors.primary}}>{checked.includes(x.line_id)?"☑":"☐"}</ThemedText></Pressable><ThemedText style={s.tcell}>{shortDNote(x)}</ThemedText><ThemedText style={s.tcell}>{formatDate(x.delivery_note_date||x.document_date)}</ThemedText><ThemedText style={[s.tcell,s.wide]}>{x.item_name} ({x.base_unit})</ThemedText><View style={s.tcell}><ThemedText>Uninvoiced: {x.quantity}</ThemedText><TextInput accessibilityLabel={"Invoice quantity "+x.line_id} keyboardType="decimal-pad" editable={checked.includes(x.line_id)} value={quantities[x.line_id]??String(x.quantity)} onChangeText={v=>setQuantities(q=>({...q,[x.line_id]:v}))}/></View><ThemedText style={s.tcell}>{x.po_price==null?"—":Number(x.po_price).toFixed(2)}</ThemedText><TextInput style={[s.tcell,checked.includes(x.line_id)?s.required:null]} editable={checked.includes(x.line_id)} keyboardType="decimal-pad" placeholder={checked.includes(x.line_id)?"Required":"Select first"} value={prices[x.line_id]??""} onChangeText={v=>setPrice(x.line_id,v)}/></View>)}
    </View></ScrollView>
    <ThemedText style={s.muted}>{included.length} line(s) entered. Only checked lines are invoiced; physical receipts remain unchanged; invoice quantities may be partial.</ThemedText>
-   <Pressable style={[s.submit,busy&&s.disabled]} disabled={busy} onPress={()=>void submit()}><ThemedText style={s.submitText}>SAVE INVOICE GRV</ThemedText></Pressable>
+   <Pressable style={[s.submit,busy&&s.disabled]} disabled={busy} onPress={()=>void submit()}><ThemedText style={s.submitText}>Submit invoice for verification</ThemedText></Pressable>
   </View>:null}</>:null}
  </ScrollView></ThemedView>;
 }

@@ -26,6 +26,7 @@ export default function Buying() {
       <StockButton title="Purchase Orders" onPress={() => router.push({pathname:'/stock-v2-purchase-orders',params:{from:'buying'}})}/>
       {access.is_admin?<StockButton title="Approve Purchase Orders" onPress={()=>router.push(purchaseOrderApproval('/buying'))}/>:null}
       <StockButton title="Receiving" onPress={() => router.push({pathname:'/stock-v2-po-receiving',params:{from:'buying'}})}/>
+      {access.is_admin?<StockButton title="Verify Receipts" onPress={()=>router.push({pathname:'/stock-v2-approvals',params:{from:'buying',view:'receipt'}})}/>:null}
       <StockButton title="Job Cards" onPress={() => router.push({pathname:'/job-cards',params:{from:'buying'}})}/>
       <StockButton title="Town Trips" onPress={() => router.push({pathname:'/town-trips',params:{from:'buying'}})}/>
     </> : access ? <Text style={stockStyles.text}>Buying access is required.</Text> : null}

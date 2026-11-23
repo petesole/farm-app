@@ -9,7 +9,7 @@ import {displayJsplDate,parseJsplDateInput} from '@/utils/jspl-input';
 import {stockMutation,stockRequest} from '@/utils/stock-workflow';
 
 type Order = {order_id:number;order_number:string;supplier:string|null;owner:string;outcome:'pending'|'collected'|'unavailable';can_receive?:boolean;driver_note?:string;payment_terms?:string|null;items:{name:string;quantity:number;remaining:number;unit:string}[]};
-type Trip = {id:string;trip_number:number;trip_date:string;driver_id:string;driver_name:string;finalised_at:string|null;orders:Order[]};
+type Trip = {can_report?:boolean;id:string;trip_number:number;trip_date:string;driver_id:string;driver_name:string;finalised_at:string|null;orders:Order[]};
 type TripData = {
   trips:Trip[];can_create?:boolean;can_main?:boolean;can_report?:boolean;can_receive?:boolean;
   drivers?:{id:string;email:string}[];
@@ -125,7 +125,7 @@ export default function TownTrips(){
           {data.can_receive&&order.can_receive?<StockButton title="Receive order" onPress={()=>router.push({
             pathname:'/stock-v2-po-receiving',params:{from:'town-trip',returnTo:stockLocation('/town-trips',{from,view:'history',trip:trip.id}),trip:trip.id,order:String(order.order_id),owner:order.owner,supplier:order.supplier??''},
           })}/>:null}
-          {data.can_report&&order.outcome==='pending'?(selected===key?<>
+          {(trip.can_report??data.can_report)&&!trip.finalised_at&&order.outcome==='pending'?(selected===key?<>
             <StockField label="Collection note" value={note} onChange={setNote}/>
             <View style={styles.row}>
               <StockButton title="Collected" disabled={busy||note.length>500} onPress={()=>report('collected')}/>

@@ -25,7 +25,7 @@ async function displayFixture(context,role){
   const petrol={...lubricant,item_code:'PET',item_name:'Petrol',input_type:'Fuel',input_category:'Fuel'};
   const mineral={...lubricant,item_code:'SPRAY',item_name:'Mineral spray oil',input_type:'Chemical',input_category:'Insecticide'};
   const oilLine={part_id:15,owner_code:'JS',item_code:'LUBE',item_name:'Gear Oil',quantity:5,unit:'L',unit_price:null,category_id:4,reserved:0,issued:0,available:8};
-  const oilCard={id:'fixture-card',job_number:9,transaction_date:'2026-11-20',vehicle_name:'Screen test tractor',work_description:'Service oil',parts:[oilLine],purchase_orders:[]};
+  const oilCard={clearance_reason:'Issue the outstanding Job Card items.',id:'fixture-card',job_number:9,transaction_date:'2026-11-20',vehicle_name:'Screen test tractor',work_description:'Service oil',parts:[oilLine],purchase_orders:[]};
   const serviceFilter={item_code:'FILTER-A',item_name:'Service filter',base_unit:'each',active:true,standalone_po:false};
   const poItems=[
     {...mineral,standalone_po:true},{...petrol,standalone_po:true},{...lubricant,standalone_po:true},
@@ -34,23 +34,27 @@ async function displayFixture(context,role){
     {item_code:'WELFARE',item_name:'Salt',base_unit:'kg',active:true,standalone_po:true},
     serviceFilter,{...petrol,item_code:'FUEL-OTHER',item_name:'Tractor hire',standalone_po:false},
   ];
-  const serviceCard={...oilCard,id:'service-card',job_number:11,parts:[{...oilLine,part_id:31,item_code:'FILTER-A',item_name:'Service filter',unit:'each'}]};
+  const serviceCard={...oilCard,id:'service-card',job_number:11,parts:[{...oilLine,part_id:31,item_code:'FILTER-A',item_name:'Service filter',unit:'each',unit_price:'18.50',price_supplier_name:'Screen supplier'}]};
   const clearedCard={...oilCard,id:'cleared-card',job_number:8,closed_at:'2026-11-20T12:00:00Z'};
+  const delivery={document_id:72,line_id:721,owner_code:'C73',supplier_name:'Delivered supplier',delivery_note:'DN-AUDIT',document_date:'2026-11-20',item_code:'FILTER-A',item_name:'Service filter',base_unit:'each',quantity:2};
+  const returned={id:'receipt-returned',request_number:72,status:'returned',decision_reason:'Correct invoice reference',receipt_action:'combined_grv',payload:{owner_code:'C73',supplier:'Delivered supplier',invoice_number:'OLD-72',receipt_date:'2026-11-20',source_credit_id:54,credit_link_reason:'Original supplier credit',allocations:[{line_id:721,quantity:2}],invoice_lines:[{item_code:'FILTER-A',invoice_quantity:2,unit_price:12}]}};
   const lookups={
-    purchasing_feed:{items:poItems,orders:[]},outstanding_dnotes:{rows:[]},my_receipts:{receipts:[]},receipt_verification:{receipts:[]},
-    workflow_context:{access,documents:['pending','applied'].map((status,i)=>({id:'po-'+status,request_number:21+i,kind:'po',status,version:1,received:status==='applied',payload:{owner_code:'JS',supplier:'Screen supplier',order_date:'2026-11-20',lines:[{item_code:'PET',quantity:2,unit_price:1}]}})),stocktakes:[],awaiting:1},supplier_list:{suppliers:[{supplier_name:'Screen supplier',active:true}]},
+    purchasing_feed:{items:poItems,orders:[]},linked_credit_options:{rows:[]},outstanding_dnotes:{rows:[delivery]},my_receipts:{receipts:[returned]},receipt_verification:{receipts:[]},
+    workflow_context:{access,documents:['pending','applied'].map((status,i)=>({id:'po-'+status,request_number:21+i,kind:'po',status,version:1,received:status==='applied',payload:{owner_code:'JS',supplier:'Screen supplier',order_date:'2026-11-20',lines:[{item_code:'PET',quantity:2,unit_price:1}]}})),stocktakes:[],awaiting:1},supplier_list:{suppliers:[{supplier_name:'Screen supplier',active:true},{supplier_name:'Second supplier',active:true}]},
     stock_setup:{owners:[{owner_code:'JS',owner_name:'JS',active:true}],contracts:[]},
     equipment_catalog:{rows:[{vehicle_id:2,vehicle_name:'Petrol bike',fuel_type:'PETROL'}]},chemical_actives:{rows:[]},
     snapshot:{issue_companies:[{owner_code:'JS',company_name:'JS Farm'},{owner_code:'C73',company_name:'Third company'}],items:[lubricant,petrol,mineral],sprays:[],documents:[],orders:[]},
     stock_access:{access},cash_book:book,
-    cash_book_supplier_invoices:{invoices:[],creditOptions:[]},outstanding_issues:{counts:{outstanding_parts:1,po_approvals:1,pending_collections:1,cash_drafts:1,unreconciled_advances:1},returned:[]},
+    cash_book_supplier_invoices:{invoices:[],creditOptions:[]},outstanding_issues:{counts:{outstanding_parts:1,po_approvals:1,pending_collections:1,cash_drafts:1,unreconciled_advances:1,returned_receipts:2},returned:[{...returned,reference:'OLD-72',assigned_to:'Screen admin',can_correct:true},{id:'different-user',request_number:71,reference:'OTHER-71',assigned_to:'Other submitter',decision_reason:'Check quantity',can_correct:false}]},
     job_cards:{cards:[oilCard,serviceCard,clearedCard],suppliers:[{supplier_id:'61',supplier_name:'Screen supplier'},{supplier_id:'62',supplier_name:'Second supplier'}],can_create:buyer,can_buy:buyer||admin,can_main:admin,can_reserve:buyer||stores,
       vehicles:[{vehicle_id:11,vehicle_name:'Screen test tractor',vehicle_type_id:4,vehicle_type:'Tractor',type_code:'TRA',owner_name:'Screen owner',owner_code:'JS',catalogue_group:'vehicle'}],
       items:[{item_code:'FILTER-A',item_name:'Service filter',base_unit:'each',part_number:'F-12',category_ids:[3]},{...lubricant,stock_lubricant:true,part_number:null,category_ids:[4]},{...lubricant,item_code:'EMPTY',item_name:'Hydraulic oil',quantity:0,stock_lubricant:true,part_number:null,category_ids:[4]}],
       categories:[{category_id:3,catalogue_group:'vehicle',category_name:'Filters'},{category_id:4,catalogue_group:'vehicle',category_name:'Lubricants',stock_only:true},{category_id:5,catalogue_group:'vehicle',category_name:'Oils',stock_only:true}],traces:[]},
     job_asset_purchase_history:{rows:[{id:'1',item_code:'FILTER-A',item_name:'Service filter',part_number:'F-12',active:true,supplier_name:'Screen supplier',receipt:'GRV-1',document_date:'2026-11-20',unit_price:'12.00'}]},
-    town_trips:{trips:[{id:'screen-trip',trip_number:1,trip_date:'2026-11-20',driver_name:'Test driver',orders:[{order_id:22,order_number:'PO-22',owner:'JS',supplier:'Screen supplier',outcome:'collected',can_receive:true,items:[]}],finalised_at:null}],drivers:[],orders:[],can_create:admin,can_report:driver,can_receive:!driver},
+    town_trips:{trips:[{id:'screen-trip',trip_number:1,trip_date:'2026-11-20',driver_name:'Test driver',orders:[{order_id:22,order_number:'PO-22',owner:'JS',supplier:'Screen supplier',outcome:'collected',can_receive:true,items:[]}],finalised_at:null}],drivers:[{id:'audit-driver',email:'Assigned driver'}],orders:[{order_id:24,order_number:'PO-24',supplier_name:'Screen supplier',payment_terms:'Cash on collection'}],can_create:admin,can_report:driver,can_receive:!driver},
   };
+  const driverOrder={order_id:24,order_number:'PO-24',supplier:'Screen supplier',owner:'JS',outcome:'pending',payment_terms:'Cash on collection',items:[]};
+  if(driver)lookups.town_trips.trips.push({id:'assigned-trip',trip_number:3,trip_date:'2026-11-20',driver_id:'audit-driver',can_report:true,orders:[{...driverOrder}],finalised_at:null});
   await context.route('https://*.supabase.co/**',async route=>{
     const req=route.request(),u=new URL(req.url());
     const headers={'access-control-allow-origin':'*','access-control-allow-headers':'*','access-control-allow-methods':'GET,POST,OPTIONS'};
@@ -61,8 +65,25 @@ async function displayFixture(context,role){
     else if(u.pathname==='/rest/v1/rpc/my_farm_app_roles')response=[role];
     else if(u.pathname==='/rest/v1/tracecode'||u.pathname==='/rest/v1/crop')response=[];
     else if(req.method()==='GET'&&u.pathname.endsWith('/stock-buying-development'))response=lookups[[...u.searchParams.keys()][0]||'snapshot'];
+    else if(req.method()==='POST'&&u.pathname.endsWith('/stock-buying-development')&&['create_town_trip','edit_town_trip','report_town_trip_order','finalise_town_trip'].includes(req.postDataJSON().action)){
+      const body=req.postDataJSON(),trips=lookups.town_trips.trips;
+      let trip=trips.find(trip=>trip.id===body.trip_id);
+      if(body.action==='report_town_trip_order'){
+        assert(driver&&trip.can_report);assert.equal(body.outcome,'unavailable');assert(body.note.trim());
+        Object.assign(trip.orders[0],{outcome:body.outcome,driver_note:body.note});
+      }else{
+        assert(admin);
+        if(body.action==='finalise_town_trip'){assert(trip.orders.every(o=>o.outcome!=='pending'));trip.finalised_at='2026-11-21T12:00:00Z';}
+        else{
+          assert.equal(body.driver_id,'audit-driver');assert.deepEqual(body.order_ids,[24]);
+          if(!trip){trip={id:'audit-trip',trip_number:2,driver_name:'Assigned driver',orders:[{...driverOrder}],finalised_at:null,can_report:false};trips.push(trip);}
+          Object.assign(trip,{driver_id:body.driver_id,trip_date:body.trip_date});
+        }
+      }
+      response={success:true,result:{id:trip.id,trip_number:trip.trip_number}};
+    }
     else if(req.method()==='POST'&&buyer&&u.pathname.endsWith('/stock-buying-development')&&
-      ['create_job_card','edit_job_card','set_job_part_price','finalise_job_card'].includes(req.postDataJSON().action)){
+      ['create_job_card','edit_job_card','set_job_part_price','finalise_job_card','cancel_job_part_balance'].includes(req.postDataJSON().action)){
       const {action,payload}=req.postDataJSON();
       const jobs=lookups.job_cards;
       const supplier=part=>{
@@ -70,10 +91,17 @@ async function displayFixture(context,role){
         assert(part.unit_price==null?!part.price_supplier_id:record);
         return record?.supplier_name??null;
       };
-      if(action==='finalise_job_card'){
+      if(action==='cancel_job_part_balance'){
+        const body=req.postDataJSON(),card=jobs.cards.find(c=>c.parts.some(p=>p.part_id===body.part_id));
+        const part=card.parts.find(p=>p.part_id===body.part_id);
+        assert.equal(part.reserved,0);assert.equal(part.quantity,5);assert.equal(part.issued,3);
+        assert.equal(body.quantity,2);assert.equal(body.reason,'Only three required');
+        Object.assign(part,{cancelled_quantity:body.quantity,cancellation_reason:body.reason,remaining_quantity:0});
+        card.clearance_reason=null;response={success:true,result:{part_id:part.part_id,cancelled_quantity:body.quantity}};
+      }else if(action==='finalise_job_card'){
         const {id,revision}=req.postDataJSON();
         const card=jobs.cards.find(c=>c.id===id);
-        assert(card&&!card.closed_at&&card.revision===revision);
+        assert(card&&!card.closed_at&&!card.clearance_reason&&card.revision===revision);
         card.closed_at=new Date().toISOString();
         response={success:true,result:{id,job_number:card.job_number}};
       }else if(action==='set_job_part_price'){
@@ -82,7 +110,7 @@ async function displayFixture(context,role){
         response={success:true,result:{id:part.part_id}};
       }else{
         const card=action==='edit_job_card'?jobs.cards.find(c=>c.id===payload.id):{id:'priced-card',job_number:10,purchase_orders:[]};
-        Object.assign(card,payload,{vehicle_name:'Screen test tractor',revision:'2',parts:payload.parts.map((part,i)=>({...part,part_id:21+i,item_name:'Service filter',unit:'each',reserved:0,issued:0,price_supplier_name:supplier(part)}))});
+        Object.assign(card,payload,{vehicle_name:'Screen test tractor',clearance_reason:'Issue the outstanding Job Card items.',revision:'2',parts:payload.parts.map((part,i)=>({...part,part_id:21+i,owner_code:'JS',available:10,item_name:'Service filter',unit:'each',reserved:0,issued:0,price_supplier_name:supplier(part)}))});
         if(action==='create_job_card')jobs.cards.push(card);
         response={success:true,result:{id:card.id,job_number:card.job_number}};
       }
@@ -106,17 +134,32 @@ async function displayFixture(context,role){
       serviceCard.purchase_orders=[{request_number:30,owner_code:'JS',status}];
       response={success:true,result:{id:data.id}};
     }
-    else if(req.method()==='POST'&&stores&&u.pathname.endsWith('/stock-buying-development')){
+    else if(req.method()==='POST'&&(buyer||stores)&&u.pathname.endsWith('/stock-buying-development')&&['reserve_job_part','issue_job_part'].includes(req.postDataJSON().action)){
       const body=req.postDataJSON();
-      assert.equal(body.part_id,oilLine.part_id);
-      if(body.action==='reserve_job_part'){oilLine.reserved+=body.quantity_delta;oilLine.available-=body.quantity_delta;}
-      else if(body.action==='issue_job_part'){oilLine.issued+=body.quantity;oilLine.reserved-=body.quantity;}
-      else throw Error('Unexpected Stores action '+body.action);
-      response={success:true,result:{part_id:oilLine.part_id}};
+      const card=lookups.job_cards.cards.find(c=>c.parts.some(p=>p.part_id===body.part_id));
+      const part=card.parts.find(p=>p.part_id===body.part_id);
+      if(body.action==='reserve_job_part'){part.reserved+=body.quantity_delta;part.available-=body.quantity_delta;}
+      else {part.issued+=body.quantity;part.reserved-=body.quantity;}
+      card.clearance_reason=part.reserved?'Issue or release the reserved stock.':part.issued<part.quantity?'Issue the outstanding Job Card items.':null;
+      response={success:true,result:{part_id:part.part_id}};
     }
     else if(req.method()==='POST'&&u.pathname.endsWith('/stock-buying-development')&&admin){
       const {action,payload}=req.postDataJSON();
-      if(action==='cash_book_quick_note'){
+      if(action==='combined_grv'){
+        assert.equal(payload.supplier,'Delivered supplier');assert.equal(payload.owner_code,'C73');
+        assert.deepEqual(payload.allocations,[{line_id:721,quantity:2}]);assert.equal(payload.invoice_lines[0].unit_price,12);
+        if(req.postDataJSON().replaces_id){
+          assert.equal(req.postDataJSON().replaces_id,returned.id);
+          assert.equal(payload.source_credit_id,54);assert.equal(payload.credit_link_reason,'Original supplier credit');
+        }
+        lookups.receipt_verification.receipts.push({id:'audit-'+payload.invoice_number,request_number:73,receipt_action:action,payload});
+        response={success:true,result:{request_number:73,status:'pending'}};
+      }else if(action==='decide_receipt'){
+        assert.equal(req.postDataJSON().decision,'verify');
+        const index=lookups.receipt_verification.receipts.findIndex(r=>r.id===req.postDataJSON().receipt_id);
+        assert(index>=0);lookups.receipt_verification.receipts.splice(index,1);
+        response={success:true,result:{status:'posted'}};
+      }else if(action==='cash_book_quick_note'){
         assert.deepEqual(Object.keys(payload).sort(),['date','description']);
         book.notes.push({id:'new-note',note_number:1,note_date:payload.date,description:payload.description,created_at:payload.date+'T13:00:00Z',reconciled:false});
         response={success:true,result:{note_number:1}};
@@ -331,6 +374,7 @@ async function check(browser, role, width) {
           await page.getByRole('button',{name:/Add part/}).waitFor();
           await other.fill('F-12');await click(page,'F-12 · Service filter');
           await page.getByRole('textbox',{name:'Problem description',exact:true}).fill('Service tractor');
+          await page.getByRole('textbox',{name:'Qty 1',exact:true}).fill('5');
           const saveCard=page.getByRole('button',{name:'Save Job Card',exact:true});
           assert(await saveCard.isEnabled());
           await page.getByRole('textbox',{name:'Unit price 1',exact:true}).fill('0');
@@ -359,6 +403,23 @@ async function check(browser, role, width) {
           await click(page,'← Outstanding Job Cards');
           await page.getByText('Outstanding Job Cards (3)',{exact:true}).waitFor();
           await click(page,'Job Card 10 · Screen test tractor');
+          const finalise=page.getByRole('button',{name:'Finalise Job Card',exact:true});
+          assert(await finalise.isDisabled());
+          await page.getByText('Issue the outstanding Job Card items.',{exact:true}).waitFor();
+          await click(page,'Manage reservation');
+          const reserveQty=page.getByRole('textbox',{name:'Quantity',exact:true});
+          await reserveQty.fill('5');await click(page,'Reserve');
+          await page.getByText('Issue or release the reserved stock.',{exact:true}).waitFor();
+          assert(await finalise.isDisabled());
+          await click(page,'Manage reservation');await reserveQty.fill('3');await click(page,'Issue reserved stock');
+          await page.getByText('2 each reserved · 3 each issued',{exact:true}).waitFor();
+          assert(await page.getByRole('button',{name:'Cancel remaining quantity',exact:true}).isDisabled());
+          await click(page,'Manage reservation');await reserveQty.fill('2');await click(page,'Release');
+          await click(page,'Cancel remaining quantity');
+          assert(await page.getByRole('button',{name:'Confirm cancellation',exact:true}).isDisabled());
+          await page.getByRole('textbox',{name:'Cancellation reason',exact:true}).fill('Only three required');await click(page,'Confirm cancellation');
+          await page.getByText('2 each cancelled · Only three required',{exact:true}).waitFor();
+          assert.equal(await page.getByRole('button',{name:'Manage reservation',exact:true}).count(),0);
           await click(page,'Finalise Job Card');
           await click(page,'Confirm finalisation');
           await page.getByText('Outstanding Job Cards (2)',{exact:true}).waitFor();
@@ -382,7 +443,12 @@ async function check(browser, role, width) {
           await page.getByRole('button',{name:'Save Draft',exact:true}).waitFor();
         }
         if(action==='Save Draft'){
-          await page.getByRole('textbox',{name:'Supplier',exact:true}).click();await click(page,'Screen supplier');
+          const supplier=page.getByRole('textbox',{name:'Supplier',exact:true});
+          const price=page.getByRole('textbox',{name:'Unit price (optional)',exact:true});
+          assert.equal(await supplier.inputValue(),'Screen supplier');
+          assert.equal(await price.inputValue(),'18.50');
+          await supplier.click();await click(page,'Second supplier');assert.equal(await price.inputValue(),'');
+          await supplier.click();await click(page,'Screen supplier');assert.equal(await price.inputValue(),'18.50');
         }
         await click(page,action);await page.getByRole('button',{name:'Purchase parts · JS',exact:true}).waitFor();
         assert.equal(new URL(page.url()).searchParams.get('card'),'service-card');
@@ -431,6 +497,7 @@ async function check(browser, role, width) {
       await click(page,'Issue lubricants from a Job Card');
       await page.getByText('Outstanding Job Cards (2)',{exact:true}).waitFor();
       await click(page,'Job Card 9 · Screen test tractor');
+      assert.equal(await page.getByRole('button',{name:'Cancel remaining quantity',exact:true}).count(),0);
       await click(page,'Manage reservation');
       const qty=page.getByRole('textbox',{name:'Quantity',exact:true});
       await qty.fill('5');await click(page,'Reserve');
@@ -464,7 +531,48 @@ async function check(browser, role, width) {
         assert.equal(await page.getByRole('button',{name:/New Product for line/}).count(),0);
       }
     }
+    if(fixture&&role==='driver'){
+      await page.goto(site+'/town-trips?view=history');await click(page,'Open Trip 3');await click(page,'Update collection');
+      const unavailable=page.getByRole('button',{name:'Could not collect',exact:true});assert(await unavailable.isDisabled());
+      await page.getByRole('textbox',{name:'Collection note',exact:true}).fill('Supplier was closed');await unavailable.click();
+      await page.getByText('Collection status saved.',{exact:true}).waitFor();await page.getByText('Supplier was closed',{exact:true}).waitFor();
+      assert.equal(await page.getByRole('button',{name:'Finalise trip',exact:true}).count(),0);
+    }
     if(fixture&&role==='admin'){
+      await page.goto(site+'/town-trips');await click(page,'Add New Trip');
+      const tripDate=page.getByRole('textbox',{name:'Trip date (dd/mm/yyyy)',exact:true});
+      await tripDate.fill('20/11/2026');await page.getByRole('textbox',{name:'Driver',exact:true}).click();await click(page,'Assigned driver');
+      await page.getByRole('textbox',{name:'Add purchase order',exact:true}).click();await click(page,'PO-24 · Screen supplier · Cash on collection');
+      await click(page,'Assign trip');await page.getByText('Town Trip 2 saved.',{exact:true}).waitFor();
+      assert(await page.getByRole('button',{name:'Finalise trip',exact:true}).isDisabled());
+      assert.equal(await page.getByRole('button',{name:'Update collection',exact:true}).count(),0);
+      await click(page,'Edit trip');await tripDate.fill('21/11/2026');await click(page,'Save changes');
+      await page.getByText('Trip 2 · 21/11/2026',{exact:true}).waitFor();
+      await click(page,'← Historical Trips');await click(page,'Open Trip 1');await click(page,'Finalise trip');await click(page,'Confirm finalisation');
+      await page.getByText('Town Trip 1 finalised.',{exact:true}).waitFor();
+      await page.goto(site+'/stock-v2-po-receiving');
+      await page.getByRole('textbox',{name:'Stock owner',exact:true}).click();await click(page,'C73 (0)');
+      await page.getByRole('textbox',{name:'Supplier',exact:true}).click();await click(page,'Delivered supplier');
+      assert.equal(await page.getByRole('textbox',{name:'Document type',exact:true}).inputValue(),'Invoice GRV');
+      await page.goto(site+'/outstanding-issues');await click(page,'Correct receipt 72');
+      await page.getByText('This invoice retains its linked supplier credit.',{exact:true}).waitFor();
+      assert.equal(await page.getByPlaceholder('Enter document number').inputValue(),'OLD-72');
+      await page.getByPlaceholder('Enter document number').fill('CORRECTED-72');
+      await page.getByText('Submit invoice for verification',{exact:true}).click();
+      await page.getByText('GRV submitted for admin verification.',{exact:true}).waitFor();
+      await page.goto(site+'/buying');await click(page,'Verify Receipts');await click(page,'Review receipt');
+      await page.getByText('FILTER-A · 2 invoiced × 12',{exact:true}).waitFor();
+      await click(page,'Verify and post receipt');
+      await page.getByText('Receipt verified and posted.',{exact:true}).waitFor();
+      await page.getByText('No receipts awaiting verification.',{exact:true}).waitFor();
+      await page.goto(site+'/stock-v2-grv-outstanding');
+      await page.getByRole('textbox',{name:'Stock owner',exact:true}).click();await click(page,'C73 (1)');
+      await page.getByRole('textbox',{name:'Supplier — outstanding D-Notes',exact:true}).click();await click(page,'Delivered supplier');
+      await page.getByPlaceholder('d/m (year optional)').fill('20/11/2026');
+      await page.getByPlaceholder('Invoice number').fill('AUDIT-73');await page.getByText('☐',{exact:true}).click();
+      await page.getByPlaceholder('Required',{exact:true}).fill('12');
+      await page.getByText('Submit invoice for verification',{exact:true}).click();
+      await page.getByText('Receipt 73 submitted for Admin verification.',{exact:true}).waitFor();
       await page.route('**/stock-buying-development?job_cards=1',route=>route.fulfill({
         headers:{'access-control-allow-origin':'*','access-control-allow-headers':'*'},json:{cards:[],can_create:true,can_main:true},
       }));

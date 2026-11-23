@@ -66,7 +66,7 @@ export default function Approvals(){
  const pending=(context?.documents??[]).filter(d=>d.status==='pending'&&(kind==='all'||d.kind===kind));
  const poQueue=kind==='po';
  return <ScrollView ref={scroll} contentContainerStyle={S.page}>
-   <StockV2Header title={poQueue?'Approve Purchase Orders':'Awaiting Approval'} onRefresh={()=>void load()}/>
+   <StockV2Header title={poQueue?'Approve Purchase Orders':kind==='receipt'?'Verify Receipts':'Awaiting Approval'} onRefresh={()=>void load()}/>
    {error?<><Text style={S.error}>{error}</Text><StockRecovery scope="approval" onRecovered={()=>{setSelected(null);void load();}}/><StockRecovery scope="stocktake-approval" onRecovered={()=>void load()}/></>:null}
    {notice?<View style={{gap:10}}><Text style={S.success}>{notice}</Text>
      {approvedPO?<Button title="View Authorised POs" onPress={()=>router.push({pathname:'/stock-v2-purchase-orders',params:{status:'applied',from:'approval',returnTo:approvalLocation}})}/>:null}
@@ -74,7 +74,7 @@ export default function Approvals(){
    {busy?<ActivityIndicator/>:null}
    {context&&!context.access.is_admin?<Text style={S.text}>Admin access is required to approve documents.</Text>:null}
    {context?.access.is_admin?<>
-     {!selected?<Text style={S.title}>{poQueue?(pending.length===0?'No purchase orders awaiting approval.':pending.length+' purchase order'+(pending.length===1?'':'s')+' awaiting approval'):context.awaiting+' awaiting approval'}</Text>:null}
+     {!selected&&kind!=='receipt'?<Text style={S.title}>{poQueue?(pending.length===0?'No purchase orders awaiting approval.':pending.length+' purchase order'+(pending.length===1?'':'s')+' awaiting approval'):context.awaiting+' awaiting approval'}</Text>:null}
      {view!=='po'&&!selected?<Select label="Document type" value={kind} onChange={v=>setKind(String(v??'all'))} options={[{id:'all',label:'All documents'},{id:'po',label:'Purchase orders'},{id:'credit',label:'Credit notes'},{id:'count',label:'Stocktakes'},{id:'receipt',label:'Receipts'}]}/>:null}
      {selected?<View style={S.card}>
        <StockDocumentSummary document={selected}/>

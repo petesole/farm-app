@@ -8,7 +8,10 @@ import {StockV2Header} from '@/components/jspl/StockV2Header';
 import {StockButton as Button,StockField as Field,StockSelect as Select,StockDocumentSummary,stockStyles as S} from '@/components/jspl/StockWorkflowControls';
 import {stockContext,stockMutation,stockRequest,stockUUID,ApprovalDocument,WorkflowContext} from '@/utils/stock-workflow';
 import {parseJsplDateInput,displayJsplDate} from '@/utils/jspl-input';
-type SourceCard={id:string;job_number:number;parts:{item_code:string;owner_code:string|null;direct_expense?:boolean}[]};
+type SourcePart={item_code:string;owner_code:string|null;quantity:number;remaining_quantity?:number;reserved?:number;issued?:number;cancelled_quantity?:number;direct_expense?:boolean;unit_price?:number|string|null;price_supplier_name?:string|null};
+type SourceCard={id:string;job_number:number;parts:SourcePart[]};
+const toPurchase=(part:SourcePart)=>Math.max(0,Number(part.remaining_quantity??part.quantity-(part.issued??0)-(part.cancelled_quantity??0))-Number(part.reserved??0));
+const quotedPrice=(part:SourcePart|undefined,supplier:string)=>supplier&&part?.price_supplier_name===supplier?String(part.unit_price??''):'';
 type Line={item_code:string;quantity:string;unit_price:string};
 const blank=():Line=>({item_code:'',quantity:'',unit_price:''});
 export default function PurchaseOrders(){
@@ -60,21 +63,23 @@ export default function PurchaseOrders(){
   if(params.quote&&params.part){
    void stockRequest('?job_part_quotes='+Number(params.part)).then(data=>{
     const quote=data.quotes.find((entry:{id:string})=>entry.id===params.quote);
-    if(!quote||data.part.job_id!==jobId||(data.part.owner_code&&data.part.owner_code!==ownerCode))throw Error('The selected quotation is unavailable for this Job Card.');
+    if(!quote||toPurchase(data.part)<=0||data.part.job_id!==jobId||(data.part.owner_code&&data.part.owner_code!==ownerCode))throw Error('The selected quotation is unavailable for this Job Card.');
     open(null);setSourceJob(jobId);setOwner(ownerCode??'');setSupplier(quote.supplier_name);
     setSourceQuote({id:quote.id,currency:quote.currency,reference:quote.quote_reference});
-    setLines([{item_code:data.part.item_code,quantity:String(data.part.quantity),unit_price:quote.unit_price}]);
+    setLines([{item_code:data.part.item_code,quantity:String(toPurchase(data.part)),unit_price:quote.unit_price}]);
    }).catch(failure=>setError(failure.message));
    return;
   }
   void stockRequest('?job_cards=1').then(data=>{
    const card=data.cards.find((entry:{id:string})=>entry.id===jobId);
-   const requested=card?.parts.filter((part:{owner_code:string;direct_expense?:boolean})=>(part.owner_code??'')===(ownerCode??'')&&!part.direct_expense);
+   const requested:SourcePart[]|undefined=card?.parts.filter((part:SourcePart)=>(part.owner_code??'')===(ownerCode??'')&&!part.direct_expense&&toPurchase(part)>0);
    if(!data.can_buy||!requested?.length)throw Error('No parts are available for this Job Card and stock owner.');
-   open(null);setSourceJob(jobId);setOwner(ownerCode??'');
-   setLines(requested.map((part:{item_code:string;quantity:number;unit_price?:number|null})=>({item_code:part.item_code,quantity:String(part.quantity),unit_price:String(part.unit_price??'')})));
+   const pricedSuppliers=[...new Set(requested.filter(part=>part.unit_price!=null&&part.price_supplier_name).map(part=>part.price_supplier_name!))];
+   const supplier=pricedSuppliers.length===1&&suppliers.some(s=>s.active&&s.supplier_name===pricedSuppliers[0])?pricedSuppliers[0]:'';
+   open(null);setSourceCard(card);setSourceJob(jobId);setOwner(ownerCode??'');setSupplier(supplier);
+   setLines(requested.map(part=>({item_code:part.item_code,quantity:String(toPurchase(part)),unit_price:quotedPrice(part,supplier)})));
   }).catch(failure=>setError(failure.message));
- },[params.job,params.owner,params.part,params.quote,context]);
+ },[params.job,params.owner,params.part,params.quote,context,suppliers]);
  useEffect(()=>{
   let current=true;
   if(editor&&sourceJob){
@@ -89,8 +94,15 @@ export default function PurchaseOrders(){
  },[editor,sourceJob]);
  const card=sourceJob&&sourceCard?.id===sourceJob?sourceCard:null;
  const orderItems=items.filter(item=>item.active&&(sourceJob
-  ?card?.parts.some(p=>!p.direct_expense&&p.item_code===item.item_code&&(!p.owner_code||p.owner_code===owner))
+  ?card?.parts.some(p=>!p.direct_expense&&!p.cancelled_quantity&&(!!editing||toPurchase(p)>0)&&p.item_code===item.item_code&&(!p.owner_code||p.owner_code===owner))
   :item.standalone_po===true));
+ const selectSupplier=(name:string)=>{
+  if(name===supplier)return;
+  setSupplier(name);
+  if(!supplier&&!card)return;
+  setLines(current=>current.map(line=>({...line,unit_price:quotedPrice(card?.parts.find(p=>p.item_code===line.item_code&&(!p.owner_code||p.owner_code===owner)),name)})));
+ };
+ const selectItem=(index:number,code:string)=>setLines(current=>current.map((line,i)=>i!==index?line:{...line,item_code:code,unit_price:quotedPrice(card?.parts.find(p=>p.item_code===code&&(!p.owner_code||p.owner_code===owner)),supplier)}));
  const canRaise=!!(context?.access.is_admin||context?.access.is_buyer||context?.access.is_stock);
  const canAddProduct=!sourceJob&&!!context?.access.is_stock;
  const parent=stockParent(params);
@@ -131,11 +143,11 @@ export default function PurchaseOrders(){
  {sourceQuote?<Text style={S.text}>Supplier quotation {sourceQuote.reference} · {sourceQuote.currency}</Text>:null}
  {error?<><Text style={S.error}>{error}</Text><StockRecovery scope="po" onRecovered={()=>void load()}/></>:null}
  <Select label="Stock owner" value={owner} options={(setup.owners??[]).filter((o:any)=>o.active).map((o:any)=>({id:o.owner_code,label:o.owner_code+' · '+o.owner_name}))} onChange={v=>{setOwner(String(v??''));setContract(null)}} disabled={!!editing?.target_order_id}/>
- <Select label={owner==="AO"?"Supplier (optional)":"Supplier"} value={supplier} options={suppliers.filter(s=>s.active||s.supplier_name===supplier).map(s=>({id:s.supplier_name,label:s.supplier_name}))} onChange={v=>setSupplier(String(v??''))}/>
+ <Select label={owner==="AO"?"Supplier (optional)":"Supplier"} value={supplier} options={suppliers.filter(s=>s.active||s.supplier_name===supplier).map(s=>({id:s.supplier_name,label:s.supplier_name}))} disabled={!!sourceQuote} onChange={v=>selectSupplier(String(v??''))}/>
  <Field label="Order date (dd/mm/yyyy)" value={date} onChange={setDate}/>
  {selectedOwner?.po_requires_contract?<Select label="Contract" value={selectedOwner.default_contract_id==null?contract:Number(selectedOwner.default_contract_id)} disabled={!!selectedOwner.default_contract_id} options={(setup.contracts??[]).filter((c:any)=>c.active).map((c:any)=>({id:Number(c.contract_id),label:c.contract_code}))} onChange={v=>setContract(v==null?null:Number(v))}/>:null}
  {lines.map((l,n)=><View key={n} style={S.card}><ScrollView horizontal contentContainerStyle={{flexGrow:1}}><View style={{flexDirection:'row',alignItems:'flex-start',gap:12,minWidth:680,flex:1}}>
- <View style={{flex:3,minWidth:260,gap:8}}><Select label={'Product '+(n+1)} value={l.item_code} options={orderItems.filter(i=>!lines.some((x,j)=>j!==n&&x.item_code===i.item_code)).map(i=>({id:i.item_code,label:i.item_name+' · '+i.base_unit}))} onChange={v=>change(n,'item_code',String(v??''))} onCreate={canAddProduct?q=>{setNewProductName(q);setNewProductLine(n)}:undefined}/>{canAddProduct?<Button title={'+ New Product for line '+(n+1)} disabled={busy} onPress={()=>{setNewProductName('');setNewProductLine(n)}}/>:null}</View>
+ <View style={{flex:3,minWidth:260,gap:8}}><Select label={'Product '+(n+1)} value={l.item_code} options={orderItems.filter(i=>!lines.some((x,j)=>j!==n&&x.item_code===i.item_code)).map(i=>({id:i.item_code,label:i.item_name+' · '+i.base_unit}))} onChange={v=>selectItem(n,String(v??''))} onCreate={canAddProduct?q=>{setNewProductName(q);setNewProductLine(n)}:undefined}/>{canAddProduct?<Button title={'+ New Product for line '+(n+1)} disabled={busy} onPress={()=>{setNewProductName('');setNewProductLine(n)}}/>:null}</View>
  <View style={{flex:1,minWidth:140}}><Field label="Quantity" numeric value={l.quantity} onChange={v=>change(n,'quantity',v)}/></View>
  <View style={{flex:1,minWidth:150}}><Field label="Unit price (optional)" numeric value={l.unit_price} onChange={v=>change(n,'unit_price',v)}/></View>
  {lines.length>1?<View style={{paddingTop:26}}><Button title="Remove line" disabled={busy} onPress={()=>setLines(ls=>ls.filter((_,i)=>i!==n))}/></View>:null}
@@ -143,6 +155,6 @@ export default function PurchaseOrders(){
  <View style={S.row}><Button title="Add product" disabled={busy||lines.length>=30} onPress={()=>setLines(ls=>[...ls,blank()])}/></View>
  {editing?<Field label="Reason for correction / cancellation" value={reason} onChange={setReason}/>:null}
  <View style={S.row}><Button title={editing?'Save Changes':'Save Draft'} disabled={busy} onPress={()=>void save('save')}/>{!editing||!['approved','applied'].includes(editing.status)?<Button title="Submit for Approval" disabled={busy} onPress={()=>void save('submit')}/>:null}{editing&&context?.access.is_stock?<Button title="Cancel PO" disabled={busy} onPress={()=>void command('cancel',editing,{reason})}/>:null}</View>
- {newProductLine!==null?<StockProductEditor standalonePurchase product={null} initialName={newProductName} onCancel={()=>setNewProductLine(null)} onSaved={async product=>{const data=await stockRequest('?purchasing_feed=1');if(!data.items?.some((p:any)=>p.item_code===product.item_code&&p.standalone_po))throw Error('Product saved; refresh not confirmed. Verify Save to return to this PO.');setItems(data.items);change(newProductLine,'item_code',product.item_code);setNewProductLine(null)}}/>:null}
+ {newProductLine!==null?<StockProductEditor standalonePurchase product={null} initialName={newProductName} onCancel={()=>setNewProductLine(null)} onSaved={async product=>{const data=await stockRequest('?purchasing_feed=1');if(!data.items?.some((p:any)=>p.item_code===product.item_code&&p.standalone_po))throw Error('Product saved; refresh not confirmed. Verify Save to return to this PO.');setItems(data.items);selectItem(newProductLine,product.item_code);setNewProductLine(null)}}/>:null}
  </ScrollView></Modal></ScrollView>;
 }

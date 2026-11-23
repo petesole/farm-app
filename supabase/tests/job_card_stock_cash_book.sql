@@ -134,6 +134,10 @@ begin
     jsonb_build_object('owner_code',owner_code_text,'supplier',supplier,'order_date',day,'source_job_card_id',job,'source_quote_id',quote,
     'contract_id',(select contract_id from stock_v2.contracts where active limit 1),
     'lines',jsonb_build_array(jsonb_build_object('item_code',code,'quantity',2,'unit_price',15)))));
+  begin
+    perform stock_v2.cancel_job_part_balance(buyer,part,2,'No longer required');
+    raise exception 'Cancelled a part on an outstanding PO' using errcode='23514';
+  exception when raise_exception then if sqlerrm not like 'Complete or cancel the outstanding purchase order%' then raise; end if; end;
   approval:=jsonb_build_object('id',request_id,'version',submitted->'version','payment_terms','Cash on collection');
   begin
     perform stock_v2.buying_authorise_po(admin_user,gen_random_uuid(),approval-'payment_terms');

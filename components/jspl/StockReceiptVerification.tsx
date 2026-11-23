@@ -10,6 +10,7 @@ type Receipt = {
   id: string;
   request_number: number;
   receipt_action: string;
+  review_lines?: {order_number:string|null;item_name:string|null;unit:string|null;quantity:number;unit_price:number|null}[]|null;
   payload: {
     owner_code: string;
     supplier: string;
@@ -23,7 +24,7 @@ type Receipt = {
 };
 
 export function StockReceiptVerification({onChanged}:{onChanged:()=>Promise<void>}) {
-  const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const [receipts, setReceipts] = useState<Receipt[]|null>(null);
   const [selected, setSelected] = useState('');
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
@@ -33,6 +34,7 @@ export function StockReceiptVerification({onChanged}:{onChanged:()=>Promise<void
     try {
       const response = await stockRequest('?receipt_verification=1');
       setReceipts(response.receipts);
+      setError('');
     } catch (failure) {
       setError((failure as Error).message);
     }
@@ -63,13 +65,14 @@ export function StockReceiptVerification({onChanged}:{onChanged:()=>Promise<void
     <Text style={stockStyles.title}>Receipts awaiting verification</Text>
     {error ? <><Text style={stockStyles.error}>{error}</Text><StockRecovery scope="receipt-verification" onRecovered={() => void load()}/></> : null}
     {notice ? <Text style={stockStyles.success}>{notice}</Text> : null}
-    {receipts.map(receipt => {
+    {receipts?.length===0?<Text style={stockStyles.muted}>No receipts awaiting verification.</Text>:null}
+    {receipts?.map(receipt => {
       const payload = receipt.payload;
       const lines = payload.lines ?? payload.new_receipts ?? [];
       return <View key={receipt.id} style={stockStyles.card}>
         <Text style={stockStyles.title}>Receipt {receipt.request_number} · {payload.delivery_note ?? payload.invoice_number}</Text>
         <Text style={stockStyles.text}>{payload.owner_code} · {payload.supplier} · {displayJsplDate(payload.receipt_date ?? '')}</Text>
-        {lines.map((line, index) => <Text key={index} style={stockStyles.text}>{line.item_code ?? 'PO line ' + line.order_line_id} · {line.quantity} received</Text>)}
+        {receipt.review_lines?.length?receipt.review_lines.map((line,index)=><Text key={index} style={stockStyles.text}>{line.order_number??'Unknown PO'} · {line.item_name??'Unknown item'} · {line.quantity} {line.unit} received{line.unit_price!=null?' × '+line.unit_price:''}</Text>):lines.map((line, index) => <Text key={index} style={stockStyles.text}>{line.item_code ?? 'PO line ' + line.order_line_id} · {line.quantity} received</Text>)}
         {payload.invoice_lines?.map((line, index) => <Text key={index} style={stockStyles.text}>{line.item_code} · {line.invoice_quantity} invoiced × {line.unit_price}</Text>)}
         {selected === receipt.id ? <>
           <StockField label="Reason for returning" value={reason} onChange={setReason}/>
