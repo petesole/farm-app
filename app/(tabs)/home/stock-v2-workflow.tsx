@@ -10,6 +10,7 @@ import {StockRecovery,StockSelect} from "@/components/jspl/StockWorkflowControls
 import {stockContext,WorkflowContext} from "@/utils/stock-workflow";
 import {useLocalSearchParams,useFocusEffect} from "expo-router";
 import {useCallback} from "react";
+import {stockLocation} from '@/utils/stock-navigation';
 import {StockV2Header} from "@/components/jspl/StockV2Header";
 import { JsplDashboardButton } from "@/components/jspl/JsplDashboardButton";
 import {StockReport} from "@/components/jspl/StockReport";
@@ -54,7 +55,7 @@ function Field({label,value,onChange,numeric=false,date=false}:{label:string;val
 export default function StockV2Workflow(){
  const router=useRouter();
  const routeParams=useLocalSearchParams<{operation?:string}>();
- useEffect(()=>{if(routeParams.operation==="Direct Issue")setTab("Direct Issue")},[routeParams.operation]);
+ useEffect(()=>{setTab(routeParams.operation==="Direct Issue"||routeParams.operation==="Stock Balances"||routeParams.operation==="Planned Issue"?routeParams.operation:null)},[routeParams.operation]);
  const [workflow,setWorkflow]=useState<WorkflowContext|null>(null);
  useFocusEffect(useCallback(()=>{void stockContext().then(setWorkflow).catch(e=>setStatus(e.message));void refresh(false);},[]));
  const {width,height}=useWindowDimensions();
@@ -146,7 +147,7 @@ export default function StockV2Workflow(){
  const changeLine=(id:number,key:keyof Line,value:string)=>{setLines(old=>old.map(l=>l.id===id?{...l,[key]:value,...(key==="item_code"?{equipment_id:"",equipment_other:""}:{}),...(key==="equipment_id"&&value!=="other"?{equipment_other:""}:{})}:l));resetEdit()};
  const addLine=()=>{setLines(old=>[...old,emptyLine(nextLine)]);setNextLine(n=>n+1);resetEdit()};
  const removeLine=(id:number)=>{setLines(old=>old.filter(l=>l.id!==id));resetEdit()};
- const switchTab=(v:Tab|null)=>{if(v==="Purchase Orders"||v==="PO Corrections"){router.push("/stock-v2-purchase-orders");return;}if(v==="POs Outstanding"){router.push("/stock-v2-po-receiving");return;}if(v==="GRV"){router.push("/stock-v2-grv-outstanding");return;}if(v==="Stock Transfer"){router.push("/stock-v2-owner-transactions");return;}if(v==="Corrections"){router.push("/(tabs)/home/stock-v2-corrections");return;}if(v==="Supplier Returns"){router.push("/(tabs)/home/stock-v2-supplier-returns");return;}if(v==="Stock Take"){router.push("/(tabs)/home/stock-v2-stocktake");return;}setTab(v);if(v==="Planned Issue")void refresh(false);setLines([emptyLine(nextLine)]);setNextLine(n=>n+1);setOrderId(null);setJobId(null);setDropdown(null);setStatus("");setReceiptMode("dnote");setInvoiceNumber("");setDeliveryNote("");resetEdit()};
+ const switchTab=(v:Tab|null)=>{if(v==="Purchase Orders"||v==="PO Corrections"){router.push("/stock-v2-purchase-orders");return;}if(v==="POs Outstanding"){router.push("/stock-v2-po-receiving");return;}if(v==="GRV"){router.push("/stock-v2-grv-outstanding");return;}if(v==="Stock Transfer"){router.push("/stock-v2-owner-transactions");return;}if(v==="Corrections"){router.push("/(tabs)/home/stock-v2-corrections");return;}if(v==="Supplier Returns"){router.push("/(tabs)/home/stock-v2-supplier-returns");return;}if(v==="Stock Take"){router.push("/(tabs)/home/stock-v2-stocktake");return;}router.setParams({operation:v??''});setTab(v);if(v==="Planned Issue")void refresh(false);setLines([emptyLine(nextLine)]);setNextLine(n=>n+1);setOrderId(null);setJobId(null);setDropdown(null);setStatus("");setReceiptMode("dnote");setInvoiceNumber("");setDeliveryNote("");resetEdit()};
  const products=snapshot?.items??[];
  const showEquipmentColumn=tab==="Direct Issue"&&lines.some(l=>!!equipmentIssueKind(products.find(p=>p.item_code===l.item_code)));
  const showOtherColumn=showEquipmentColumn&&lines.some(l=>l.equipment_id==="other");
@@ -251,7 +252,7 @@ export default function StockV2Workflow(){
     const recostDone=Array.isArray(d.result?.cost_runs)?d.result.cost_runs.length:0;
     setStatus("Posted "+tab+" successfully. "+(d.result?.order_id?"PO #"+d.result.order_id:d.result?.document_id?"Document "+d.result.document_number:d.result?.job_id?"Job #"+d.result.job_id:"")+
       (action==="grv"||action==="direct_grv"?receiptMode==="dnote"?" — awaiting invoice and valuation.":recostPending.length?" — WA costing pending: "+recostPending.map((x:{reason:string})=>x.reason).join("; "):" — historical WA recalculated for "+recostDone+" product(s).":"")+
-      " — returned to Stock Home.");setConfirmed(false);setRequest(null);await refresh(false);setTab(null);
+      " — returned to Stock Operations.");setConfirmed(false);setRequest(null);await refresh(false);router.setParams({operation:''});setTab(null);
    if(tab==="POs Outstanding")setOrderId(null);if(tab==="Planned Issue")setJobId(null);
    setLines([emptyLine(nextLine)]);setNextLine(n=>n+1);
   }catch(e){setStatus("Save not confirmed: "+(e instanceof Error?e.message:String(e)));if(tab==="Direct Issue")void refresh(false)}finally{setBusy(false)}
@@ -264,7 +265,7 @@ export default function StockV2Workflow(){
    <Image source={require("../../../assets/images/jspl_farm_watermark.png")} resizeMode="contain" style={[styles.watermark,{width:watermarkSize,height:watermarkSize}]}/>
   </View>
   <ScrollView style={styles.foreground} contentContainerStyle={styles.page} keyboardShouldPersistTaps="handled">
-  <StockV2Header title={tab??"Stock Dashboard"} dashboard={tab===null} allowMain={workflow?.access.can_main} onStock={tab===null?undefined:()=>switchTab(null)} onRefresh={tab===null?undefined:()=>void refresh()}/>
+  <StockV2Header title={tab??"Stock Operations"} dashboard={tab===null} backLabel={tab?"← Stock Operations":undefined} allowMain={workflow?.access.can_main} onStock={tab===null?undefined:()=>switchTab(null)} onRefresh={tab===null?undefined:()=>void refresh()}/>
   {tab===null?<View style={styles.home}>
     <View style={styles.homeGrid}>
      {workflow?.access.is_stock?<View style={styles.dashboardCard}><JsplDashboardButton title="Job Cards" icon={stockIcon("build")} onPress={()=>router.push({pathname:"/job-cards",params:{from:"stock"}})}/></View>:null}
@@ -305,9 +306,9 @@ export default function StockV2Workflow(){
       {key:"item",title:"Product",width:240,value:x=>x.item_name},
       {key:"ai",title:"Active Ingredient",width:250,value:x=>activeDescription(x)},
       {key:"js_qty",title:"JS On Hand",kind:"number",width:110,value:x=>x.quantity},
-      {key:"js_mov",title:"JS Movements",width:116,value:()=>"Movements",onPress:x=>router.push({pathname:"/stock-v2-movements",params:{item_code:x.item_code,owner:"JS"}})},
+      {key:"js_mov",title:"JS Movements",width:116,value:()=>"Movements",onPress:x=>router.push({pathname:"/stock-v2-movements",params:{item_code:x.item_code,owner:"JS",returnTo:stockLocation('/stock-test',{operation:'Stock Balances'})}})},
       {key:"ao_qty",title:"AO On Hand",kind:"number",width:110,value:x=>x.ao_quantity},
-      {key:"ao_mov",title:"AO Movements",width:116,value:()=>"Movements",onPress:x=>router.push({pathname:"/stock-v2-movements",params:{item_code:x.item_code,owner:"AO"}})},
+      {key:"ao_mov",title:"AO Movements",width:116,value:()=>"Movements",onPress:x=>router.push({pathname:"/stock-v2-movements",params:{item_code:x.item_code,owner:"AO",returnTo:stockLocation('/stock-test',{operation:'Stock Balances'})}})},
       {key:"unit",title:"Unit",width:75,value:x=>x.base_unit},
       {key:"edit_product",title:"Product Details",width:120,filterable:false,value:()=>workflow?.access.is_admin?'Edit Product':'—',onPress:x=>workflow?.access.is_admin&&void editProduct(x)},
       {key:"active_action",title:"Active Details",width:120,filterable:false,value:x=>isChemical(x)?(chemicalActives[x.item_code]?.length?"Edit Active":"Add Active"):"—",onPress:x=>isChemical(x)&&openActive(x)},

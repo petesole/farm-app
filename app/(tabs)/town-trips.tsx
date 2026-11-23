@@ -1,6 +1,7 @@
-import {useCallback,useState} from 'react';
+import {useCallback,useEffect,useState} from 'react';
 import {useFocusEffect,useLocalSearchParams,useRouter} from 'expo-router';
 import {Modal,ScrollView,Text,View} from 'react-native';
+import {stockLocation} from '@/utils/stock-navigation';
 import {StockV2Header} from '@/components/jspl/StockV2Header';
 import {StockButton,StockDateField,StockField,StockRecovery,StockSelect,stockStyles as styles} from '@/components/jspl/StockWorkflowControls';
 import {jsplColors} from '@/constants/jspl-design';
@@ -17,7 +18,7 @@ type TripData = {
 
 export default function TownTrips(){
   const router=useRouter();
-  const {view}=useLocalSearchParams<{view?:string}>();
+  const {from,view,trip:requestedTrip}=useLocalSearchParams<{from?:string;view?:string;trip?:string}>();
   const [data,setData]=useState<TripData>();
   const [date,setDate]=useState('');
   const [driver,setDriver]=useState('');
@@ -27,8 +28,11 @@ export default function TownTrips(){
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
   const [notice,setNotice]=useState('');
-  const [history,setHistory]=useState(view==='history');
-  const [tripId,setTripId]=useState<string|null>(null);
+  const [mounted,setMounted]=useState(false);
+  useEffect(()=>setMounted(true),[]);
+  const history=mounted&&view==='history';
+  const tripId=history?requestedTrip:undefined;
+  const showHistory=(trip?:string)=>router.setParams({view:'history',trip:trip??''});
   const [editor,setEditor]=useState<'new'|'edit'|null>(null);
   const [confirmFinalise,setConfirmFinalise]=useState(false);
   const load=useCallback(async()=>{
@@ -46,7 +50,7 @@ export default function TownTrips(){
       const {result}=await stockMutation('town-trip',payload);
       if(payload.action==='create_town_trip'||payload.action==='edit_town_trip'){
         setNotice('Town Trip '+result.trip_number+' saved.');
-        setEditor(null);setHistory(true);setTripId(result.id);
+        setEditor(null);showHistory(result.id);
         setDriver('');setDate('');setOrders([]);
       }else if(payload.action==='finalise_town_trip'){
         setNotice('Town Trip '+result.trip_number+' finalised.');setConfirmFinalise(false);
@@ -67,20 +71,21 @@ export default function TownTrips(){
     setDate(trip?displayJsplDate(trip.trip_date):'');setDriver(trip?.driver_id??'');
     setOrders(trip?.orders.map(order=>Number(order.order_id))??[]);
   }
+  const backInTrips=!!detail||(history&&!(from==='outstanding-issues'&&view==='history'));
   const tripDate=parseJsplDateInput(date);
   return <ScrollView contentContainerStyle={styles.page}>
     <StockV2Header title={detail?'Town Trip '+detail.trip_number:history?'Historical Town Trips':'Town Trips'} dashboard allowMain={data?.can_main}
-      backLabel={history?(detail?'← Historical Trips':'← Town Trips'):undefined}
-      onStock={history?()=>{if(detail)setTripId(null);else setHistory(false);setConfirmFinalise(false);}:undefined}/>
+      backLabel={backInTrips?(detail?'← Historical Trips':'← Town Trips'):undefined}
+      onStock={backInTrips?()=>{if(busy)return;if(detail)showHistory();else router.setParams({view:'',trip:''});setConfirmFinalise(false);}:undefined}/>
     {error?<><Text style={styles.error}>{error}</Text><StockRecovery scope="town-trip" onRecovered={()=>void load()}/></>:null}
     {notice?<Text style={styles.success}>{notice}</Text>:null}
     {data&&!history?<View style={styles.row}>
       {data.can_create?<StockButton title="Add New Trip" onPress={()=>openEditor()}/>:null}
-      <StockButton title="View Historical Trips" onPress={()=>setHistory(true)}/>
+      <StockButton title="View Historical Trips" onPress={()=>showHistory()}/>
     </View>:null}
     {history&&!detail?data?.trips.map(trip=><View key={trip.id} style={[styles.card,!trip.finalised_at&&{borderColor:jsplColors.danger}]}>
       <Text style={[styles.title,!trip.finalised_at&&{color:jsplColors.danger}]}>Trip {trip.trip_number} · {displayJsplDate(trip.trip_date)} · {trip.finalised_at?'Finalised':'Outstanding'}</Text>
-      <StockButton title={'Open Trip '+trip.trip_number} onPress={()=>setTripId(trip.id)}/>
+      <StockButton title={'Open Trip '+trip.trip_number} onPress={()=>showHistory(trip.id)}/>
     </View>):null}
     <Modal visible={!!editor} onRequestClose={()=>{if(!busy)setEditor(null);}} animationType="slide">
     <ScrollView contentContainerStyle={styles.page}>
@@ -118,7 +123,7 @@ export default function TownTrips(){
           <Text style={styles.text}>{order.outcome==='pending'?'Awaiting collection':order.outcome==='collected'?'Collected':'Could not collect'}</Text>
           {order.driver_note?<Text style={styles.muted}>{order.driver_note}</Text>:null}
           {data.can_receive&&order.can_receive?<StockButton title="Receive order" onPress={()=>router.push({
-            pathname:'/stock-v2-po-receiving',params:{from:'town-trip',trip:trip.id,order:String(order.order_id),owner:order.owner,supplier:order.supplier??''},
+            pathname:'/stock-v2-po-receiving',params:{from:'town-trip',returnTo:stockLocation('/town-trips',{from,view:'history',trip:trip.id}),trip:trip.id,order:String(order.order_id),owner:order.owner,supplier:order.supplier??''},
           })}/>:null}
           {data.can_report&&order.outcome==='pending'?(selected===key?<>
             <StockField label="Collection note" value={note} onChange={setNote}/>

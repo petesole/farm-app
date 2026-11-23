@@ -1,5 +1,5 @@
 import {useCallback,useMemo,useState} from 'react';
-import {useFocusEffect} from 'expo-router';
+import {useFocusEffect,useLocalSearchParams} from 'expo-router';
 import {ActivityIndicator,Modal,ScrollView,Text,TextInput,View} from 'react-native';
 import {StockV2Header} from '@/components/jspl/StockV2Header';
 import {StockButton as Button,StockField as Field,StockRecovery,StockSelect as Select,stockStyles as S} from '@/components/jspl/StockWorkflowControls';
@@ -16,10 +16,11 @@ type Product={owner_code:string;item_code:string;item_name:string;quantity:numbe
 const key=(r:Pending)=>r.owner_code+':'+r.item_code;
 const signed=(n:number)=>n>0?'+'+n:String(n);
 export default function StockAdjustments(){
+ const {sheetId:requestedSheet}=useLocalSearchParams<{sheetId?:string}>();
  const [allowed,setAllowed]=useState<boolean|null>(null),[isAdmin,setIsAdmin]=useState(false),[rows,setRows]=useState<Pending[]>([]),[history,setHistory]=useState<History[]>([]),[sheetId,setSheetId]=useState('');
  const [view,setView]=useState<'pending'|'history'>('pending'),[edits,setEdits]=useState<Record<string,string>>({}),[visible,setVisible]=useState<Pending[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
  const [detail,setDetail]=useState<Detail[]|null>(null),[direct,setDirect]=useState(false),[products,setProducts]=useState<Product[]>([]),[owner,setOwner]=useState('HS'),[product,setProduct]=useState(''),[date,setDate]=useState(displayJsplDate(localISODate(new Date()))),[amount,setAmount]=useState(''),[reason,setReason]=useState('');
- const fetchReport=useCallback(async()=>{const d=await stockRequest('?stock_adjustment_report=1');setAllowed(true);setIsAdmin(d.is_admin);setRows(d.rows??[]);setHistory(d.history??[]);setSheetId(old=>(d.rows??[]).some((r:Pending)=>String(r.sheet_id)===old)?old:String(d.rows?.[0]?.sheet_id??''))},[]);
+ const fetchReport=useCallback(async()=>{const d=await stockRequest('?stock_adjustment_report=1');setAllowed(true);setIsAdmin(d.is_admin);setRows(d.rows??[]);setHistory(d.history??[]);setSheetId(old=>(d.rows??[]).some((r:Pending)=>String(r.sheet_id)===old)?old:(requestedSheet??String(d.rows?.[0]?.sheet_id??'')))},[requestedSheet]);
  const load=useCallback(async()=>{setBusy(true);setError('');try{await fetchReport()}catch(e){setAllowed(false);setError((e as Error).message)}finally{setBusy(false)}},[fetchReport]);
  useFocusEffect(useCallback(()=>{void load()},[load]));
  const perform=async(fn:()=>Promise<void>)=>{setBusy(true);setError('');setNotice('');try{await fn()}catch(e){setError((e as Error).message)}finally{setBusy(false)}};

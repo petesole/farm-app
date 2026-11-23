@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useState} from 'react';
 import {useFocusEffect,useLocalSearchParams,useRouter} from 'expo-router';
 import {ScrollView, Text, TextInput, View} from 'react-native';
+import {stockLocation} from '@/utils/stock-navigation';
 import {StockV2Header} from '@/components/jspl/StockV2Header';
 import {JobPartQuotes} from '@/components/jspl/JobPartQuotes';
 import {StockButton, StockDateField, StockField, StockRecovery, StockSelect, stockStyles as styles} from '@/components/jspl/StockWorkflowControls';
@@ -28,14 +29,20 @@ const newPart = (): Part => ({category_id:null,item_code:'',quantity:'1',unit_pr
 
 export default function JobCards() {
   const router = useRouter();
-  const {from,view} = useLocalSearchParams<{from?:string;view?:string}>();
+  const {from,view,card:cardId} = useLocalSearchParams<{from?:string;view?:string;card?:string}>();
   const [data, setData] = useState<CardData>();
   const [editing, setEditing] = useState(false);
   const [editingCard,setEditingCard]=useState<JobCard|null>(null);
   const [confirmClose,setConfirmClose]=useState(false);
   const [lineDetails,setLineDetails]=useState<number|null>(null);
-  const [list,setList]=useState<'outstanding'|'history'|null>(null);
-  const [opened,setOpened]=useState<string|null>(null);
+  const [mounted,setMounted]=useState(false);
+  useEffect(()=>setMounted(true),[]);
+  const list=mounted&&(view==='outstanding'||view==='history')?view:null;
+  const card=mounted&&cardId?data?.cards.find(entry=>entry.id===cardId):undefined;
+  const opened=card?.id;
+  function showList(next:'outstanding'|'history'|null,card?:string){
+    router.setParams({view:next??'',card:card??''});
+  }
   const [cardType,setCardType]=useState<CardType>('asset');
   const [irrigationTarget,setIrrigationTarget]=useState<'trace'|'asset'>('trace');
   const [trace,setTrace]=useState<number|null>(null);
@@ -55,11 +62,6 @@ export default function JobCards() {
   const [quotePart,setQuotePart]=useState<number|null>(null);
   const [reservationQuantity, setReservationQuantity] = useState('');
   const [reservationOwner,setReservationOwner]=useState('');
-
-  useEffect(()=>{
-    setList(view==='outstanding'||view==='history'?view:null);
-    setOpened(null);
-  },[view]);
 
   const load = useCallback(async () => {
     try { setData(await stockRequest('?job_cards=1')); }
@@ -102,7 +104,7 @@ export default function JobCards() {
     try{
       await stockMutation('job-card',{action:'finalise_job_card',id:card.id,revision:card.revision});
       closeDetails();
-      setList('outstanding');
+      showList('outstanding');
       setData(undefined);
       setNotice('Job Card '+card.job_number+' finalised and moved to Historical Job Cards.');
       await load();
@@ -120,7 +122,7 @@ export default function JobCards() {
         action:editingCard?'edit_job_card':'create_job_card',
         payload:{...(editingCard?{id:editingCard.id,revision:editingCard.revision}:{}),card_type:cardType,vehicle_id:vehicle,tracecode_id:trace,work_description:description.trim(),transaction_date:parseJsplDateInput(date),parts:parts.map(({quantity,unit_price,...part})=>({...part,quantity:Number(quantity),unit_price:unit_price.trim()?Number(unit_price):null}))},
       });
-      closeForm();setList('outstanding');setOpened(result.id);
+      closeForm();showList('outstanding',result.id);
       setNotice('Job Card ' + result.job_number + ' saved.');
       await load();
     } catch (failure) {
@@ -244,41 +246,35 @@ export default function JobCards() {
     });
   }
   function closeDetails(){
-    setOpened(null);setPriceEdit(null);setQuotePart(null);setReservationPart(null);setConfirmClose(false);
+    setPriceEdit(null);setQuotePart(null);setReservationPart(null);setConfirmClose(false);
   }
   const openCards=data?.cards.filter(card=>!card.closed_at)??[];
-  const card=data?.cards.find(entry=>entry.id===opened);
   const currentList=card?(card.closed_at?'history':'outstanding'):list;
   const listTitle=currentList==='history'?'Historical Job Cards':'Outstanding Job Cards';
   const outstandingTitle=data?'Outstanding Job Cards ('+openCards.length+')':'Outstanding Job Cards';
   const listedCards=currentList==='history'?(data?.cards.filter(card=>card.closed_at)??[]):openCards;
-  const sourceBack=from==='outstanding-issues'
-    ?{label:'← Outstanding Issues',go:()=>router.replace({pathname:'/outstanding-issues',params:{from:'stock-dashboard'}})}
-    :from==='direct-issue'
-    ?{label:'← Direct Issue',go:()=>router.replace({pathname:'/stock-test',params:{operation:'Direct Issue'}})}
-    :from==='buying'?{label:'← Buying',go:()=>router.replace('/buying')}:null;
-  const returnToMenu=list&&!(view===list&&sourceBack);
+  const returnToMenu=!!list&&!(view===list&&(from==='outstanding-issues'||from==='direct-issue'));
+  const returnTo=stockLocation('/job-cards',{from,view:currentList??undefined,card:opened??undefined});
   function goBack(){
     if(busy)return;
     if(editing){closeForm();return;}
-    if(opened){setList(currentList);closeDetails();return;}
-    if(returnToMenu){setList(null);return;}
-    sourceBack?.go();
+    if(opened){showList(currentList);closeDetails();return;}
+    if(returnToMenu){showList(null);return;}
   }
   const rowStyle={flexDirection:'row' as const,alignItems:'flex-start' as const,gap:8};
   const columns=[185,255,84,105,205];
 
   return <ScrollView contentContainerStyle={styles.page}>
-    <StockV2Header title={editing?(editingCard?'Edit Job Card':'New Job Card'):opened?'Job Card details':list==='outstanding'?outstandingTitle:list?listTitle:'Job Cards'} dashboard={from!=='buying'&&from!=='stock'} allowMain={data?.can_main}
-      backLabel={editing?(editingCard?'← Job Card details':'← Job Cards'):opened?'← '+listTitle:returnToMenu?'← Job Cards':sourceBack?.label}
-      onStock={editing||opened||list||sourceBack?goBack:undefined}
+    <StockV2Header title={editing?(editingCard?'Edit Job Card':'New Job Card'):opened?'Job Card details':list==='outstanding'?outstandingTitle:list?listTitle:'Job Cards'} dashboard allowMain={data?.can_main}
+      backLabel={editing?(editingCard?'← Job Card details':'← Job Cards'):opened?'← '+listTitle:returnToMenu?'← Job Cards':undefined}
+      onStock={editing||opened||returnToMenu?goBack:undefined}
       onRefresh={()=>void load()}/>
     {error ? <><Text style={styles.error}>{error}</Text><StockRecovery scope={reservationPart!==null?'job-reservation':priceEdit?'job-card-price':'job-card'} onRecovered={() => void load()}/></> : null}
     {notice ? <Text style={styles.success}>{notice}</Text> : null}
     {data&&!editing&&!list?<View style={styles.row}>
       {data.can_create?<StockButton title="New Job Card" onPress={()=>{setEditing(true);setDate(new Date().toLocaleDateString('en-GB'));setParts([newPart()]);setError('');setNotice('');}}/>:null}
-      <StockButton title={outstandingTitle} onPress={()=>setList('outstanding')}/>
-      <StockButton title="Historical Job Cards" onPress={()=>setList('history')}/>
+      <StockButton title={outstandingTitle} onPress={()=>showList('outstanding')}/>
+      <StockButton title="Historical Job Cards" onPress={()=>showList('history')}/>
     </View>:null}
     {editing ? <View style={styles.card}>
       <StockSelect label="Job Card type" disabled={!!editingCard} value={cardType} options={[{id:'general',label:'General'},{id:'asset',label:'Asset'},{id:'irrigation',label:'Irrigation'}]}
@@ -360,7 +356,7 @@ export default function JobCards() {
       </View>:null}
     </View> : null}
     {data&&list&&!editing&&!opened&&listedCards.length===0?<Text style={styles.muted}>{currentList==='history'?'No historical job cards.':'No outstanding job cards.'}</Text>:null}
-    {list&&!editing&&!opened?listedCards.map(card=><View key={card.id} style={[styles.card,!card.closed_at&&{borderColor:'#b91c1c'}]}><Text style={!card.closed_at?styles.error:styles.muted}>{card.closed_at?'Finalised':'Outstanding'} · {displayJsplDate(card.transaction_date)}</Text><StockButton title={'Job Card '+card.job_number+' · '+card.vehicle_name} onPress={()=>{setOpened(card.id);setConfirmClose(false);}}/></View>):null}
+    {list&&!editing&&!opened?listedCards.map(card=><View key={card.id} style={[styles.card,!card.closed_at&&{borderColor:'#b91c1c'}]}><Text style={!card.closed_at?styles.error:styles.muted}>{card.closed_at?'Finalised':'Outstanding'} · {displayJsplDate(card.transaction_date)}</Text><StockButton title={'Job Card '+card.job_number+' · '+card.vehicle_name} onPress={()=>{showList(card.closed_at?'history':'outstanding',card.id);setConfirmClose(false);}}/></View>):null}
     {!editing&&list&&data&&card?<View key={card.id} style={styles.card}>
       <Text style={styles.title}>Job Card {card.job_number} · {card.vehicle_name}</Text>
       <Text style={styles.text}>{displayJsplDate(card.transaction_date)} · {card.closed_at?'Finalised':'Open'}</Text><Text style={styles.text}>{card.work_description}</Text>
@@ -391,7 +387,7 @@ export default function JobCards() {
           {part.repair_cost===null?'Inventory cost pending':'Parts cost '+Number(part.repair_cost).toFixed(2)+(part.pending_cost?' (provisional)':'')}
         </Text> : null}
         {data.can_buy&&!part.direct_expense&&quotePart===part.part_id?<JobPartQuotes key={part.part_id} partId={part.part_id} onUse={quoteId=>router.push({
-          pathname:'/stock-v2-purchase-orders',params:{from:'job-card',job:card.id,owner:part.owner_code,part:String(part.part_id),quote:quoteId},
+          pathname:'/stock-v2-purchase-orders',params:{from:'job-card',returnTo,job:card.id,owner:part.owner_code,part:String(part.part_id),quote:quoteId},
         })}/>:null}
         {data.can_reserve && !card.closed_at && (!!part.owner_code||part.stock_sources!=null) && !part.direct_expense && (reservationPart===part.part_id ? <>
           {part.owner_code&&part.issue_enabled===false?<Text style={styles.error}>This company is not enabled to own stock.</Text>:null}
@@ -413,7 +409,7 @@ export default function JobCards() {
       </Text>)}
       {data.can_buy&&!card.closed_at ? [...new Set(card.parts.filter(part=>!part.direct_expense).map(part => part.owner_code))].map(owner => (
         <StockButton key={owner} title={owner?'Purchase parts · '+owner:'Purchase parts · choose owner'} onPress={() => router.push({
-          pathname:'/stock-v2-purchase-orders', params:{from:'job-card', job:card.id, owner},
+          pathname:'/stock-v2-purchase-orders', params:{from:'job-card', returnTo, job:card.id, owner},
         })}/>
       )) : null}
     </View>:null}

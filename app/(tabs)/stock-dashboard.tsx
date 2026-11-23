@@ -35,7 +35,7 @@ export default function StockDashboard(){
 
   const visible=preview==='actual'?access:{can_main:preview==='admin',is_admin:preview==='admin',is_stock:['admin','stock'].includes(preview),is_buyer:preview==='buyer',is_driver:preview==='driver',is_workshop:false};
   return <ScrollView contentContainerStyle={stockStyles.page}>
-    <StockV2Header title="Stock" dashboard allowMain={access?.can_main===true}/>
+    <StockV2Header title="Stock" dashboard stockRoot allowMain={access?.can_main===true}/>
     {access===null?<ActivityIndicator/>:null}
     {!!error?<Text style={stockStyles.error}>{error||'Main Dashboard access is required.'}</Text>:null}
     {access&&!error?<>

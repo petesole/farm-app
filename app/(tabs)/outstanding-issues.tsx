@@ -6,16 +6,16 @@ import {StockButton,stockStyles as styles} from '@/components/jspl/StockWorkflow
 import {stockRequest} from '@/utils/stock-workflow';
 
 const issues=[
-  {key:'po_approvals',title:'Purchase orders awaiting approval',route:'/stock-v2-approvals',view:'po'},
-  {key:'receipt_verifications',title:'Receipts awaiting verification',route:'/stock-v2-approvals',view:'receipt'},
+  {key:'po_approvals',button:'Review purchase orders',title:'Purchase orders awaiting approval',route:'/stock-v2-approvals',view:'po'},
+  {key:'receipt_verifications',button:'Verify receipts',title:'Receipts awaiting verification',route:'/stock-v2-approvals',view:'receipt'},
   {key:'returned_receipts',title:'Receipts awaiting correction',route:null},
-  {key:'outstanding_orders',title:'Orders with quantities outstanding',route:'/stock-v2-po-receiving'},
-  {key:'invoices_pending',title:'Posted receipts waiting for invoices',route:'/stock-v2-grv-outstanding'},
-  {key:'pending_collections',title:'Town Trip collections pending',route:'/town-trips',view:'history'},
-  {key:'collected_outstanding',title:'Collected orders with quantities outstanding',route:'/town-trips',view:'history'},
-  {key:'outstanding_parts',title:'Job Card parts still to issue',route:'/job-cards',view:'outstanding'},
-  {key:'cash_drafts',title:'Cash Book drafts awaiting review',route:'/cashbook',view:'history'},
-  {key:'unreconciled_advances',title:'Trip advances awaiting reconciliation',route:'/cashbook',view:'trips'},
+  {key:'outstanding_orders',button:'Receive purchase orders',title:'Orders with quantities outstanding',route:'/stock-v2-po-receiving'},
+  {key:'invoices_pending',button:'Open outstanding delivery notes',title:'Posted receipts waiting for invoices',route:'/stock-v2-grv-outstanding'},
+  {key:'pending_collections',button:'View Town Trips',title:'Town Trip collections pending',route:'/town-trips',view:'history'},
+  {key:'collected_outstanding',button:'View collected trips',title:'Collected orders with quantities outstanding',route:'/town-trips',view:'history'},
+  {key:'outstanding_parts',button:'Open Outstanding Job Cards',title:'Job Card parts still to issue',route:'/job-cards',view:'outstanding'},
+  {key:'cash_drafts',button:'Review Cash Book history',title:'Cash Book drafts awaiting review',route:'/cashbook',view:'history'},
+  {key:'unreconciled_advances',button:'Reconcile trip advances',title:'Trip advances awaiting reconciliation',route:'/cashbook',view:'trips'},
 ] as const;
 type Counts=Record<(typeof issues)[number]['key'],number>;
 type Returned={id:string;request_number:number;reference:string|null;assigned_to:string;decision_reason:string};
@@ -47,7 +47,7 @@ export default function OutstandingIssues(){
       {issue.key==='returned_receipts'?returned.map(receipt=><Text key={receipt.id} style={styles.text}>
         {receipt.reference??'Receipt '+receipt.request_number} · {receipt.assigned_to} · {receipt.decision_reason}
       </Text>):null}
-      {counts[issue.key]>0&&issue.route?<StockButton title="Open workflow" onPress={()=>{
+      {counts[issue.key]>0&&issue.route?<StockButton title={issue.button} onPress={()=>{
         if(issue.route)router.push({pathname:issue.route,params:{
           from:'outstanding-issues',...('view' in issue?{view:issue.view}:{}),
         }});

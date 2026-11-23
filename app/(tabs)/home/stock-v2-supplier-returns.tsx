@@ -3,7 +3,8 @@ import {StockSelect} from "@/components/jspl/StockWorkflowControls";
 import {stockMutation} from "@/utils/stock-workflow";
 import {parseJsplDateInput,displayJsplDate} from "@/utils/jspl-input";
 import {useEffect,useRef,useState} from "react";
-import {useRouter} from "expo-router";
+import {stockLocation} from '@/utils/stock-navigation';
+import {useLocalSearchParams,useRouter} from "expo-router";
 import {ActivityIndicator,Pressable,ScrollView,StyleSheet,TextInput,View} from "react-native";
 import {StockV2Header} from "@/components/jspl/StockV2Header";
 import {ThemedText} from "@/components/themed-text";
@@ -17,7 +18,9 @@ type Return={document_id:number;document_number:string;supplier_name:string;cred
 const displayDate=(s:string)=>/^\d{4}-\d{2}-\d{2}/.test(s)?s.slice(8,10)+"/"+s.slice(5,7)+"/"+s.slice(0,4):s;
 const iso=(value:string)=>parseJsplDateInput(value) ?? "";
 export default function SupplierReturns(){
- const router=useRouter();const pageRef=useRef<ScrollView>(null);const [owner,setOwner]=useState("JS"),[supplier,setSupplier]=useState(""),[reference,setReference]=useState(""),[reason,setReason]=useState("");
+ const router=useRouter();
+ const {returnTo}=useLocalSearchParams<{returnTo?:string}>();
+ const pageRef=useRef<ScrollView>(null);const [owner,setOwner]=useState("JS"),[supplier,setSupplier]=useState(""),[reference,setReference]=useState(""),[reason,setReason]=useState("");
  const [mode,setMode]=useState<"specific_grv"|"supplier_stock">("specific_grv"),[suppliers,setSuppliers]=useState<{name:string;owner_code:string}[]>([]),[supplierOpen,setSupplierOpen]=useState(false);const [products,setProducts]=useState<Product[]>([]),[returns,setReturns]=useState<Return[]>([]),[search,setSearch]=useState("");
  const [lines,setLines]=useState<Record<string,{qty:string;price:string}>>({});const [receipts,setReceipts]=useState<Receipt[]>([]);const [alloc,setAlloc]=useState<Record<number,string>>({});
  const [grvId,setGrvId]=useState<number|null>(null),[grvOpen,setGrvOpen]=useState(false);
@@ -33,7 +36,7 @@ export default function SupplierReturns(){
  return <ThemedView style={styles.root}><ScrollView ref={pageRef} contentContainerStyle={styles.page}>
  <StockV2Header title="Supplier Returns / Credit Notes"/>
 
- <Pressable style={styles.button} onPress={()=>router.push("/(tabs)/home/stock-v2-credits")}><ThemedText style={styles.white}>Open Supplier Credit Notes & Reconciliation</ThemedText></Pressable>
+ <Pressable style={styles.button} onPress={()=>router.push({pathname:"/(tabs)/home/stock-v2-credits",params:{returnTo:stockLocation('/stock-v2-supplier-returns',{returnTo})}})}><ThemedText style={styles.white}>Open Supplier Credit Notes & Reconciliation</ThemedText></Pressable>
  <ThemedText>Supplier returns reduce physical stock when dispatched. Stock enters the actual credit separately for Admin approval, including partial credit notes, multiple returns and differences.</ThemedText>
   <ThemedText style={styles.heading}>New Supplier Return</ThemedText>
  <StockSelect label="Stock owner" value={owner} options={['JS','AO'].map(x=>({id:x,label:x}))} onChange={v=>{setOwner(String(v??'JS'));setSupplier('');setGrvId(null);setLines({});setReceipts([]);setAlloc({})}}/>

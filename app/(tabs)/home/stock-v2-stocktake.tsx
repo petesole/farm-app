@@ -1,6 +1,7 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {useFocusEffect,useLocalSearchParams,useRouter} from 'expo-router';
 import {ActivityIndicator,Modal,Pressable,ScrollView,Text,TextInput,View} from 'react-native';
+import {stockLocation} from '@/utils/stock-navigation';
 import {StockV2Header} from '@/components/jspl/StockV2Header';
 import {StockSheetPreview} from '@/components/jspl/StockSheetPreview';
 import {StockButton as Button,StockField as Field,StockRecovery,stockStyles as S} from '@/components/jspl/StockWorkflowControls';
@@ -15,12 +16,13 @@ const groupNames=(groups:string[])=>groups.map(stockGroupLabel).join(', ');
 const sheetLabel=(s:Sheet)=>displayJsplDate(s.take_date.slice(0,10))+' · '+groupNames(s.groups)+' · '+s.take_number;
 const countText=(n:number|null)=>n==null?'':String(n);
 export default function Stocktakes(){
- const router=useRouter(),params=useLocalSearchParams<{sheetId?:string}>(),opened=useRef('');
+ const router=useRouter(),params=useLocalSearchParams<{sheetId?:string;view?:string}>(),opened=useRef('');
  const [canPrint,setCanPrint]=useState(false);
  const [view,setView]=useState<'print'|'input'|'history'>('print'),[groups,setGroups]=useState<string[]>([]),[selected,setSelected]=useState<Record<string,boolean>>({});
  const [pending,setPending]=useState<Sheet[]>([]),[history,setHistory]=useState<Sheet[]>([]),[isAdmin,setIsAdmin]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState('');
  const [sheet,setSheet]=useState<Sheet|null>(null),[rows,setRows]=useState<Line[]>([]),[edits,setEdits]=useState<Counts>({}),[reason,setReason]=useState(''),[audit,setAudit]=useState<{action:string;reason:string|null;created_at:string}[]>([]);
  const [preview,setPreview]=useState<{sheet:Sheet;items:Line[]}|null>(null);
+ useEffect(()=>{if(params.view==='history'||params.view==='input')setView(params.view)},[params.view]);
  const refresh=useCallback(async()=>{try{const [g,p]=await Promise.all([stockRequest('?combined_stocktake_groups=1'),stockRequest('?combined_stocktake_list=1')]);setGroups(g.groups??[]);setIsAdmin(g.is_admin);setCanPrint(!!g.can_print);if(!g.can_print)setView(v=>v==='print'?'input':v);setPending(p.rows??[]);if(g.is_admin&&view==='history')setHistory((await stockRequest('?combined_stocktake_list=1&history=1')).rows??[])}catch(e){setError((e as Error).message)}},[view]);
  useFocusEffect(useCallback(()=>{void refresh()},[refresh]));
  const readSheet=async(id:string|number,print=false)=>{const data=await stockRequest('?combined_stocktake_lines=1&sheet_id='+id+(print?'&print=1':''));return data as {sheet:Sheet;rows:Line[];audit:typeof audit;is_admin:boolean;can_print:boolean}};
@@ -38,7 +40,7 @@ export default function Stocktakes(){
  <View style={S.row}>{canPrint?<Button title="Print Stock Take" disabled={busy} onPress={()=>{setView('print');setError('');setNotice('')}}/>:null}<Button title="Input Stock Take" disabled={busy} onPress={()=>{setView('input');setError('');setNotice('')}}/>{isAdmin?<Button title="History" disabled={busy} onPress={()=>{setView('history');setError('');setNotice('')}}/>:null}</View>
  {error?<><Text style={S.error}>{error}</Text><StockRecovery scope="combined-stocktake" onRecovered={()=>{setSheet(null);setView('input');void refresh()}}/></>:null}{notice?<Text>{notice}</Text>:null}
  {view==='print'&&canPrint?<><Text style={S.title}>Select Items for printed Stock Sheet</Text><View style={S.row}>{groups.map(g=><Pressable key={g} accessibilityRole="checkbox" accessibilityLabel={'Stock group: '+g} accessibilityState={{checked:!!selected[g]}} disabled={busy} onPress={()=>setSelected(s=>({...s,[g]:!s[g]}))} style={{padding:12,flexDirection:'row',gap:8,alignItems:'center'}}><Text style={{fontSize:22,color:'#25633A'}}>{selected[g]?'☑':'☐'}</Text><Text>{stockGroupLabel(g)}</Text></Pressable>)}</View><Button title="Print Stock Sheet" disabled={busy||!groups.some(g=>selected[g])} onPress={()=>void create()}/></>:<>
- {view==='history'&&isAdmin?<Button title="Earlier Stock Sheets" onPress={()=>router.push('/stock-v2-stocktake-legacy')}/>:null}
+ {view==='history'&&isAdmin?<Button title="Earlier Stock Sheets" onPress={()=>router.push({pathname:'/stock-v2-stocktake-legacy',params:{returnTo:stockLocation('/stock-v2-stocktake',{view:'history'})}})}/>:null}
  {(view==='history'?history:pending).map(t=><Pressable key={t.sheet_id} disabled={busy} onPress={()=>void open(t.sheet_id)} style={S.card}><Text>{sheetLabel(t)}</Text></Pressable>)}
  {!(view==='history'?history:pending).length?<Text>{view==='history'?'No saved stock sheets.':'No stock sheets awaiting input.'}</Text>:null}
  </>}{busy?<ActivityIndicator/>:null}</ScrollView>
@@ -49,7 +51,7 @@ export default function Stocktakes(){
  {rows.map(l=><View key={l.item_code} style={{flexDirection:'row',alignItems:'center',gap:8,padding:8,borderBottomWidth:1,borderColor:'#ddd',backgroundColor:'#fff'}}><Text style={{width:tableWidths.category}}>{l.category}</Text><Text style={{width:tableWidths.code}}>{l.item_code}</Text><Text style={{flex:1,minWidth:230}}>{l.item_name}</Text><View style={{width:tableWidths.count}}><TextInput accessibilityLabel={'HS '+l.item_code} style={S.input} keyboardType="decimal-pad" value={edits[l.item_code]?.hs??''} onChangeText={v=>change(l.item_code,'hs',v)} editable={!busy}/></View><View style={{width:tableWidths.count}}><TextInput accessibilityLabel={'AO '+l.item_code} style={S.input} keyboardType="decimal-pad" value={edits[l.item_code]?.ao??''} onChangeText={v=>change(l.item_code,'ao',v)} editable={!busy}/></View></View>)}
  </View></ScrollView>
  {sheet.status!=='draft'?<Field label="Reason for correction" value={reason} onChange={setReason}/>:null}
- <View style={S.row}><Button title="Save Stock Take" disabled={busy||(sheet.status!=='draft'&&reason.trim().length<8)} onPress={()=>void save()}/>{isAdmin&&sheet.status==='counted'?<Button title="Open Stock Adjustment" disabled={busy||dirty} onPress={()=>{setSheet(null);router.push('/stock-v2-adjustments')}}/>:null}</View>
+ <View style={S.row}><Button title="Save Stock Take" disabled={busy||(sheet.status!=='draft'&&reason.trim().length<8)} onPress={()=>void save()}/>{isAdmin&&sheet.status==='counted'?<Button title="Open Stock Adjustment" disabled={busy||dirty} onPress={()=>{router.push({pathname:'/stock-v2-adjustments',params:{returnTo:stockLocation('/stock-v2-stocktake',{view,sheetId:String(sheet.sheet_id)}),sheetId:String(sheet.sheet_id)}})}}/>:null}</View>
  {isAdmin&&sheet.adjustment_number?<Text>{sheet.adjustment_number}</Text>:null}
  {isAdmin&&audit.some(a=>a.reason)?<View>{audit.filter(a=>a.reason).map((a,i)=><Text key={i} style={S.muted}>{displayJsplDate(a.created_at.slice(0,10))} · {a.reason}</Text>)}</View>:null}
  </>:null}{busy?<ActivityIndicator/>:null}</ScrollView></Modal>

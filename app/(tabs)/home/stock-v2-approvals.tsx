@@ -1,21 +1,29 @@
 import {StockReceiptVerification} from '@/components/jspl/StockReceiptVerification';
 import {StockRecovery} from "@/components/jspl/StockWorkflowControls";
-import {useState,useCallback} from 'react';
+import {useState,useCallback,useEffect,useRef} from 'react';
 import {useFocusEffect,useLocalSearchParams,useRouter} from 'expo-router';
 import {ActivityIndicator,ScrollView,Text,View} from 'react-native';
+import {stockLocation} from '@/utils/stock-navigation';
 import {StockV2Header} from '@/components/jspl/StockV2Header';
 import {StockButton as Button,StockField as Field,StockSelect as Select,StockDocumentSummary,stockStyles as S} from '@/components/jspl/StockWorkflowControls';
 import {ApprovalDocument,WorkflowContext,stockContext,stockMutation,stockRequest,stockUUID} from '@/utils/stock-workflow';
 import {displayJsplDate} from '@/utils/jspl-input';
 export default function Approvals(){
  const router=useRouter();
- const {view}=useLocalSearchParams<{view?:string}>();
- const [context,setContext]=useState<WorkflowContext|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[kind,setKind]=useState(view==='po'||view==='receipt'?view:'all'),[selected,setSelected]=useState<ApprovalDocument|null>(null),[reason,setReason]=useState(''),[paymentTerms,setPaymentTerms]=useState('');
+ const {from,view,review}=useLocalSearchParams<{from?:string;view?:string;review?:string}>();
+ const restored=useRef('');
+ const [context,setContext]=useState<WorkflowContext|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[notice,setNotice]=useState(''),[kind,setKind]=useState('all'),[selected,setSelected]=useState<ApprovalDocument|null>(null),[reason,setReason]=useState(''),[paymentTerms,setPaymentTerms]=useState('');
  const load=useCallback(async()=>{setBusy(true);try{setContext(await stockContext());}catch(e){setError((e as Error).message)}finally{setBusy(false)}},[]);useFocusEffect(useCallback(()=>{void load()},[load]));
- const editPO=(d:ApprovalDocument)=>router.push({pathname:'/stock-v2-purchase-orders',params:{edit:d.id,from:'approval'}});
+ useEffect(()=>setKind(view||'all'),[from,view]);
+ useEffect(()=>{
+  if(!review){restored.current='';return;}
+  if(context&&restored.current!==review){restored.current=review;setSelected(context.documents.find(d=>d.id===review&&d.status==='pending')??null);}
+ },[review,context]);
+ const approvalLocation=stockLocation('/stock-v2-approvals',{from,view:kind,review:selected?.id});
+ const editPO=(d:ApprovalDocument)=>router.push({pathname:'/stock-v2-purchase-orders',params:{edit:d.id,from:'approval',returnTo:approvalLocation}});
  const decide=async(command:'approve'|'reject')=>{if(!selected)return;setBusy(true);setError('');try{await stockMutation('approval',{action:'workflow_command',command:command==='approve'&&selected.kind==='po'?'authorise_po':command,data:{id:selected.id,version:selected.version,reason,...(command==='approve'&&selected.kind==='po'?{payment_terms:paymentTerms.trim()}:{})}});setSelected(null);setReason('');await load();setNotice(command==='approve'?(selected.kind==='po'?'PO authorised and available for receiving.':'Credit approved, applied and locked.'):'Returned for correction');}catch(e){setError((e as Error).message)}finally{setBusy(false)}};
  const postCount=async(t:any)=>{setBusy(true);setError('');try{await stockMutation('stocktake-approval',{action:'stocktake_post',take_id:t.take_id,owner_code:t.owner_code,location_code:t.location_code,adjustments:(t.lines??[]).filter((l:any)=>Number(l.counted_quantity)!==Number(l.system_quantity)).map((l:any)=>({item_code:l.item_code,delta:Number(l.counted_quantity)-Number(l.system_quantity)}))});await load();setNotice('Count approved and stock adjustment posted');}catch(e){setError((e as Error).message)}finally{setBusy(false)}};
- return <ScrollView contentContainerStyle={S.page}><StockV2Header title="Awaiting Approval" onRefresh={()=>void load()}/>{error?<><Text style={S.error}>{error}</Text><StockRecovery scope="approval" onRecovered={()=>void load()}/><StockRecovery scope="stocktake-approval" onRecovered={()=>void load()}/></>:null}{notice?<View style={{gap:10}}><Text style={S.success}>{notice}</Text>{notice.startsWith('PO authorised')?<Button title="View Authorised POs" onPress={()=>router.push({pathname:'/stock-v2-purchase-orders',params:{status:'applied'}})}/>:null}</View>:null}{busy?<ActivityIndicator/>:null}
+ return <ScrollView contentContainerStyle={S.page}><StockV2Header title="Awaiting Approval" onRefresh={()=>void load()}/>{error?<><Text style={S.error}>{error}</Text><StockRecovery scope="approval" onRecovered={()=>void load()}/><StockRecovery scope="stocktake-approval" onRecovered={()=>void load()}/></>:null}{notice?<View style={{gap:10}}><Text style={S.success}>{notice}</Text>{notice.startsWith('PO authorised')?<Button title="View Authorised POs" onPress={()=>router.push({pathname:'/stock-v2-purchase-orders',params:{status:'applied',from:'approval',returnTo:approvalLocation}})}/>:null}</View>:null}{busy?<ActivityIndicator/>:null}
  {!context?.access.is_admin?<Text style={S.text}>Admin access is required to approve documents.</Text>:<>
  <Text style={S.title}>{context.awaiting} awaiting approval</Text><Select label="Document type" value={kind} onChange={v=>setKind(String(v??'all'))} options={[{id:'all',label:'All documents'},{id:'po',label:'Purchase orders'},{id:'credit',label:'Credit notes'},{id:'count',label:'Stocktakes'},{id:'receipt',label:'Receipts'}]}/>
  {selected?<View style={S.card}><StockDocumentSummary document={selected}/>{selected.kind==="po"?<Field label="Payment terms" value={paymentTerms} onChange={setPaymentTerms}/>:null}<Field label="Reason (required when returning)" value={reason} onChange={setReason}/><View style={S.row}>{selected.kind==='po'?<Button title="Edit PO" disabled={busy} onPress={()=>editPO(selected)}/>:null}<Button title={selected.kind==='credit'?'Approve and Apply Credit':'Authorise PO'} disabled={busy||(selected.kind==='po'&&(!paymentTerms.trim()||paymentTerms.trim().length>200))} onPress={()=>void decide('approve')}/><Button title="Return for Correction" disabled={busy} onPress={()=>void decide('reject')}/><Button title="Close Review" disabled={busy} onPress={()=>setSelected(null)}/></View></View>:null}

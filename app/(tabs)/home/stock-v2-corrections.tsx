@@ -39,10 +39,10 @@ export default function DNoteCorrections(){
  </ScrollView>
  <Modal visible={!!selected} animationType="slide" onRequestClose={close}>
   <ThemedView style={styles.root}><ScrollView contentContainerStyle={styles.page}>
-   <StockV2Header title={"D-Note "+selected?.display_no} onStock={()=>{if(!saving)close()}}/>
+   <StockV2Header title={"D-Note "+selected?.display_no} backLabel="← D-Note Corrections" onStock={()=>{if(!saving)close()}}/>
    <ThemedText style={styles.bold}>{selected?.supplier_name} · {selected?.delivery_note}</ThemedText>
    <ThemedText>Original date {dateLabel(selected?.delivery_note_date||selected?.document_date||null)} · {selected?.line_count} lines</ThemedText>
-   {selected?.locked?<View style={styles.panel}><ThemedText style={styles.error}>Locked — GRV/invoice already linked</ThemedText><ThemedText>The original D-Note cannot be changed. Resolve subsequent quantity or price differences with a linked supplier return, credit or adjustment, preserving the original record.</ThemedText><Pressable onPress={()=>{close();router.push("/(tabs)/home/stock-v2-supplier-returns")}} style={styles.button}><ThemedText style={styles.white}>Open Supplier Returns</ThemedText></Pressable></View>:<>
+   {selected?.locked?<View style={styles.panel}><ThemedText style={styles.error}>Locked — GRV/invoice already linked</ThemedText><ThemedText>The original D-Note cannot be changed. Resolve subsequent quantity or price differences with a linked supplier return, credit or adjustment, preserving the original record.</ThemedText><Pressable onPress={()=>{close();router.push({pathname:"/stock-v2-supplier-returns",params:{returnTo:"/stock-v2-corrections"}})}} style={styles.button}><ThemedText style={styles.white}>Open Supplier Returns</ThemedText></Pressable></View>:<>
     <ThemedText style={styles.bold}>D-Note Number</ThemedText><TextInput style={styles.input} value={number} onChangeText={setNumber}/>
     <ThemedText style={styles.bold}>D-Note Date (dd/mm/yyyy)</ThemedText><TextInput style={styles.input} value={date} onChangeText={setDate} onBlur={()=>{const parsed=parseJsplDateInput(date);if(parsed)setDate(displayJsplDate(parsed));}}/>
     <ThemedText style={styles.bold}>Reason for correction</ThemedText><TextInput multiline style={styles.input} value={reason} onChangeText={setReason}/>

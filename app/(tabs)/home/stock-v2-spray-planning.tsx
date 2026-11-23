@@ -74,7 +74,7 @@ export default function WeeklySprayPlanning(){
   <Pressable style={styles.primary} onPress={()=>router.push("/stock-v2-spray-entry")}><ThemedText style={styles.white}>+ New Spray</ThemedText></Pressable>
   <StockSelect label="Spray status" value={showCompleted?'completed':'planned'} options={[{id:'planned',label:'Outstanding'},{id:'completed',label:'Completed'}]} onChange={v=>{setShowCompleted(v==='completed');setCropFilter('all');setTraceFilter('all')}}/>
  </View>
- {latestSlip?<Pressable style={styles.primary} onPress={()=>router.push({pathname:"/stock-v2-issue-slip",params:{documentId:String(latestSlip)}})}><ThemedText style={styles.white}>Print Latest Issue Slip</ThemedText></Pressable>:null}
+ {latestSlip?<Pressable style={styles.primary} onPress={()=>router.push({pathname:"/stock-v2-issue-slip",params:{documentId:String(latestSlip),returnTo:"/stock-v2-spray-planning"}})}><ThemedText style={styles.white}>Print Latest Issue Slip</ThemedText></Pressable>:null}
  <View style={{flexDirection:"row",flexWrap:"wrap",gap:12,alignItems:"flex-start"}}>
   <View style={{minWidth:220,flex:1}}>
    <JsplSearchCombo label="Crop" selector="crop" options={[{id:"all",label:"All crops",active:true},...filterCrops.map(name=>({id:name,label:name,active:true}))]} value={cropFilter} onChange={value=>{setCropFilter(String(value??"all"));setTraceFilter("all");}} placeholder="Filter crop"/>

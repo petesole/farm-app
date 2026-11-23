@@ -1,4 +1,4 @@
-import {useCallback,useState} from 'react';
+import {useCallback,useEffect,useState} from 'react';
 import {useFocusEffect,useLocalSearchParams} from 'expo-router';
 import {ScrollView,Text,View} from 'react-native';
 import {StockV2Header} from '@/components/jspl/StockV2Header';
@@ -21,9 +21,11 @@ const blankAdvance={trip_id:'',account_id:'',date:'',amount:''};
 const blankSettlement={advance_id:'',date:'',spend:'',cash_returned:'',receipt_reference:'',invoices:[] as {grv_id:string;amount:string}[]};
 
 export default function CashBook(){
-  const {view}=useLocalSearchParams<{view?:string}>();
+  const {from,view}=useLocalSearchParams<{from?:string;view?:string}>();
   const [data,setData]=useState<{accounts:Account[];entries:Entry[];notes:QuickNote[];balances:CashBalance[];trips:Trip[];advances:Advance[];tripInvoices:TripInvoice[];counterparties:{name:string}[];expenses:{id:string;job_number:number;item_name:string;tracecode_name:string}[]}>();
-  const [tab,setTab]=useState<'home'|'entries'|'quick'|'history'|'accounts'|'trips'|'labour'|'suppliers'>(view==='trips'||view==='history'?view:'home');
+  const [tab,setTab]=useState<'home'|'entries'|'quick'|'history'|'accounts'|'trips'|'labour'|'suppliers'>('home');
+  useEffect(()=>setTab(view==='trips'||view==='history'?view:'home'),[view,from]);
+  const backToCashBook=tab!=='home'&&!(from==='outstanding-issues'&&view===tab);
   const [expenseLines,setExpenseLines]=useState<{part_id:string;amount:string}[]>([]);
   const [draft,setDraft]=useState(blankEntry);
   const [quickNote,setQuickNote]=useState({date:'',description:''});
@@ -114,7 +116,7 @@ export default function CashBook(){
 
   return <ScrollView key={tab} contentContainerStyle={styles.page}>
     <StockV2Header title={({home:"Cash Book",quick:"Quick Cash",entries:"New "+draft.kind[0].toUpperCase()+draft.kind.slice(1),history:"Transaction History",accounts:"Cash Book Accounts",trips:"Trip Advances",labour:"Labour Payments",suppliers:"Supplier Invoices"})[tab]} dashboard allowMain={!!data}
-      backLabel={tab==='home'?undefined:'← Cash Book'} onStock={tab==='home'?undefined:()=>{if(!busy)setTab('home');}}/>
+      backLabel={backToCashBook?'← Cash Book':undefined} onStock={backToCashBook?()=>{if(!busy)setTab('home');}:undefined}/>
     {error?<><Text style={styles.error}>{error}</Text><StockRecovery scope="cash-book" onRecovered={()=>void load()}/></>:null}
     {notice?<Text style={styles.success}>{notice}</Text>:null}
     {data?<>{tab==="home"?<><View style={styles.row}>

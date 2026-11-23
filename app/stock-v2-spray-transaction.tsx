@@ -72,7 +72,7 @@ export default function SprayTransaction(){
  const docOptions=[...new Map(issues.map(x=>[x.document_id,x.document_number])).entries()].map(([id,label])=>({id,label,active:true}));
  return <ScrollView contentContainerStyle={s.page}>
   {error?<StockRecovery scope="spray-transaction" onRecovered={()=>router.replace("/stock-v2-spray-planning")}/>:null}
-  <StockV2Header title={mode==="return"?"Spray Stock Return":"Spray Transfer / Issue"} onStock={()=>router.replace("/stock-v2-spray-planning")}/>
+  <StockV2Header title={mode==="return"?"Spray Stock Return":"Spray Transfer / Issue"} backLabel="← Spray Planning" onStock={()=>router.replace("/stock-v2-spray-planning")}/>
   <Text style={s.title}>Spray #{jobId} {selected[0]?.tracecode_name??""}</Text>
   {loading?<ActivityIndicator/>:null}
   {!!error&&<Text style={s.error}>{error}</Text>}

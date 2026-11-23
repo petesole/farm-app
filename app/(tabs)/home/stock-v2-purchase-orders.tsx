@@ -3,6 +3,7 @@ import {StockProductEditor} from '@/components/jspl/StockProductEditor';
 import {useState,useCallback,useEffect,useRef} from 'react';
 import {useFocusEffect,useLocalSearchParams,useRouter} from 'expo-router';
 import {ActivityIndicator,Modal,ScrollView,Text,View} from 'react-native';
+import {stockLocation,stockParent} from '@/utils/stock-navigation';
 import {StockV2Header} from '@/components/jspl/StockV2Header';
 import {StockButton as Button,StockField as Field,StockSelect as Select,StockDocumentSummary,stockStyles as S} from '@/components/jspl/StockWorkflowControls';
 import {stockContext,stockMutation,stockRequest,stockUUID,ApprovalDocument,WorkflowContext} from '@/utils/stock-workflow';
@@ -11,7 +12,7 @@ type SourceCard={id:string;job_number:number;parts:{item_code:string;owner_code:
 type Line={item_code:string;quantity:string;unit_price:string};
 const blank=():Line=>({item_code:'',quantity:'',unit_price:''});
 export default function PurchaseOrders(){
- const router=useRouter(),routeParams=useLocalSearchParams<{edit?:string;status?:string;from?:string;fromSpray?:string;job?:string;owner?:string;part?:string;quote?:string}>(),openedEdit=useRef('');
+ const router=useRouter(),routeParams=useLocalSearchParams<{edit?:string;status?:string;from?:string;fromSpray?:string;returnTo?:string;job?:string;owner?:string;part?:string;quote?:string}>(),openedEdit=useRef('');
  // Static web exports do not include the originating Job Card query string.
  const [mounted,setMounted]=useState(false);
  useEffect(()=>{setMounted(true)},[]);
@@ -28,7 +29,7 @@ export default function PurchaseOrders(){
  const load=useCallback(async()=>{setBusy(true);try{const [c,s,p,v]=await Promise.all([stockContext(),stockRequest('?stock_setup=1'),stockRequest('?purchasing_feed=1'),stockRequest('?supplier_list=1')]);setContext(c);setSetup(s);setItems(p.items??[]);setSuppliers(v.suppliers??[]);}catch(e){setError(String((e as Error).message))}finally{setBusy(false)}},[]);
  useFocusEffect(useCallback(()=>{void load()},[load]));
  const open=(d:ApprovalDocument|null)=>{setSourceJob(d?.payload.source_job_card_id??null);setSourceQuote(d?.payload.source_quote_id?{id:d.payload.source_quote_id,currency:d.payload.quote_currency,reference:d.payload.quote_reference}:null);setSourceSpray(d?.payload.source_spray_job_id??null);setEditing(d);setId(d?.id??stockUUID());setOwner(d?.payload.owner_code??'');setSupplier(d?.payload.supplier??'');setDate(d?displayJsplDate(d.payload.order_date):new Date().toLocaleDateString('en-GB'));setContract(d?.payload.contract_id??null);setLines(d?d.payload.lines.map((l:any)=>({item_code:l.item_code,quantity:String(l.quantity),unit_price:l.unit_price==null?'':String(l.unit_price)})):[blank()]);setReason('');setError('');setEditor(true)};
- useEffect(()=>{if(params.status)setFilter(params.status)},[params.status]);
+ useEffect(()=>setFilter(params.status??'all'),[params.status]);
  useEffect(()=>{if(!params.edit||!context||openedEdit.current===params.edit)return;const d=context.documents.find(x=>x.id===params.edit&&x.kind==='po');if(d&&!d.received&&d.status!=='cancelled'&&(!['approved','applied'].includes(d.status)||context.access.is_admin)){openedEdit.current=params.edit;open(d)}},[params.edit,context]);
  useEffect(()=>{
   const jobId=Number(params.fromSpray);if(!Number.isSafeInteger(jobId)||jobId<=0||!context||!items.length||openedEdit.current==='spray:'+jobId)return;
@@ -92,28 +93,30 @@ export default function PurchaseOrders(){
   :item.standalone_po===true));
  const canRaise=!!(context?.access.is_admin||context?.access.is_buyer||context?.access.is_stock);
  const canAddProduct=!sourceJob&&!!context?.access.is_stock;
- const closeEditor=()=>{if(busy)return;if(params.from==='approval')router.replace('/stock-v2-approvals');else if(params.fromSpray)router.replace('/stock-v2-spray-planning');else if(params.from==='job-card')router.back();else setEditor(false)};
- const command=async(cmd:string,d:ApprovalDocument,data:any={})=>{setBusy(true);setError('');try{await stockMutation('po',{action:'workflow_command',command:cmd,data:{id:d.id,version:d.version,...data}});setEditor(false);setCancelling(null);await load();setNotice('PO '+(cmd==='finalise'?'finalised':cmd==='cancel'?'cancelled':'saved'));}catch(e){setError((e as Error).message)}finally{setBusy(false)}};
+ const parent=stockParent(params);
+ const linkedEditor=!!(params.job||params.fromSpray||(params.from==='approval'&&params.edit));
+ const leaveEditor=()=>{setEditor(false);if(linkedEditor)router.replace(parent.href)};
+ const closeEditor=()=>{if(!busy)leaveEditor()};
+ const command=async(cmd:string,d:ApprovalDocument,data:any={})=>{setBusy(true);setError('');try{await stockMutation('po',{action:'workflow_command',command:cmd,data:{id:d.id,version:d.version,...data}});setEditor(false);setCancelling(null);await load();setNotice('PO '+(cmd==='finalise'?'finalised':cmd==='cancel'?'cancelled':'saved'));if(editor&&linkedEditor)router.replace(parent.href);}catch(e){setError((e as Error).message)}finally{setBusy(false)}};
  const save=async(cmd:'save'|'submit')=>{const iso=parseJsplDateInput(date);if(!iso){setError('Enter a valid date, dd/mm/yyyy');return;}const unavailable=lines.find(l=>!orderItems.some(i=>i.item_code===l.item_code));
   if(unavailable){setError(!unavailable.item_code?'Select a product for each line.':sourceJob?'Choose a part from this Job Card for the selected stock owner.':'This product requires a Job Card. Start its purchase order from the Job Card.');return;}
   setBusy(true);setError('');try{
   const payload={...(editing?.payload.payment_terms?{payment_terms:editing.payload.payment_terms}:{}),...(sourceSpray?{source_spray_job_id:sourceSpray}:{}),...(sourceJob?{source_job_card_id:sourceJob}:{}),...(sourceQuote?{source_quote_id:sourceQuote.id}:{}),owner_code:owner,supplier,order_date:iso,contract_id:contract,lines:lines.map(l=>({item_code:l.item_code,item_name:items.find(i=>i.item_code===l.item_code)?.item_name,quantity:Number(l.quantity),unit_price:l.unit_price.trim()===''?null:Number(l.unit_price)}))};
   await stockMutation('po',{action:'workflow_command',command:cmd==='save'&&editing?.status==='pending'?'submit':cmd,data:{id,version:editing?.version,kind:'po',payload,reason}});
-  setEditor(false);await load();setNotice(cmd==='submit'?'PO submitted for Admin approval':'PO saved');if(params.fromSpray)router.replace('/stock-v2-spray-planning');else if(params.from==='approval')router.replace('/stock-v2-approvals');
+  setEditor(false);await load();setNotice(cmd==='submit'?'PO submitted for Admin approval':'PO saved');if(linkedEditor)router.replace(parent.href);
  }catch(e){setError((e as Error).message)}finally{setBusy(false)}};
  const selectedOwner=setup.owners?.find((o:any)=>o.owner_code===owner);
  const change=(n:number,key:keyof Line,v:string)=>setLines(ls=>ls.map((l,i)=>i===n?{...l,[key]:v}:l));
  const docs=(context?.documents??[]).filter(d=>d.kind==='po'&&(filter==='all'||d.status===filter));
- return <ScrollView contentContainerStyle={S.page}><StockV2Header title="Purchase Orders"
- backLabel={params.from==="job-card"?"← Job Cards":params.from==="buying"?"← Buying":undefined}
- onStock={params.from==="job-card"?()=>router.back():params.from==="buying"?()=>router.replace("/buying"):undefined} onRefresh={()=>void load()}/>
+ return <ScrollView contentContainerStyle={S.page}>{!editor&&!cancelling?<StockV2Header title="Purchase Orders"
+ onRefresh={()=>void load()}/>:null}
  <Text style={S.text}>Buyer, Stores or Admin can raise a purchase order. Admin authorises it for receiving.</Text>
  {notice?<Text style={S.success}>{notice}</Text>:null}{!editor&&error?<Text style={S.error}>{error}</Text>:null}
  <View style={S.row}><Button title="New Purchase Order" disabled={busy||!canRaise} onPress={()=>open(null)}/></View>
  <Select label="Status" value={filter} onChange={v=>setFilter(String(v??'all'))} options={['all','draft','pending','approved','applied','rejected','cancelled'].map(x=>({id:x,label:x==='all'?'All statuses':x==='approved'?'Approved – ready to finalise':x==='applied'?'Finalised – available for receiving':x}))}/>
  {busy?<ActivityIndicator/>:null}{!busy&&!docs.length?<Text>No purchase orders for this selection.</Text>:null}
  {context?.documents.some(d=>d.kind==='po'&&d.status==='approved')?<Text style={S.muted}>Previously approved orders can be finalised below.</Text>:null}
- {(context?.documents??[]).some(d=>d.kind==='po'&&d.status==='applied')?<View style={S.row}><Button title="Open PO Receiving" onPress={()=>router.push({pathname:'/stock-v2-po-receiving',params:params.from==='buying'?{from:'buying'}:{}})}/></View>:null}
+ {(context?.documents??[]).some(d=>d.kind==='po'&&d.status==='applied')?<View style={S.row}><Button title="Open PO Receiving" onPress={()=>router.push({pathname:'/stock-v2-po-receiving',params:{returnTo:stockLocation('/stock-v2-purchase-orders',{from:params.from,status:filter,returnTo:params.returnTo,job:params.job,owner:params.owner,fromSpray:params.fromSpray})}})}/></View>:null}
  {docs.map(d=><View style={S.card} key={d.id}><StockDocumentSummary document={d}/>
  {d.payload.payment_terms?<Text style={S.text}>Payment terms · {d.payload.payment_terms}</Text>:null}<View style={S.row}>
  {!d.received&&d.status!=='cancelled'&&(!['approved','applied'].includes(d.status)||context?.access.is_admin)?<Button title="Open / Edit" disabled={busy} onPress={()=>open(d)}/>:null}
@@ -122,7 +125,7 @@ export default function PurchaseOrders(){
  </View></View>)}
  <Modal visible={!!cancelling} onRequestClose={()=>{if(!busy)setCancelling(null)}}><ScrollView contentContainerStyle={S.page}><StockV2Header title="Cancel Outstanding PO Balance" backLabel="← Purchase Orders" onStock={()=>{if(!busy)setCancelling(null)}}/>
  {cancelling?<><StockDocumentSummary document={cancelling}/><Text>Only unreceived quantities will be cancelled. Received stock and original order history are preserved.</Text><Field label="Cancellation reason" value={reason} onChange={setReason}/>{error?<><Text style={S.error}>{error}</Text><StockRecovery scope="po" onRecovered={()=>void load()}/></>:null}<Button title="Cancel Outstanding Balance" disabled={busy||reason.trim().length<5} onPress={()=>void command('cancel',cancelling,{reason})}/></>:null}</ScrollView></Modal>
- <Modal visible={editor} onRequestClose={closeEditor}><ScrollView contentContainerStyle={S.page}><StockV2Header title={editing?'Edit Purchase Order':'New Purchase Order'} onStock={closeEditor} backLabel={params.from==='approval'?'← Approvals':'← Purchase Orders'}/>
+ <Modal visible={editor} onRequestClose={closeEditor}><ScrollView contentContainerStyle={S.page}><StockV2Header title={editing?'Edit Purchase Order':'New Purchase Order'} onStock={closeEditor} backLabel={linkedEditor?parent.label:'← Purchase Orders'}/>
  {sourceJob?<Text style={S.text}>{card?'Job Card '+card.job_number:'Loading Job Card…'}</Text>:<Text style={S.text}>Order fertiliser, chemicals, seed, lubricants, petrol or Welfare items here. For other purchases, open the Job Card and choose Purchase parts.</Text>}
  {sourceQuote?<Text style={S.text}>Supplier quotation {sourceQuote.reference} · {sourceQuote.currency}</Text>:null}
  {error?<><Text style={S.error}>{error}</Text><StockRecovery scope="po" onRecovered={()=>void load()}/></>:null}

@@ -1,4 +1,4 @@
-import {useLocalSearchParams,useRouter} from "expo-router";
+import {useLocalSearchParams} from "expo-router";
 import {stockMutation,stockRequest} from "@/utils/stock-workflow";
 import {StockSelect} from "@/components/jspl/StockWorkflowControls";
 import {StockRecovery} from "@/components/jspl/StockWorkflowControls";
@@ -28,13 +28,19 @@ const shortPO=(id:number)=>"PO-"+id;
 const shortDNote=(value:string,id:number)=>{const v=String(value??"").trim();return "D-"+(/^(?:DEMO-)?DN-[a-f0-9]{8}-[a-f0-9-]{27,}$/i.test(v)||!v?id:v.replace(/^D(?:N(?:OTE)?)?[-\s#:]*/i,""));};
 const shortDate=(value:string|null|undefined)=>{if(!value)return "—";const v=String(value);if(/^\d{4}-\d{2}-\d{2}/.test(v))return v.slice(8,10)+"/"+v.slice(5,7)+"/"+v.slice(0,4);if(/^\d{2}\/\d{2}\/\d{4}/.test(v))return v.slice(0,10);return "—";};
 const supplierKey=(name:string|null|undefined)=>String(name??"").trim().toLowerCase();
-export default function GRVOutstanding(){ const router=useRouter();
+export default function GRVOutstanding(){
  const {from,trip,order,owner:initialOwner,supplier:initialSupplier}=useLocalSearchParams<{from?:string;trip?:string;order?:string;owner?:string;supplier?:string}>();
- const tripOrder=from==="town-trip"?Number(order):null;
+ const [mounted,setMounted]=useState(false);
+ useEffect(()=>setMounted(true),[]);
+ const tripOrder=mounted&&from==="town-trip"?Number(order):null;
  const [dn,setDn]=useState<DLine[]>([]),[po,setPo]=useState<POLine[]>([]),[products,setProducts]=useState<Product[]>([]);
  const [noPO,setNoPO]=useState(false);
- const [owner,setOwner]=useState(tripOrder?initialOwner??"":""),[supplier,setSupplier]=useState(tripOrder?initialSupplier??"":""),
- [type,setType]=useState<""|"dnote"|"grv">(tripOrder&&initialSupplier?"dnote":"");
+ const [owner,setOwner]=useState(""),[supplier,setSupplier]=useState(""),
+ [type,setType]=useState<""|"dnote"|"grv">("");
+ useEffect(()=>{
+  if(!tripOrder)return;
+  setOwner(initialOwner??"");setSupplier(initialSupplier??"");setType(initialSupplier?"dnote":"");
+ },[tripOrder,initialOwner,initialSupplier]);
  const [date,setDate]=useState(""),[number,setNumber]=useState("");
  const [chosen,setChosen]=useState<Record<string,Chosen>>({});
  const [myReceipts,setMyReceipts]=useState<MyReceipt[]>([]);
@@ -130,8 +136,7 @@ export default function GRVOutstanding(){ const router=useRouter();
  };
  const selection=(id:string,text:string,selected:boolean,onPress:()=>void)=><Pressable key={id} onPress={onPress} style={[s.option,selected&&s.active]}><ThemedText style={selected?s.activeText:undefined}>{text}</ThemedText></Pressable>;
  return <ThemedView style={s.root}><ScrollView contentContainerStyle={s.page}>
-   <StockV2Header title="POs Outstanding — Receiving" backLabel={from==="town-trip"?"← Town Trips":from==="buying"?"← Buying":undefined}
-    onStock={from==="town-trip"?()=>router.back():from==="buying"?()=>router.replace("/buying"):undefined} onRefresh={()=>void load()}/>
+   <StockV2Header title="POs Outstanding — Receiving" onRefresh={()=>void load()}/>
 
   {busy?<ActivityIndicator/>:null}{error?<><ThemedText style={s.warning}>{error}</ThemedText><StockRecovery scope="receiving" onRecovered={()=>void load()}/></>:null}{success?<ThemedText>{success}</ThemedText>:null}
   {correction?<View style={s.panel}><ThemedText>Correcting receipt {correction.request_number} · {correction.decision_reason}</ThemedText>
