@@ -91,14 +91,18 @@ async function displayFixture(context,role){
       const {command,data}=req.postDataJSON();
       if(command==='authorise_po'){
         assert(admin);const doc=lookups.workflow_context.documents.find(d=>d.id===data.id);
-        assert.equal(doc.status,'pending');doc.status='applied';doc.payload.payment_terms=data.payment_terms;
-        return route.fulfill({headers,json:{success:true,result:{id:doc.id}}});
+        assert.equal(doc.status,'pending');assert(data.payment_terms.trim());assert.equal(data.version,doc.version);
+        doc.status='applied';doc.payload.payment_terms=data.payment_terms;doc.target_order_id=500+doc.request_number;
+        lookups.outstanding_issues.counts.po_approvals--;
+        for(const [i,line] of doc.payload.lines.entries())lookups.purchasing_feed.orders.push({order_id:doc.target_order_id,order_line_id:doc.target_order_id*10+i,owner_code:doc.payload.owner_code,supplier_name:doc.payload.supplier,status:'approved',order_date:doc.payload.order_date,item_code:line.item_code,item_name:'Screen item',ordered_quantity:line.quantity,received_quantity:0,ordered_unit_price:line.unit_price});
+        return route.fulfill({headers,json:{success:true,result:{id:doc.id,target_order_id:doc.target_order_id}}});
       }
       assert(['save','submit'].includes(command));assert.equal(data.payload.source_job_card_id,serviceCard.id);
       const status=command==='save'?'draft':'pending';
       const doc={id:data.id,version:1,kind:'po',received:false,status,request_number:30,payload:data.payload};
       const index=lookups.workflow_context.documents.findIndex(d=>d.id===doc.id);
       if(index<0)lookups.workflow_context.documents.push(doc);else lookups.workflow_context.documents[index]=doc;
+      lookups.outstanding_issues.counts.po_approvals=lookups.workflow_context.documents.filter(d=>d.status==='pending'&&d.kind==='po').length;
       serviceCard.purchase_orders=[{request_number:30,owner_code:'JS',status}];
       response={success:true,result:{id:data.id}};
     }
@@ -161,6 +165,20 @@ async function check(browser, role, width) {
     await page.getByText('Sign In',{exact:true}).click();
     await page.waitForURL(url => !url.pathname.endsWith('/login'), {timeout:40000});
     if(role==='admin')await click(page,'Stock');
+    if(fixture){
+      const approvals=page.getByRole('button',{name:/Approve Purchase Orders/});
+      if(role==='admin'){
+        await approvals.click();await click(page,'Review & Approve');
+        assert(await page.getByRole('button',{name:'Approve Purchase Order',exact:true}).isDisabled());
+        await click(page,'← Stock');await click(page,'Buying');await click(page,'Approve Purchase Orders');
+        await page.getByText('1 purchase order awaiting approval',{exact:true}).filter({visible:true}).waitFor();
+        await click(page,'← Buying');await click(page,'Purchase Orders');await click(page,'Review & Approve');
+        await page.getByRole('textbox',{name:'Payment terms (required)',exact:true}).waitFor();
+        await click(page,'← Purchase Orders');await click(page,'← Buying');await click(page,'← Stock');
+      }else{
+        await page.getByRole('button',{name:/Town Trips/}).waitFor();assert.equal(await approvals.count(),0);
+      }
+    }
     if(role==='admin'){
       const help=page.getByRole('button',{name:'Open walkthrough assistant',exact:true});
       await help.waitFor();
@@ -235,14 +253,17 @@ async function check(browser, role, width) {
           await click(page,'← Outstanding Issues');
         }
         await click(page,'Review purchase orders');
-        await click(page,'Review');await click(page,'Edit PO');
+        await click(page,'Review & Approve');await click(page,'Edit PO');
         await page.getByRole('textbox',{name:'Reason for correction / cancellation',exact:true}).waitFor();
         await click(page,'← Approvals');
-        await page.getByRole('textbox',{name:'Payment terms',exact:true}).fill('30 days');
-        await click(page,'Authorise PO');await click(page,'View Authorised POs');
+        await page.getByRole('textbox',{name:'Payment terms (required)',exact:true}).fill('30 days');
+        await click(page,'Approve Purchase Order');await page.getByText('PO-521 approved and available for receiving.',{exact:true}).waitFor();await click(page,'View Authorised POs');
         await click(page,'Open PO Receiving');await page.reload();
+        await page.getByRole('textbox',{name:'Stock owner',exact:true}).click();await click(page,'JS (1)');
+        await page.getByRole('textbox',{name:'Supplier',exact:true}).click();await click(page,'Screen supplier');
+        await page.getByText('PO-521',{exact:true}).filter({visible:true}).waitFor();
         await click(page,'← Purchase Orders');await click(page,'← Approvals');
-        assert.equal(await page.getByRole('textbox',{name:'Document type',exact:true}).inputValue(),'Purchase orders');
+        await page.getByText('No purchase orders awaiting approval.',{exact:true}).filter({visible:true}).waitFor();
         await click(page,'← Outstanding Issues');
         await click(page,'View Town Trips');await click(page,'Open Trip 1');
         await click(page,'Receive order');await page.reload();
@@ -366,6 +387,10 @@ async function check(browser, role, width) {
         await click(page,action);await page.getByRole('button',{name:'Purchase parts · JS',exact:true}).waitFor();
         assert.equal(new URL(page.url()).searchParams.get('card'),'service-card');
       }
+      if(role==='admin'){
+        await click(page,'Review & Approve PO 30');await page.getByRole('textbox',{name:'Payment terms (required)',exact:true}).waitFor();
+        await click(page,'← Job Card');await page.getByRole('button',{name:'Review & Approve PO 30',exact:true}).waitFor();
+      }else assert.equal(await page.getByRole('button',{name:'Review & Approve PO 30',exact:true}).count(),0);
       await click(page,'← Outstanding Job Cards');await click(page,'← Job Cards');await click(page,'← Buying');
       await click(page,'Purchase Orders');
       await page.getByRole('textbox',{name:'Status',exact:true}).click();await click(page,'pending');
@@ -415,8 +440,10 @@ async function check(browser, role, width) {
       await page.getByText('2 L reserved · 3 L issued',{exact:true}).waitFor();
       await click(page,'← Outstanding Job Cards');await click(page,'← Direct Issue');
       await page.getByRole('textbox',{name:'Input Type 1',exact:true}).waitFor();
-      await click(page,'← Stock Operations');await page.reload();
-      await page.getByRole('button',{name:'Direct Issue',exact:true}).waitFor();await click(page,'← Stock');
+      await click(page,'← Stock Operations');
+      await page.waitForURL(url=>url.pathname==='/stock-test'&&!url.searchParams.get('operation'));
+      await page.reload();
+      await page.getByRole('button').filter({has:page.getByText('Direct Issue',{exact:true})}).waitFor();await click(page,'← Stock');
       await page.getByRole('button',{name:/Stock Operations/}).waitFor();
     }
     if(fixture&&role!=='driver'){
@@ -451,6 +478,8 @@ async function check(browser, role, width) {
     await page.waitForLoadState('networkidle');
     assert.deepEqual(faults,[]);
     console.log('PASS',fixture?'display only':'authenticated',role,width+'px');
+  } catch(error){
+    throw Error(role+' '+width+'px at '+page.url()+': '+error.message);
   } finally {await context.close();}
 }
 

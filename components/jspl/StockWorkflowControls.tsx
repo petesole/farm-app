@@ -25,7 +25,7 @@ export function StockRecovery({scope,onRecovered}:{scope:string;onRecovered?:()=
 }
 export function StockDocumentSummary({document:d}:{document:ApprovalDocument}){
  const p=d.payload;
- return <View style={{gap:6}}><Text style={stockStyles.title}>{documentLabel(d)} · {d.status==='applied'&&d.kind==='po'?'Finalised':d.status}</Text>
+ return <View style={{gap:6}}><Text style={stockStyles.title}>{documentLabel(d)} · {d.kind==='po'&&d.status==='pending'?'Awaiting Admin approval':d.kind==='po'&&d.status==='applied'?'Approved for receiving':d.status}</Text>
  <Text style={stockStyles.text}>{p.supplier||p.supplier_name||(d.kind==='po'&&p.owner_code==='AO'?'Supplier confirmed on receipt':'')} · {p.owner_code} · {displayJsplDate(p.order_date??p.credit_note_date??'')}</Text>
  {d.kind==='po'&&p.payment_terms?<Text style={stockStyles.text}>Payment terms: {p.payment_terms}</Text>:null}
  {d.kind==='po'?(p.lines??[]).map((l:any,i:number)=><Text key={i} style={stockStyles.text}>{l.item_name??l.item_code} · {l.quantity} × {l.unit_price==null?'Price not set':Number(l.unit_price).toFixed(2)}</Text>):<><Text style={stockStyles.text}>Supplier credit: {Number(p.total_amount).toFixed(2)} · {p.action==='return_credit'?'Returned stock':'Price only'}</Text>{(p.allocations??[]).map((l:any,i:number)=><Text key={i}>{l.item_name??'Return line '+l.return_line_id} · {l.quantity} × {Number(l.unit_credit_price).toFixed(2)}</Text>)}{p.receipt_label?<Text>{p.receipt_label}</Text>:null}{p.reason?<Text>{p.reason}</Text>:null}{p.notes?<Text>{p.notes}</Text>:null}</>}

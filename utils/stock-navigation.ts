@@ -22,6 +22,10 @@ export function stockLocation(path: StockPath, params: RouteParams = {}) {
   return JSON.stringify({path, params});
 }
 
+export function purchaseOrderApproval(returnTo: string, review?: string) {
+  return {pathname: '/stock-v2-approvals' as const, params: {view: 'po', returnTo, ...(review ? {review} : {})}};
+}
+
 function destination(pathname: StockPath, params: Record<string, string> = {}) {
   const label = pathname === '/job-cards' && params.card ? 'Job Card'
     : pathname === '/town-trips' && params.trip ? 'Town Trip'

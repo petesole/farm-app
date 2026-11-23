@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useState} from 'react';
 import {useFocusEffect,useLocalSearchParams,useRouter} from 'expo-router';
 import {ScrollView, Text, TextInput, View} from 'react-native';
-import {stockLocation} from '@/utils/stock-navigation';
+import {purchaseOrderApproval,stockLocation} from '@/utils/stock-navigation';
 import {StockV2Header} from '@/components/jspl/StockV2Header';
 import {JobPartQuotes} from '@/components/jspl/JobPartQuotes';
 import {StockButton, StockDateField, StockField, StockRecovery, StockSelect, stockStyles as styles} from '@/components/jspl/StockWorkflowControls';
@@ -31,6 +31,12 @@ export default function JobCards() {
   const router = useRouter();
   const {from,view,card:cardId} = useLocalSearchParams<{from?:string;view?:string;card?:string}>();
   const [data, setData] = useState<CardData>();
+  const [canApprove,setCanApprove]=useState(false);
+  useFocusEffect(useCallback(()=>{
+    let active=true;
+    stockRequest('?stock_access=1').then(result=>{if(active)setCanApprove(result.access?.is_admin===true);}).catch(()=>{if(active)setCanApprove(false);});
+    return ()=>{active=false;};
+  },[]));
   const [editing, setEditing] = useState(false);
   const [editingCard,setEditingCard]=useState<JobCard|null>(null);
   const [confirmClose,setConfirmClose]=useState(false);
@@ -404,9 +410,10 @@ export default function JobCards() {
           </View>
         </> : <StockButton title="Manage reservation" disabled={busy} onPress={()=>{setReservationPart(part.part_id);setReservationQuantity('');setReservationOwner('');}}/>)}
       </View>;})}
-      {card.purchase_orders.map(order => <Text key={order.request_number} style={styles.muted}>
-        {order.order_number ?? 'PO request ' + order.request_number} · {order.owner_code} · {order.status==='applied'?'Authorised':order.status}
-      </Text>)}
+      {card.purchase_orders.map(order => <View key={order.request_number} style={styles.row}>
+        <Text style={styles.muted}>{order.order_number ?? 'PO Request ' + order.request_number} · {order.owner_code} · {order.status==='applied'?'Approved':order.status==='pending'?'Awaiting Admin approval':order.status}</Text>
+        {canApprove&&order.status==='pending'?<StockButton title={'Review & Approve PO '+order.request_number} onPress={()=>router.push(purchaseOrderApproval(returnTo,String(order.request_number)))}/>:null}
+      </View>)}
       {data.can_buy&&!card.closed_at ? [...new Set(card.parts.filter(part=>!part.direct_expense).map(part => part.owner_code))].map(owner => (
         <StockButton key={owner} title={owner?'Purchase parts · '+owner:'Purchase parts · choose owner'} onPress={() => router.push({
           pathname:'/stock-v2-purchase-orders', params:{from:'job-card', returnTo, job:card.id, owner},

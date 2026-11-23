@@ -6,11 +6,13 @@ import {JsplDashboardButton} from '@/components/jspl/JsplDashboardButton';
 import {StockV2Header} from '@/components/jspl/StockV2Header';
 import {StockSelect,stockStyles} from '@/components/jspl/StockWorkflowControls';
 import {jsplColors,jsplSpacing} from '@/constants/jspl-design';
+import {purchaseOrderApproval} from '@/utils/stock-navigation';
 import {stockRequest} from '@/utils/stock-workflow';
 
 const modules=[
   {title:'Stock Operations',description:'Balances, receiving, stocktakes, and issues',icon:'inventory-2',route:'/stock-test'},
   {title:'Buying',description:'Purchase orders and supplier receiving',icon:'shopping-cart',route:'/buying'},
+  {title:'Approve Purchase Orders',description:'Review submitted orders and payment terms',icon:'fact-check',route:'/stock-v2-approvals'},
   {title:'Cash Book',description:'Accounts, payments, and reconciliation',icon:'account-balance-wallet',route:'/cashbook'},
   {title:'Town Trips',description:'Driver assignments and supplier collections',icon:'local-shipping',route:'/town-trips'},
   {title:'Job Cards',description:'Equipment repairs and general requests',icon:'build',route:'/job-cards'},
@@ -42,11 +44,11 @@ export default function StockDashboard(){
       {process.env.EXPO_PUBLIC_STOCK_DEVELOPMENT==='true'&&access.can_main?<StockSelect label="Test User Role" value={preview} options={['actual','admin','buyer','driver','stock'].map(id=>({id,label:id==='actual'?'My assigned roles':id[0].toUpperCase()+id.slice(1)}))} onChange={v=>setPreview(String(v??'actual'))}/>:null}
       {preview!=='actual'?<Text style={stockStyles.muted}>Dashboard preview. Select My assigned roles to open a module.</Text>:null}
       <View style={{flexDirection:'row',flexWrap:'wrap',gap:jsplSpacing.lg}}>
-        {modules.filter(m=>visible&&(m.route==="/job-cards"?(visible.is_stock||visible.is_buyer||visible.is_workshop):m.route==="/town-trips"?(visible.is_stock||visible.is_driver||visible.is_buyer):m.route==="/buying"?(visible.is_admin||visible.is_buyer):m.route==="/stock-test"?visible.is_stock:visible.can_main)).map(module=><View key={module.route} style={{width:240,maxWidth:'100%'}}>
+        {modules.filter(m=>visible&&(m.route==="/job-cards"?(visible.is_stock||visible.is_buyer||visible.is_workshop):m.route==="/town-trips"?(visible.is_stock||visible.is_driver||visible.is_buyer):m.route==="/stock-v2-approvals"?visible.is_admin:m.route==="/buying"?(visible.is_admin||visible.is_buyer):m.route==="/stock-test"?visible.is_stock:visible.can_main)).map(module=><View key={module.route} style={{width:240,maxWidth:'100%'}}>
           <JsplDashboardButton disabled={preview!=='actual'} title={module.title} description={module.description}
-            alertCount={preview==='actual'&&module.route==='/outstanding-issues'?Object.values(counts).reduce((total,n)=>total+Number(n),0):undefined}
+            alertCount={preview!=='actual'?undefined:module.route==='/stock-v2-approvals'?counts.po_approvals:module.route==='/outstanding-issues'?Object.values(counts).reduce((total,n)=>total+Number(n),0):undefined}
             icon={<MaterialIcons name={module.icon} size={28} color={jsplColors.primaryDark}/>}
-            onPress={()=>router.push({pathname:module.route,params:{from:'stock-dashboard'}})}/>
+            onPress={()=>router.push(module.route==='/stock-v2-approvals'?purchaseOrderApproval('/stock-dashboard'):{pathname:module.route,params:{from:'stock-dashboard'}})}/>
         </View>)}
       </View>
     </>:null}

@@ -3,7 +3,7 @@ import {StockProductEditor} from '@/components/jspl/StockProductEditor';
 import {useState,useCallback,useEffect,useRef} from 'react';
 import {useFocusEffect,useLocalSearchParams,useRouter} from 'expo-router';
 import {ActivityIndicator,Modal,ScrollView,Text,View} from 'react-native';
-import {stockLocation,stockParent} from '@/utils/stock-navigation';
+import {purchaseOrderApproval,stockLocation,stockParent} from '@/utils/stock-navigation';
 import {StockV2Header} from '@/components/jspl/StockV2Header';
 import {StockButton as Button,StockField as Field,StockSelect as Select,StockDocumentSummary,stockStyles as S} from '@/components/jspl/StockWorkflowControls';
 import {stockContext,stockMutation,stockRequest,stockUUID,ApprovalDocument,WorkflowContext} from '@/utils/stock-workflow';
@@ -107,19 +107,20 @@ export default function PurchaseOrders(){
  }catch(e){setError((e as Error).message)}finally{setBusy(false)}};
  const selectedOwner=setup.owners?.find((o:any)=>o.owner_code===owner);
  const change=(n:number,key:keyof Line,v:string)=>setLines(ls=>ls.map((l,i)=>i===n?{...l,[key]:v}:l));
+ const orderListLocation=stockLocation('/stock-v2-purchase-orders',{from:params.from,status:filter,returnTo:params.returnTo,job:params.job,owner:params.owner,fromSpray:params.fromSpray});
  const docs=(context?.documents??[]).filter(d=>d.kind==='po'&&(filter==='all'||d.status===filter));
  return <ScrollView contentContainerStyle={S.page}>{!editor&&!cancelling?<StockV2Header title="Purchase Orders"
  onRefresh={()=>void load()}/>:null}
  <Text style={S.text}>Buyer, Stores or Admin can raise a purchase order. Admin authorises it for receiving.</Text>
  {notice?<Text style={S.success}>{notice}</Text>:null}{!editor&&error?<Text style={S.error}>{error}</Text>:null}
- <View style={S.row}><Button title="New Purchase Order" disabled={busy||!canRaise} onPress={()=>open(null)}/></View>
+ <View style={S.row}><Button title="New Purchase Order" disabled={busy||!canRaise} onPress={()=>open(null)}/>{context?.access.is_admin?<Button title="Approve Purchase Orders" onPress={()=>router.push(purchaseOrderApproval(orderListLocation))}/>:null}</View>
  <Select label="Status" value={filter} onChange={v=>setFilter(String(v??'all'))} options={['all','draft','pending','approved','applied','rejected','cancelled'].map(x=>({id:x,label:x==='all'?'All statuses':x==='approved'?'Approved – ready to finalise':x==='applied'?'Finalised – available for receiving':x}))}/>
  {busy?<ActivityIndicator/>:null}{!busy&&!docs.length?<Text>No purchase orders for this selection.</Text>:null}
  {context?.documents.some(d=>d.kind==='po'&&d.status==='approved')?<Text style={S.muted}>Previously approved orders can be finalised below.</Text>:null}
- {(context?.documents??[]).some(d=>d.kind==='po'&&d.status==='applied')?<View style={S.row}><Button title="Open PO Receiving" onPress={()=>router.push({pathname:'/stock-v2-po-receiving',params:{returnTo:stockLocation('/stock-v2-purchase-orders',{from:params.from,status:filter,returnTo:params.returnTo,job:params.job,owner:params.owner,fromSpray:params.fromSpray})}})}/></View>:null}
+ {(context?.documents??[]).some(d=>d.kind==='po'&&d.status==='applied')?<View style={S.row}><Button title="Open PO Receiving" onPress={()=>router.push({pathname:'/stock-v2-po-receiving',params:{returnTo:orderListLocation}})}/></View>:null}
  {docs.map(d=><View style={S.card} key={d.id}><StockDocumentSummary document={d}/>
  {d.payload.payment_terms?<Text style={S.text}>Payment terms · {d.payload.payment_terms}</Text>:null}<View style={S.row}>
- {!d.received&&d.status!=='cancelled'&&(!['approved','applied'].includes(d.status)||context?.access.is_admin)?<Button title="Open / Edit" disabled={busy} onPress={()=>open(d)}/>:null}
+ {context?.access.is_admin&&d.status==='pending'?<Button title="Review & Approve" disabled={busy} onPress={()=>router.push(purchaseOrderApproval(orderListLocation,d.id))}/>:!d.received&&d.status!=='cancelled'&&(!['approved','applied'].includes(d.status)||context?.access.is_admin)?<Button title="Open / Edit" disabled={busy} onPress={()=>open(d)}/>:null}
  {d.received&&d.status==='applied'&&context?.access.is_admin?<Button title="Cancel Outstanding Balance" disabled={busy} onPress={()=>{setCancelling(d);setReason('');setError('')}}/>:null}
  {d.status==='approved'&&context?.access.is_stock?<Button title="Finalise Order" disabled={busy} onPress={()=>void command('finalise',d)}/>:null}
  </View></View>)}
