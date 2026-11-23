@@ -5,6 +5,7 @@ set local statement_timeout='55s';
 do $accept$
 declare
   admin_user uuid; buyer uuid; driver uuid; stores uuid; vehicle bigint; own bigint; owner_code_text text;
+  standalone_lines jsonb; po_payload jsonb; po_draft jsonb; po_result jsonb; po_actor uuid; po_id uuid; po_operation uuid; non_petrol text;
   inactive_price_supplier bigint;
   supplier_id_test bigint; supplier text; trace bigint; category bigint; part_item bigint; part bigint;
   job uuid:=gen_random_uuid(); quote uuid:=gen_random_uuid(); request_id uuid:=gen_random_uuid();
@@ -92,6 +93,41 @@ begin
   update stock_v2.job_card_part set unit_price=null,price_supplier_id=null where id=part;
   insert into stock_v2.job_part_quote(id,part_id,supplier_id,quote_reference,quote_date,currency,unit_price,quoted_by)
     values(quote,part,supplier_id_test,code,day,'USD',15,admin_user);
+  select jsonb_agg(jsonb_build_object('item_code',item_code,'quantity',1) order by input_type)
+    into standalone_lines from (
+      select distinct on (input_type) input_type,item_code from stock_v2.item i
+      where stock_v2.po_without_job_card(i) order by input_type,item_id
+    ) eligible;
+  if jsonb_array_length(standalone_lines) is distinct from 5 then raise exception 'Expected five standalone input groups'; end if;
+  select item_code into strict non_petrol from stock_v2.item i where active and input_type='Fuel'
+    and stock_v2.equipment_issue_kind(i.item_id) is distinct from 'PETROL' limit 1;
+  po_payload:=jsonb_build_object('owner_code',owner_code_text,'supplier',supplier,'order_date',day,
+    'contract_id',(select contract_id from stock_v2.contracts where active limit 1),'lines',standalone_lines);
+  foreach po_actor in array array[buyer,admin_user,stores] loop
+    po_id:=gen_random_uuid();
+    begin
+      perform stock_v2.buying_workflow_command(po_actor,gen_random_uuid(),'save',jsonb_build_object('id',po_id,'kind','po',
+        'payload',po_payload||jsonb_build_object('lines',standalone_lines||jsonb_build_array(jsonb_build_object('item_code',code,'quantity',1)))));
+      raise exception 'Accepted a standalone part' using errcode='23514';
+    exception when raise_exception then if sqlerrm not like '%requires a Job Card.%' then raise; end if; end;
+    if exists(select from stock_v2.approval_document where id=po_id) then raise exception 'Partially saved an invalid PO'; end if;
+    po_draft:=stock_v2.buying_workflow_command(po_actor,gen_random_uuid(),'save',jsonb_build_object('id',po_id,'kind','po','payload',po_payload));
+    begin
+      perform stock_v2.buying_workflow_command(po_actor,gen_random_uuid(),'submit',jsonb_build_object('id',po_id,'kind','po','version',po_draft->'version',
+        'payload',po_payload||jsonb_build_object('lines',jsonb_build_array(jsonb_build_object('item_code',non_petrol,'quantity',1)))));
+      raise exception 'Accepted another Fuel item on submit' using errcode='23514';
+    exception when raise_exception then if sqlerrm not like '%requires a Job Card.%' then raise; end if; end;
+    po_operation:=gen_random_uuid();
+    submitted:=jsonb_build_object('id',po_id,'kind','po','version',po_draft->'version','payload',po_payload);
+    po_result:=stock_v2.buying_workflow_command(po_actor,po_operation,'submit',submitted);
+    if po_result->>'status'<>'pending' or not (stock_v2.buying_workflow_command(po_actor,po_operation,'submit',submitted)->>'replayed')::boolean
+      then raise exception 'Standalone PO submission or replay failed'; end if;
+  end loop;
+  begin
+    perform stock_v2.buying_workflow_command(buyer,gen_random_uuid(),'submit',jsonb_build_object('id',gen_random_uuid(),'kind','po',
+      'payload',po_payload||jsonb_build_object('source_job_card_id',job)));
+    raise exception 'Unrelated job lines accepted' using errcode='23514';
+  exception when raise_exception then if sqlerrm not like 'Linked purchase order lines must match%' then raise; end if; end;
   submitted:=stock_v2.buying_workflow_command(buyer,gen_random_uuid(),'submit',jsonb_build_object('id',request_id,'kind','po','payload',
     jsonb_build_object('owner_code',owner_code_text,'supplier',supplier,'order_date',day,'source_job_card_id',job,'source_quote_id',quote,
     'contract_id',(select contract_id from stock_v2.contracts where active limit 1),

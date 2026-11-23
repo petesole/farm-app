@@ -26,14 +26,23 @@ async function displayFixture(context,role){
   const mineral={...lubricant,item_code:'SPRAY',item_name:'Mineral spray oil',input_type:'Chemical',input_category:'Insecticide'};
   const oilLine={part_id:15,owner_code:'JS',item_code:'LUBE',item_name:'Gear Oil',quantity:5,unit:'L',unit_price:null,category_id:4,reserved:0,issued:0,available:8};
   const oilCard={id:'fixture-card',job_number:9,transaction_date:'2026-11-20',vehicle_name:'Screen test tractor',work_description:'Service oil',parts:[oilLine],purchase_orders:[]};
+  const serviceFilter={item_code:'FILTER-A',item_name:'Service filter',base_unit:'each',active:true,standalone_po:false};
+  const poItems=[
+    {...mineral,standalone_po:true},{...petrol,standalone_po:true},{...lubricant,standalone_po:true},
+    {item_code:'FERT',item_name:'Urea',base_unit:'kg',active:true,standalone_po:true},
+    {item_code:'SEED',item_name:'Maize seed',base_unit:'kg',active:true,standalone_po:true},
+    serviceFilter,{...petrol,item_code:'FUEL-OTHER',item_name:'Tractor hire',standalone_po:false},
+  ];
+  const serviceCard={...oilCard,id:'service-card',job_number:11,parts:[{...oilLine,part_id:31,item_code:'FILTER-A',item_name:'Service filter',unit:'each'}]};
   const lookups={
+    purchasing_feed:{items:poItems,orders:[]},
     workflow_context:{access,documents:[],stocktakes:[],awaiting:0},supplier_list:{suppliers:[]},
     stock_setup:{owners:[{owner_code:'JS',owner_name:'JS',active:true}],contracts:[]},
     equipment_catalog:{rows:[{vehicle_id:2,vehicle_name:'Petrol bike',fuel_type:'PETROL'}]},chemical_actives:{rows:[]},
     snapshot:{issue_companies:[{owner_code:'JS',company_name:'JS Farm'},{owner_code:'C73',company_name:'Third company'}],items:[lubricant,petrol,mineral],sprays:[],documents:[],orders:[]},
     stock_access:{access},cash_book:book,
     cash_book_supplier_invoices:{invoices:[],creditOptions:[]},outstanding_issues:{counts:{},returned:[]},
-    job_cards:{cards:[oilCard],suppliers:[{supplier_id:'61',supplier_name:'Screen supplier'},{supplier_id:'62',supplier_name:'Second supplier'}],can_create:buyer,can_buy:buyer||admin,can_main:admin,can_reserve:buyer||stores,
+    job_cards:{cards:[oilCard,serviceCard],suppliers:[{supplier_id:'61',supplier_name:'Screen supplier'},{supplier_id:'62',supplier_name:'Second supplier'}],can_create:buyer,can_buy:buyer||admin,can_main:admin,can_reserve:buyer||stores,
       vehicles:[{vehicle_id:11,vehicle_name:'Screen test tractor',vehicle_type_id:4,vehicle_type:'Tractor',type_code:'TRA',owner_name:'Screen owner',owner_code:'JS',catalogue_group:'vehicle'}],
       items:[{item_code:'FILTER-A',item_name:'Service filter',base_unit:'each',part_number:'F-12',category_ids:[3]},{...lubricant,stock_lubricant:true,part_number:null,category_ids:[4]},{...lubricant,item_code:'EMPTY',item_name:'Hydraulic oil',quantity:0,stock_lubricant:true,part_number:null,category_ids:[4]}],
       categories:[{category_id:3,catalogue_group:'vehicle',category_name:'Filters'},{category_id:4,catalogue_group:'vehicle',category_name:'Lubricants',stock_only:true},{category_id:5,catalogue_group:'vehicle',category_name:'Oils',stock_only:true}],traces:[]},
@@ -111,7 +120,7 @@ async function check(browser, role, width) {
   const page = await context.newPage();
   const received = new Set();
   const faults = [];
-  page.on('pageerror', error => faults.push(error.message));
+  page.on('pageerror', error => faults.push(page.url()+' '+error.message));
   page.on('response', response => {
     const url = new URL(response.url());
     if (!url.pathname.endsWith('/stock-buying-development')) return;
@@ -307,6 +316,24 @@ async function check(browser, role, width) {
       await click(page,'Manage reservation');
       await qty.fill('3');await click(page,'Issue reserved stock');
       await page.getByText('2 L reserved · 3 L issued',{exact:true}).waitFor();
+    }
+    if(fixture&&role!=='driver'){
+      await page.goto(site+'/stock-v2-purchase-orders');
+      await click(page,'New Purchase Order');
+      const product=page.getByRole('textbox',{name:'Product 1',exact:true});
+      await product.click();
+      for(const name of ['Urea · kg','Mineral spray oil · L','Maize seed · kg','Gear Oil · L','Petrol · L'])
+        await page.getByRole('button',{name,exact:true}).waitFor();
+      for(const name of ['Service filter · each','Tractor hire · L'])
+        assert.equal(await page.getByRole('button',{name,exact:true}).count(),0);
+      if(role==='buyer'||role==='admin'){
+        await page.goto(site+'/stock-v2-purchase-orders?from=job-card&job=service-card&owner=JS');
+        await page.getByText('Job Card 11',{exact:true}).waitFor();
+        await product.click();
+        await page.getByRole('button',{name:'Service filter · each',exact:true}).waitFor();
+        assert.equal(await page.getByRole('button',{name:'Urea · kg',exact:true}).count(),0);
+        assert.equal(await page.getByRole('button',{name:/New Product for line/}).count(),0);
+      }
     }
     for(const key of readings[role])assert(received.has(key),role+' did not load '+key);
     await page.waitForLoadState('networkidle');

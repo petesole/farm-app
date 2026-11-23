@@ -5,7 +5,7 @@ import {StockButton as Button,StockField as Field,StockSelect as Select,stockSty
 import {stockMutation,stockRequest} from '@/utils/stock-workflow';
 
 export type StockProduct={item_code:string;item_name:string;base_unit:string;input_type:string;input_category:string;pastel_stock_code:string|null;version:number;active:boolean;actives:{name:string;amount:string;unit:string}[]};
-export function StockProductEditor({product,initialName='',onCancel,onSaved}:{product:StockProduct|null;initialName?:string;onCancel:()=>void;onSaved:(product:StockProduct)=>void|Promise<void>}){
+export function StockProductEditor({product,initialName='',standalonePurchase=false,onCancel,onSaved}:{product:StockProduct|null;initialName?:string;standalonePurchase?:boolean;onCancel:()=>void;onSaved:(product:StockProduct)=>void|Promise<void>}){
  const [catalog,setCatalog]=useState<{items:StockProduct[];can_create:boolean;can_edit:boolean}|null>(null);
  const [type,setType]=useState(product?.input_type??''),[category,setCategory]=useState(product?.input_category??''),[name,setName]=useState(product?.item_name??initialName),[unit,setUnit]=useState(product?.base_unit??''),[pastel,setPastel]=useState(product?.pastel_stock_code??'');
  const [actives,setActives]=useState(product?.actives??[]),[newActive,setNewActive]=useState(''),[newActiveIndex,setNewActiveIndex]=useState<number|null>(null),[confirmType,setConfirmType]=useState<string|null>(null);
@@ -29,16 +29,18 @@ export function StockProductEditor({product,initialName='',onCancel,onSaved}:{pr
   }catch(e){setError((e as Error).message);if((e as {confirmed?:boolean}).confirmed)setPending(null)}finally{setBusy(false)}
  };
  const allowed=product?catalog?.can_edit:catalog?.can_create;
- const valid=!!(type&&category&&name.trim()&&unit&&(product||unit!=='UNVERIFIED')&&!duplicates.length&&(!chemical||(actives.length||product)&&actives.every(a=>a.name.trim()&&Number(a.amount)>0)));
+ const purchaseTypes=['Chemical','Fertilizer','Seed','Lubricants','Fuel'];
+ const valid=(!standalonePurchase||(purchaseTypes.includes(type)&&(type!=='Fuel'||normalized(name)==='petrol')))&&!!(type&&category&&name.trim()&&unit&&(product||unit!=='UNVERIFIED')&&!duplicates.length&&(!chemical||(actives.length||product)&&actives.every(a=>a.name.trim()&&Number(a.amount)>0)));
  return <Modal visible onRequestClose={()=>!locked&&onCancel()}><ScrollView contentContainerStyle={S.page} keyboardShouldPersistTaps="handled">
  <StockV2Header title={product?'Edit Product':'New Product'} backLabel="← Return" onStock={()=>!locked&&onCancel()}/>
  {error?<Text style={S.error}>{error}</Text>:null}
  {!catalog?<Button title="Reload product list" disabled={busy} onPress={()=>void load()}/>:null}
  {catalog&&!allowed?<Text style={S.error}>You do not have permission to {product?'edit':'create'} products.</Text>:null}
  <View style={S.card}>
- <Select label="Type" value={type} disabled={locked} options={options([...(catalog?.items.map(p=>p.input_type)??[]),'Chemical','Fertilizer','Seed','Packaging',type])} onChange={v=>changeType(String(v??''))}/>
+ <Select label="Type" value={type} disabled={locked} options={options(standalonePurchase?purchaseTypes:[...(catalog?.items.map(p=>p.input_type)??[]),'Chemical','Fertilizer','Seed','Packaging',type])} onChange={v=>changeType(String(v??''))}/>
  <Select label="Category" value={category} disabled={locked||!type} options={options([...(catalog?.items.filter(p=>p.input_type===type).map(p=>p.input_category)??[]),...(type===product?.input_type?[product?.input_category??'']:[])])} onChange={v=>setCategory(String(v??''))}/>
  {!locked?<Field label={product?'Product Name / Rename':'Product Name'} value={name} onChange={setName}/>:<Text>{name}</Text>}
+ {standalonePurchase&&type==='Fuel'?<Text style={S.muted}>Petrol is the only fuel available on a purchase order without a Job Card.</Text>:null}
  {duplicates.length?<Text style={S.error}>A product with this name already exists: {duplicates.map(p=>p.item_name).join(', ')}. Use the existing product.</Text>:similar.length?<Text style={S.muted}>Existing matches: {similar.map(p=>p.item_name).join(', ')}</Text>:null}
  <Select label="Unit of Measure" value={unit} disabled={locked||!!product} options={options(['L','kg','Unit',...(catalog?.items.map(p=>p.base_unit).filter(x=>x!=='UNVERIFIED')??[]),unit])} onChange={v=>{const u=String(v??'');setUnit(u);setActives(a=>a.map(x=>({...x,unit:/kg/i.test(u)?'g/kg':'g/L'})))}}/>
  {product?<Text style={S.muted}>The stock unit is retained to preserve existing quantities and history.</Text>:null}

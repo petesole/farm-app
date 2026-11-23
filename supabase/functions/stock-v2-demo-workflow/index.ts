@@ -732,7 +732,7 @@ Deno.serve(async(req)=>{
    return reply({item:item[0]??null,movements,current_stock:balance[0]?.current_stock??0});
   }
   if(req.method==="GET"&&new URL(req.url).searchParams.has("purchasing_feed")){
-   const items=await db`select item_code,item_name,base_unit,active from stock_v2.item order by item_name`;
+   const items=await db`select i.item_code,i.item_name,i.base_unit,i.active,stock_v2.po_without_job_card(i) as standalone_po from stock_v2.item i order by i.item_name`;
    const orders=await db`select h.order_id,h.order_number,h.order_date,h.supplier_name,h.status,
     replace(o.owner_code,'TEST_','') as owner_code,i.item_code,i.item_name,i.base_unit,ol.order_line_id,
     ol.ordered_quantity::float8 as ordered_quantity,ol.received_quantity::float8 as received_quantity,
