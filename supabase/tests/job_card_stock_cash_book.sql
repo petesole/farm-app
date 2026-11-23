@@ -98,7 +98,9 @@ begin
       select distinct on (input_type) input_type,item_code from stock_v2.item i
       where stock_v2.po_without_job_card(i) order by input_type,item_id
     ) eligible;
-  if jsonb_array_length(standalone_lines) is distinct from 5 then raise exception 'Expected five standalone input groups'; end if;
+  if jsonb_array_length(standalone_lines) is distinct from 6 or not exists(
+    select from jsonb_array_elements(standalone_lines) l join stock_v2.item i on i.item_code=l->>'item_code' where i.input_type='Welfare'
+  ) then raise exception 'Expected six standalone input groups including Welfare'; end if;
   select item_code into strict non_petrol from stock_v2.item i where active and input_type='Fuel'
     and stock_v2.equipment_issue_kind(i.item_id) is distinct from 'PETROL' limit 1;
   po_payload:=jsonb_build_object('owner_code',owner_code_text,'supplier',supplier,'order_date',day,

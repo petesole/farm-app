@@ -29,7 +29,7 @@ export function StockProductEditor({product,initialName='',standalonePurchase=fa
   }catch(e){setError((e as Error).message);if((e as {confirmed?:boolean}).confirmed)setPending(null)}finally{setBusy(false)}
  };
  const allowed=product?catalog?.can_edit:catalog?.can_create;
- const purchaseTypes=['Chemical','Fertilizer','Seed','Lubricants','Fuel'];
+ const purchaseTypes=['Chemical','Fertilizer','Seed','Lubricants','Fuel','Welfare'];
  const valid=(!standalonePurchase||(purchaseTypes.includes(type)&&(type!=='Fuel'||normalized(name)==='petrol')))&&!!(type&&category&&name.trim()&&unit&&(product||unit!=='UNVERIFIED')&&!duplicates.length&&(!chemical||(actives.length||product)&&actives.every(a=>a.name.trim()&&Number(a.amount)>0)));
  return <Modal visible onRequestClose={()=>!locked&&onCancel()}><ScrollView contentContainerStyle={S.page} keyboardShouldPersistTaps="handled">
  <StockV2Header title={product?'Edit Product':'New Product'} backLabel="← Return" onStock={()=>!locked&&onCancel()}/>

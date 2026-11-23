@@ -31,6 +31,7 @@ async function displayFixture(context,role){
     {...mineral,standalone_po:true},{...petrol,standalone_po:true},{...lubricant,standalone_po:true},
     {item_code:'FERT',item_name:'Urea',base_unit:'kg',active:true,standalone_po:true},
     {item_code:'SEED',item_name:'Maize seed',base_unit:'kg',active:true,standalone_po:true},
+    {item_code:'WELFARE',item_name:'Salt',base_unit:'kg',active:true,standalone_po:true},
     serviceFilter,{...petrol,item_code:'FUEL-OTHER',item_name:'Tractor hire',standalone_po:false},
   ];
   const serviceCard={...oilCard,id:'service-card',job_number:11,parts:[{...oilLine,part_id:31,item_code:'FILTER-A',item_name:'Service filter',unit:'each'}]};
@@ -322,7 +323,7 @@ async function check(browser, role, width) {
       await click(page,'New Purchase Order');
       const product=page.getByRole('textbox',{name:'Product 1',exact:true});
       await product.click();
-      for(const name of ['Urea · kg','Mineral spray oil · L','Maize seed · kg','Gear Oil · L','Petrol · L'])
+      for(const name of ['Urea · kg','Mineral spray oil · L','Maize seed · kg','Gear Oil · L','Petrol · L','Salt · kg'])
         await page.getByRole('button',{name,exact:true}).waitFor();
       for(const name of ['Service filter · each','Tractor hire · L'])
         assert.equal(await page.getByRole('button',{name,exact:true}).count(),0);
