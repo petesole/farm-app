@@ -20,7 +20,7 @@ async function displayFixture(context,role){
   const access={can_main:admin,is_admin:admin,is_stock:admin||stores,is_buyer:buyer,is_driver:driver};
   const cashEntry=(day,number)=>({id:'entry-'+number,entry_number:number,reference:'Test receipt '+number,entry_date:day,created_at:day+'T12:00:00Z',kind:'receipt',status:'confirmed',currency:'USD',account_id:'USD-account',amount:'5.00',narrative:'Test deposit '+number});
   const book={accounts:[],entries:[cashEntry('2026-11-10',1),cashEntry('2026-11-19',2)],notes:[],balances:[{currency:'USD',balance:'42.00'},{currency:'ZiG',balance:'5.00'}],
-    trips:[],advances:[],tripInvoices:[],counterparties:[],expenses:[]};
+    trips:[],advances:[],tripInvoices:[],counterparties:[],expenses:[{id:'stationery',job_number:12,item_name:'Stationery',tracecode_name:'Admin'}]};
   const lubricant={item_code:'LUBE',item_name:'Gear Oil',base_unit:'L',input_type:'Lubricants',input_category:'Lubricants',active:true,quantity:8,ao_quantity:0,owner_quantities:{JS:8,C73:3}};
   const petrol={...lubricant,item_code:'PET',item_name:'Petrol',input_type:'Fuel',input_category:'Fuel'};
   const mineral={...lubricant,item_code:'SPRAY',item_name:'Mineral spray oil',input_type:'Chemical',input_category:'Insecticide'};
@@ -591,7 +591,9 @@ async function check(browser, role, width) {
   } finally {await context.close();}
 }
 
-(async()=>{
+module.exports={displayFixture,click};
+
+if(require.main===module)(async()=>{
   const browser=await chromium.launch({executablePath:process.env.BUYING_TEST_BROWSER||undefined,headless:true});
   try{for(const role of ['admin','buyer','stock','driver'])for(const width of [1366,390])await check(browser,role,width);}
   finally{await browser.close();}

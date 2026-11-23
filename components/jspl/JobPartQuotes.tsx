@@ -46,7 +46,7 @@ export function JobPartQuotes({partId,readOnly=false,onUse}:{partId:number;readO
       </Text>):<Text style={styles.muted}>No priced receipts for this part and stock owner.</Text>}
       <Text style={styles.title}>Supplier quotations</Text>
       {details.quotes.map(quote=><View key={quote.id} style={styles.row}>
-        <Text style={styles.text}>{quote.supplier_name} · {quote.quote_reference} · {displayJsplDate(quote.quote_date)} · {quote.currency} {quote.unit_price} per unit</Text>
+        <Text style={[styles.text,{flex:1}]}>{quote.supplier_name} · {quote.quote_reference} · {displayJsplDate(quote.quote_date)} · {quote.currency} {quote.unit_price} per unit</Text>
         {!readOnly?<StockButton title="Use quotation" disabled={busy} onPress={()=>onUse(quote.id)}/>:null}
       </View>)}
       {!readOnly?<><StockSelect label="Quote supplier" value={draft.supplier_id} options={details.suppliers.map(record=>({id:record.supplier_id,label:record.supplier_name}))}

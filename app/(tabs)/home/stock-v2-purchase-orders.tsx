@@ -1,3 +1,4 @@
+import {StockLineTable} from '@/components/jspl/StockLineTable';
 import {StockRecovery} from "@/components/jspl/StockWorkflowControls";
 import {StockProductEditor} from '@/components/jspl/StockProductEditor';
 import {useState,useCallback,useEffect,useRef} from 'react';
@@ -8,6 +9,10 @@ import {StockV2Header} from '@/components/jspl/StockV2Header';
 import {StockButton as Button,StockField as Field,StockSelect as Select,StockDocumentSummary,stockStyles as S} from '@/components/jspl/StockWorkflowControls';
 import {stockContext,stockMutation,stockRequest,stockUUID,ApprovalDocument,WorkflowContext} from '@/utils/stock-workflow';
 import {parseJsplDateInput,displayJsplDate} from '@/utils/jspl-input';
+const orderColumns=[
+ {label:'Product',width:255,grow:3},{label:'Quantity',width:110,grow:1},
+ {label:'Unit price (optional)',width:150,grow:1},{label:'',width:124},
+];
 type SourcePart={item_code:string;owner_code:string|null;quantity:number;remaining_quantity?:number;reserved?:number;issued?:number;cancelled_quantity?:number;direct_expense?:boolean;unit_price?:number|string|null;price_supplier_name?:string|null};
 type SourceCard={id:string;job_number:number;parts:SourcePart[]};
 const toPurchase=(part:SourcePart)=>Math.max(0,Number(part.remaining_quantity??part.quantity-(part.issued??0)-(part.cancelled_quantity??0))-Number(part.reserved??0));
@@ -146,12 +151,15 @@ export default function PurchaseOrders(){
  <Select label={owner==="AO"?"Supplier (optional)":"Supplier"} value={supplier} options={suppliers.filter(s=>s.active||s.supplier_name===supplier).map(s=>({id:s.supplier_name,label:s.supplier_name}))} disabled={!!sourceQuote} onChange={v=>selectSupplier(String(v??''))}/>
  <Field label="Order date (dd/mm/yyyy)" value={date} onChange={setDate}/>
  {selectedOwner?.po_requires_contract?<Select label="Contract" value={selectedOwner.default_contract_id==null?contract:Number(selectedOwner.default_contract_id)} disabled={!!selectedOwner.default_contract_id} options={(setup.contracts??[]).filter((c:any)=>c.active).map((c:any)=>({id:Number(c.contract_id),label:c.contract_code}))} onChange={v=>setContract(v==null?null:Number(v))}/>:null}
- {lines.map((l,n)=><View key={n} style={S.card}><ScrollView horizontal contentContainerStyle={{flexGrow:1}}><View style={{flexDirection:'row',alignItems:'flex-start',gap:12,minWidth:680,flex:1}}>
- <View style={{flex:3,minWidth:260,gap:8}}><Select label={'Product '+(n+1)} value={l.item_code} options={orderItems.filter(i=>!lines.some((x,j)=>j!==n&&x.item_code===i.item_code)).map(i=>({id:i.item_code,label:i.item_name+' · '+i.base_unit}))} onChange={v=>selectItem(n,String(v??''))} onCreate={canAddProduct?q=>{setNewProductName(q);setNewProductLine(n)}:undefined}/>{canAddProduct?<Button title={'+ New Product for line '+(n+1)} disabled={busy} onPress={()=>{setNewProductName('');setNewProductLine(n)}}/>:null}</View>
- <View style={{flex:1,minWidth:140}}><Field label="Quantity" numeric value={l.quantity} onChange={v=>change(n,'quantity',v)}/></View>
- <View style={{flex:1,minWidth:150}}><Field label="Unit price (optional)" numeric value={l.unit_price} onChange={v=>change(n,'unit_price',v)}/></View>
- {lines.length>1?<View style={{paddingTop:26}}><Button title="Remove line" disabled={busy} onPress={()=>setLines(ls=>ls.filter((_,i)=>i!==n))}/></View>:null}
- </View></ScrollView></View>)}
+ <View style={S.card}><StockLineTable columns={orderColumns} rows={lines.map((l,n)=>({key:n,cells:[
+   <View style={{gap:8}}><Select hideLabel label={'Product '+(n+1)} value={l.item_code}
+     options={orderItems.filter(i=>!lines.some((x,j)=>j!==n&&x.item_code===i.item_code)).map(i=>({id:i.item_code,label:i.item_name+' · '+i.base_unit}))}
+     onChange={v=>selectItem(n,String(v??''))} onCreate={canAddProduct?q=>{setNewProductName(q);setNewProductLine(n)}:undefined}/>
+     {canAddProduct?<Button title={'+ New Product for line '+(n+1)} disabled={busy} onPress={()=>{setNewProductName('');setNewProductLine(n)}}/>:null}</View>,
+   <Field hideLabel label="Quantity" numeric value={l.quantity} onChange={v=>change(n,'quantity',v)}/>,
+   <Field hideLabel label="Unit price (optional)" numeric value={l.unit_price} onChange={v=>change(n,'unit_price',v)}/>,
+   lines.length>1?<Button title="Remove line" disabled={busy} onPress={()=>setLines(ls=>ls.filter((_,i)=>i!==n))}/>:null,
+ ]}))}/></View>
  <View style={S.row}><Button title="Add product" disabled={busy||lines.length>=30} onPress={()=>setLines(ls=>[...ls,blank()])}/></View>
  {editing?<Field label="Reason for correction / cancellation" value={reason} onChange={setReason}/>:null}
  <View style={S.row}><Button title={editing?'Save Changes':'Save Draft'} disabled={busy} onPress={()=>void save('save')}/>{!editing||!['approved','applied'].includes(editing.status)?<Button title="Submit for Approval" disabled={busy} onPress={()=>void save('submit')}/>:null}{editing&&context?.access.is_stock?<Button title="Cancel PO" disabled={busy} onPress={()=>void command('cancel',editing,{reason})}/>:null}</View>

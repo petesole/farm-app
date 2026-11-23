@@ -1,12 +1,19 @@
 import {useCallback, useEffect, useState} from 'react';
 import {useFocusEffect,useLocalSearchParams,useRouter} from 'expo-router';
-import {ScrollView, Text, TextInput, View} from 'react-native';
+import {ScrollView, Text, View} from 'react-native';
 import {purchaseOrderApproval,stockLocation} from '@/utils/stock-navigation';
 import {StockV2Header} from '@/components/jspl/StockV2Header';
+import {StockLineTable} from '@/components/jspl/StockLineTable';
 import {JobPartQuotes} from '@/components/jspl/JobPartQuotes';
 import {StockButton, StockDateField, StockField, StockRecovery, StockSelect, stockStyles as styles} from '@/components/jspl/StockWorkflowControls';
 import {stockMutation, stockRequest} from '@/utils/stock-workflow';
 import {displayJsplDate,parseJsplDateInput} from '@/utils/jspl-input';
+
+const partColumns = [
+  {label:'Category',width:150,grow:1}, {label:'Part',width:210,grow:2},
+  {label:'Qty',width:72}, {label:'Unit price',width:96}, {label:'Supplier',width:165,grow:1},
+  {label:'',width:80}, {label:'',width:92},
+];
 
 type Part = {part_id?:number;category_id:number|null;item_code:string;quantity:string;unit_price:string;price_supplier_id:string|null;sample_details:string;line_purpose:string};
 type CardType='general'|'asset'|'irrigation';
@@ -277,8 +284,7 @@ export default function JobCards() {
     if(opened){showList(currentList);closeDetails();return;}
     if(returnToMenu){showList(null);return;}
   }
-  const rowStyle={flexDirection:'row' as const,alignItems:'flex-start' as const,gap:8};
-  const columns=[185,255,84,105,205];
+
 
   return <ScrollView contentContainerStyle={styles.page}>
     <StockV2Header title={editing?(editingCard?'Edit Job Card':'New Job Card'):opened?'Job Card details':list==='outstanding'?outstandingTitle:list?listTitle:'Job Cards'} dashboard allowMain={data?.can_main}
@@ -307,34 +313,29 @@ export default function JobCards() {
       {asset?<Text style={styles.muted}>Owner · {asset.owner_name}{asset.farm_name?' · '+asset.farm_name:''}</Text>:null}
       <StockDateField label="Transaction date" value={date} onChange={setDate}/>
       <StockField label={usingAsset?'Problem description':'Purpose'} value={description} onChange={setDescription}/>
-      <ScrollView horizontal keyboardShouldPersistTaps="handled">
-        <View style={{gap:8}}>
-          <View style={rowStyle}>{['Category','Part','Qty','Unit price','Supplier'].map((label,index)=><Text key={label} style={[styles.text,{width:columns[index]}]}>{label}</Text>)}</View>
-          {parts.map((part,index)=>{
-            const stockOnly=categoryFor(part.category_id)?.stock_only===true;
-            const items=stockItems.filter(i=>stockOnly?i.stock_lubricant:
-              i.item_code===part.item_code||(!i.stock_lubricant&&part.category_id!==null&&i.category_ids.includes(part.category_id)));
-            return <View key={index} style={rowStyle}>
-            <View style={{width:columns[0]}}><StockSelect label={'Category '+(index+1)} value={part.category_id}
-              options={categories.filter(c=>!c.stock_only||c.category_name==='Lubricants'||c.category_id===part.category_id).map(c=>({id:c.category_id,label:c.category_name}))}
-              onChange={value=>void selectCategory(index,value)}
-              createLabel="+ Add category" onCreate={name=>setCatalogueEdit({mode:'category',index,name,number:'',unit:''})}/></View>
-            <View style={{width:columns[1]}}><StockSelect label={(stockOnly?'Stock Input ':'Part ')+(index+1)} value={part.item_code} disabled={!part.category_id}
-              options={items.map(item=>({id:item.item_code,label:stockOnly?item.item_name+' · '+item.item_code:[item.part_number,item.item_name].filter(Boolean).join(' · ')}))}
-              onChange={value=>editPart(index,{item_code:String(value??'')})}
-              createLabel="+ Add part" onCreate={stockOnly?undefined:name=>setCatalogueEdit({mode:'part',index,name,number:'',unit:'each'})}/>
-              {stockOnly?<Text style={styles.muted}>Add missing lubricants in Stock Balances → New Product.</Text>:null}</View>
-            <TextInput accessibilityLabel={'Qty '+(index+1)} value={part.quantity} keyboardType="decimal-pad"
-              onChangeText={quantity=>editPart(index,{quantity})} style={[styles.input,{width:columns[2],minWidth:0}]}/>
-            <TextInput accessibilityLabel={'Unit price '+(index+1)} value={part.unit_price} keyboardType="decimal-pad"
-              placeholder="Optional" onChangeText={unit_price=>editPart(index,{unit_price,...(!unit_price.trim()?{price_supplier_id:null}:{})})} style={[styles.input,{width:columns[3],minWidth:0}]}/>
-            <View style={{width:columns[4]}}>{part.unit_price.trim()?<StockSelect label={'Supplier for price '+(index+1)} value={part.price_supplier_id}
-              options={supplierOptions(priorLine(part))} onChange={value=>editPart(index,{price_supplier_id:value==null?null:String(value)})}/>:null}</View>
-            <StockButton title="Details" onPress={()=>setLineDetails(lineDetails===index?null:index)}/>
-            <StockButton title="Remove" disabled={busy} onPress={()=>{setCatalogueEdit(null);setParts(lines=>lines.filter((_,offset)=>offset!==index));}}/>
-          </View>;})}
-        </View>
-      </ScrollView>
+      <StockLineTable columns={partColumns} rows={parts.map((part,index)=>{
+        const stockOnly=categoryFor(part.category_id)?.stock_only===true;
+        const items=stockItems.filter(i=>stockOnly?i.stock_lubricant:
+          i.item_code===part.item_code||(!i.stock_lubricant&&part.category_id!==null&&i.category_ids.includes(part.category_id)));
+        return {key:index,cells:[
+          <StockSelect hideLabel label={'Category '+(index+1)} value={part.category_id}
+            options={categories.filter(c=>!c.stock_only||c.category_name==='Lubricants'||c.category_id===part.category_id).map(c=>({id:c.category_id,label:c.category_name}))}
+            onChange={value=>void selectCategory(index,value)}
+            createLabel="+ Add category" onCreate={name=>setCatalogueEdit({mode:'category',index,name,number:'',unit:''})}/>,
+          <View><StockSelect hideLabel label={(stockOnly?'Stock Input ':'Part ')+(index+1)} value={part.item_code} disabled={!part.category_id}
+            options={items.map(item=>({id:item.item_code,label:stockOnly?item.item_name+' · '+item.item_code:[item.part_number,item.item_name].filter(Boolean).join(' · ')}))}
+            onChange={value=>editPart(index,{item_code:String(value??'')})}
+            createLabel="+ Add part" onCreate={stockOnly?undefined:name=>setCatalogueEdit({mode:'part',index,name,number:'',unit:'each'})}/>
+            {stockOnly?<Text style={styles.muted}>Add missing lubricants in Stock Balances → New Product.</Text>:null}</View>,
+          <StockField hideLabel numeric label={'Qty '+(index+1)} value={part.quantity} onChange={quantity=>editPart(index,{quantity})}/>,
+          <StockField hideLabel numeric label={'Unit price '+(index+1)} value={part.unit_price} placeholder="Optional"
+            onChange={unit_price=>editPart(index,{unit_price,...(!unit_price.trim()?{price_supplier_id:null}:{})})}/>,
+          part.unit_price.trim()?<StockSelect hideLabel label={'Supplier for price '+(index+1)} value={part.price_supplier_id}
+            options={supplierOptions(priorLine(part))} onChange={value=>editPart(index,{price_supplier_id:value==null?null:String(value)})}/>:null,
+          <StockButton title="Details" onPress={()=>setLineDetails(lineDetails===index?null:index)}/>,
+          <StockButton title="Remove" disabled={busy} onPress={()=>{setCatalogueEdit(null);setParts(lines=>lines.filter((_,offset)=>offset!==index));}}/>,
+        ]};
+      })}/>
       {lineDetails!==null&&parts[lineDetails]?<View style={styles.card}>
         <StockField label={'Line '+(lineDetails+1)+' purpose'} value={parts[lineDetails].line_purpose} onChange={line_purpose=>editPart(lineDetails,{line_purpose})}/>
         <StockField label="Sample or collection instructions" value={parts[lineDetails].sample_details} onChange={sample_details=>editPart(lineDetails,{sample_details})}/>
@@ -392,13 +393,15 @@ export default function JobCards() {
         {part.line_purpose&&part.line_purpose!==card.work_description?<Text style={styles.muted}>{part.line_purpose}</Text>:null}
         {part.part_number?<Text style={styles.muted}>Part number · {part.part_number}</Text>:null}
         <Text style={styles.text}>{part.unit_price===null?'Unit price pending':'Unit price · '+Number(part.unit_price).toFixed(2)+' · '+(part.price_supplier_name||'Supplier not recorded')}</Text>
-        {data.can_buy&&!card.closed_at?(priceEdit?.id===part.part_id?<View style={styles.row}>
-          <StockField label="Unit price" value={priceEdit.value} numeric onChange={value=>setPriceEdit({...priceEdit,value,supplier:value.trim()?priceEdit.supplier:null})}/>
-          {priceEdit.value.trim()?<StockSelect label="Supplier for price" value={priceEdit.supplier} options={supplierOptions(part)}
-            onChange={value=>setPriceEdit({...priceEdit,supplier:value==null?null:String(value)})}/>:null}
-          <StockButton title="Save price" disabled={busy||!priceReady(priceEdit.value,priceEdit.supplier,part)} onPress={()=>void savePrice()}/>
-          <StockButton title="Cancel" disabled={busy} onPress={()=>setPriceEdit(null)}/>
-        </View>:<StockButton title="Edit unit price" disabled={busy} onPress={()=>setPriceEdit({id:part.part_id,value:String(part.unit_price??''),supplier:part.price_supplier_id??null})}/>):null}
+        {data.can_buy&&!card.closed_at?(priceEdit?.id===part.part_id?<StockLineTable
+          columns={[{label:'Unit price',width:100},{label:'Supplier',width:190,grow:1},{label:'',width:112},{label:'',width:86}]}
+          rows={[{key:part.part_id,cells:[
+            <StockField hideLabel label="Unit price" value={priceEdit.value} numeric onChange={value=>setPriceEdit({...priceEdit,value,supplier:value.trim()?priceEdit.supplier:null})}/>,
+            priceEdit.value.trim()?<StockSelect hideLabel label="Supplier for price" value={priceEdit.supplier} options={supplierOptions(part)}
+              onChange={value=>setPriceEdit({...priceEdit,supplier:value==null?null:String(value)})}/>:null,
+            <StockButton title="Save price" disabled={busy||!priceReady(priceEdit.value,priceEdit.supplier,part)} onPress={()=>void savePrice()}/>,
+            <StockButton title="Cancel" disabled={busy} onPress={()=>setPriceEdit(null)}/>,
+          ]}]}/>:<StockButton title="Edit unit price" disabled={busy} onPress={()=>setPriceEdit({id:part.part_id,value:String(part.unit_price??''),supplier:part.price_supplier_id??null})}/>):null}
         {part.direct_expense?<Text style={styles.muted}>Direct expense</Text>:null}
         <Text style={styles.muted}>{part.reserved} {part.unit} reserved · {part.issued} {part.unit} issued</Text>
         {part.cancelled_quantity?<Text style={styles.muted}>{part.cancelled_quantity} {part.unit} cancelled · {part.cancellation_reason}{part.cancelled_at?' · '+displayJsplDate(part.cancelled_at.slice(0,10)):''}</Text>:null}
@@ -430,7 +433,7 @@ export default function JobCards() {
         </> : <StockButton title="Manage reservation" disabled={busy} onPress={()=>{setReservationPart(part.part_id);setReservationQuantity('');setReservationOwner('');}}/>)}
       </View>;})}
       {card.purchase_orders.map(order => <View key={order.request_number} style={styles.row}>
-        <Text style={styles.muted}>{order.order_number ?? 'PO Request ' + order.request_number} · {order.owner_code} · {order.status==='applied'?'Approved':order.status==='pending'?'Awaiting Admin approval':order.status}</Text>
+        <Text style={[styles.muted,{flex:1}]}>{order.order_number ?? 'PO Request ' + order.request_number} · {order.owner_code} · {order.status==='applied'?'Approved':order.status==='pending'?'Awaiting Admin approval':order.status}</Text>
         {canApprove&&order.status==='pending'?<StockButton title={'Review & Approve PO '+order.request_number} onPress={()=>router.push(purchaseOrderApproval(returnTo,String(order.request_number)))}/>:null}
       </View>)}
       {data.can_buy&&!card.closed_at ? [...new Set(card.parts.filter(part=>!part.direct_expense&&(part.remaining_quantity??part.quantity-part.issued-(part.cancelled_quantity??0))>part.reserved).map(part => part.owner_code))].map(owner => (

@@ -164,7 +164,7 @@ export default function GRVOutstanding(){
   {!!supplier?<View style={s.panel}>
   <ThemedText style={s.label}>Outstanding documents — tick the lines included in this {type==="grv"?"invoice":"delivery note"}</ThemedText>
   <ScrollView horizontal><View style={{minWidth:1040}}>
-   <View style={s.trow}>{["Select","Document","Date (dd/mm/yyyy)","Product","Ordered / Received","PO Price","Actual Qty","Actual Price"].map((h,i)=><ThemedText key={h} style={[s.tcell,i===3&&s.wide,s.bold]}>{h}</ThemedText>)}</View>
+   <View style={s.trow}>{["Select","Document","Date (dd/mm/yyyy)","Product","Ordered / Received","PO Price","Actual Qty","Actual Price"].map(h=><ThemedText key={h} style={[s.tcell,h==="Product"&&s.wide,s.bold]}>{h}</ThemedText>)}</View>
    {type==="grv"?outstandingDN.map(x=>{const key="DN:"+x.line_id,e=chosen[key],r:Chosen={kind:"DN",key,item_code:x.item_code,quantity:String(x.quantity),price:"",source:x.document_id,max:x.quantity};return <View key={key} style={s.trow}>
      <Pressable style={s.tcell} onPress={()=>pick(r)}><ThemedText style={{fontSize:22,color:jsplColors.primary}}>{e?"☑":"☐"}</ThemedText></Pressable>
      <ThemedText style={s.tcell}>{shortDNote(x.delivery_note,x.document_id)}</ThemedText><ThemedText style={s.tcell}>{shortDate(x.delivery_note_date||x.document_date)}</ThemedText>

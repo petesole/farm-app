@@ -25,9 +25,9 @@ export function CashBookHistory({entries,notes,balances,busy,accountName,actions
     <View style={styles.card}><Text style={styles.title}>Current balance</Text>
       {balances.length?balances.map(b=><Text key={b.currency} style={styles.text}>{b.currency} {b.balance}</Text>):<Text style={styles.muted}>No cash account balance recorded.</Text>}
     </View>
-    <View style={styles.row}>
-      <StockDateField label="Date from" value={from} onChange={v=>{setFrom(v);setSelected(null);}}/>
-      <StockDateField label="Date to" value={to} onChange={v=>{setTo(v);setSelected(null);}}/>
+    <View style={[styles.row,{alignItems:'flex-start',flexWrap:'nowrap'}]}>
+      <View style={{flex:1,minWidth:0}}><StockDateField label="Date from" value={from} onChange={v=>{setFrom(v);setSelected(null);}}/></View>
+      <View style={{flex:1,minWidth:0}}><StockDateField label="Date to" value={to} onChange={v=>{setTo(v);setSelected(null);}}/></View>
     </View>
     {invalid?<Text style={styles.error}>{start&&end&&start>end?'Date from must be on or before Date to.':'Enter a valid date or leave the filter blank.'}</Text>:null}
     {!invalid&&rows.length===0?<Text style={styles.muted}>No transactions in this date range.</Text>:null}

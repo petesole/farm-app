@@ -1,3 +1,4 @@
+import {StockLineTable} from '@/components/jspl/StockLineTable';
 import {stockV2Endpoint} from "@/utils/stock-v2-endpoint";
 import {StockRecovery} from "@/components/jspl/StockWorkflowControls";
 import {stockContext,stockMutation,stockUUID,ApprovalDocument} from "@/utils/stock-workflow";
@@ -101,7 +102,12 @@ export default function SupplierCredits(){
      {available.map(l=>{const left=value(l.quantity)-value(l.credited_quantity);const edit=edits[l.line_id];return <View key={l.line_id} style={styles.panel}>
       <Pressable onPress={()=>add(l)}><Text style={styles.bold}>{edit?"☑ ":"☐ "}{l.ret.document_number} · {l.item_name}</Text></Pressable>
       <Text>Outstanding {left} · Expected ${value(l.agreed_price).toFixed(2)}/unit</Text>
-      {edit?<View style={styles.row}><View style={styles.flex}><Text style={styles.label}>Quantity</Text><TextInput style={styles.input} keyboardType="decimal-pad" value={edit.qty} onChangeText={qty=>setEdits(v=>({...v,[l.line_id]:{...v[l.line_id],qty}}))}/></View><View style={styles.flex}><Text style={styles.label}>Actual credit $/unit</Text><TextInput style={styles.input} keyboardType="decimal-pad" value={edit.price} onChangeText={price=>setEdits(v=>({...v,[l.line_id]:{...v[l.line_id],price}}))}/></View><Pressable onPress={()=>setEdits(v=>{const next={...v};delete next[l.line_id];return next})}><Text style={styles.link}>Remove</Text></Pressable></View>:null}
+      {edit?<StockLineTable columns={[{label:'Quantity',width:94,grow:1},{label:'Actual credit $/unit',width:140,grow:1},{label:'',width:75}]}
+        rows={[{key:l.line_id,cells:[
+          <StockField hideLabel numeric label="Quantity" value={edit.qty} onChange={qty=>setEdits(v=>({...v,[l.line_id]:{...v[l.line_id],qty}}))}/>,
+          <StockField hideLabel numeric label="Actual credit $/unit" value={edit.price} onChange={price=>setEdits(v=>({...v,[l.line_id]:{...v[l.line_id],price}}))}/>,
+          <Pressable accessibilityRole="button" style={{minHeight:46,justifyContent:'center'}} onPress={()=>setEdits(v=>{const next={...v};delete next[l.line_id];return next})}><Text style={styles.link}>Remove</Text></Pressable>,
+        ]}]}/>:null}
      </View>})}
      <Text style={styles.bold}>Selected line credit value: ${expected.toFixed(2)}</Text><Text>Enter the actual supplier credit total below. Any difference must be explained in Notes.</Text>
     </>:null}

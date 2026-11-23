@@ -2,11 +2,13 @@ import {useCallback,useEffect,useState} from 'react';
 import {useFocusEffect,useLocalSearchParams} from 'expo-router';
 import {ScrollView,Text,View} from 'react-native';
 import {StockV2Header} from '@/components/jspl/StockV2Header';
+import {StockLineTable} from '@/components/jspl/StockLineTable';
 import {CashBookHistory,type CashEntry as Entry,type QuickNote,type CashBalance} from '@/components/jspl/CashBookHistory';
 import {StockButton,StockDateField,StockField,StockRecovery,StockSelect,stockStyles as styles} from '@/components/jspl/StockWorkflowControls';
 import {displayJsplDate,parseJsplDateInput} from '@/utils/jspl-input';
 import {stockMutation,stockRequest} from '@/utils/stock-workflow';
 
+const expenseColumns=[{label:'Job Card expense',width:215,grow:2},{label:'Allocated amount',width:145,grow:1},{label:'',width:92}];
 type Account={id:string;name:string;currency:string;balance:string;active:boolean};
 type Trip={id:string;trip_number:number;trip_date:string;driver_name:string};
 type Advance={id:string;trip_id:string;account_id:string;amount:string;currency:string;outstanding:string;spend?:string;cash_returned?:string;receipt_reference?:string;settled_date?:string;
@@ -171,7 +173,7 @@ export default function CashBook(){
               .map(invoice=>({id:invoice.id,label:invoice.invoice_number+' · '+invoice.supplier_name+' · '+invoice.available+' available'}))}
               onChange={value=>{if(value!==null)setSettlement(current=>({...current,invoices:[...current.invoices,{grv_id:String(value),amount:''}]}));}}
               disabled={busy||settlement.invoices.length>=30}/>
-            {settlement.invoices.map(invoice=><View key={invoice.grv_id} style={styles.row}>
+            {settlement.invoices.map(invoice=><View key={invoice.grv_id} style={[styles.row,{alignItems:'flex-end'}]}>
               <StockField label={'Paid on '+(data.tripInvoices.find(row=>row.id===invoice.grv_id)?.invoice_number??'invoice')}
                 value={invoice.amount} numeric onChange={amount=>setSettlement(current=>({...current,invoices:current.invoices.map(row=>row.grv_id===invoice.grv_id?{...row,amount}:row)}))}/>
               <StockButton title="Remove" disabled={busy} onPress={()=>setSettlement(current=>({...current,invoices:current.invoices.filter(row=>row.grv_id!==invoice.grv_id)}))}/>
@@ -222,7 +224,7 @@ export default function CashBook(){
       {labourRows.map(row=>{
         const key=rowKey(row),selected=selectedLabour.includes(key);
         return <View key={key} style={styles.row}>
-          <Text style={styles.text}>{row.tracecode_name} · {row.activity_name} · {row.amount}</Text>
+          <Text style={[styles.text,{flex:1}]}>{row.tracecode_name} · {row.activity_name} · {row.amount}</Text>
           <StockButton title={selected?'Remove':'Select'} disabled={busy||(!selected&&selectedLabour.length>=100)}
             onPress={()=>setSelectedLabour(current=>selected?current.filter(id=>id!==key):[...current,key])}/>
         </View>;
@@ -253,11 +255,11 @@ export default function CashBook(){
         <StockDateField label="Transaction date (dd/mm/yyyy)" value={draft.entry_date} onChange={value=>editDraft('entry_date',value)}/>
         <StockDateField label="Value date (optional)" value={draft.value_date} onChange={value=>editDraft('value_date',value)}/>
         {draft.kind==='payment'&&data.expenses?.length?<View style={styles.card}>
-          {expenseLines.map((line,index)=><View key={index} style={styles.row}>
-            <StockSelect label="Job Card expense" value={line.part_id||null} options={data.expenses.filter(e=>!expenseLines.some((l,n)=>n!==index&&l.part_id===e.id)).map(e=>({id:e.id,label:'Job Card '+e.job_number+' · '+e.tracecode_name+' · '+e.item_name}))} onChange={v=>setExpenseLines(lines=>lines.map((l,n)=>n===index?{...l,part_id:String(v??'')}:l))}/>
-            <StockField label="Allocated amount" numeric value={line.amount} onChange={amount=>setExpenseLines(lines=>lines.map((l,n)=>n===index?{...l,amount}:l))}/>
-            <StockButton title="Remove" onPress={()=>setExpenseLines(lines=>lines.filter((_,n)=>n!==index))}/>
-          </View>)}
+          {expenseLines.length>0?<StockLineTable columns={expenseColumns} rows={expenseLines.map((line,index)=>({key:index,cells:[
+            <StockSelect hideLabel label="Job Card expense" value={line.part_id||null} options={data.expenses.filter(e=>!expenseLines.some((l,n)=>n!==index&&l.part_id===e.id)).map(e=>({id:e.id,label:'Job Card '+e.job_number+' · '+e.tracecode_name+' · '+e.item_name}))} onChange={v=>setExpenseLines(lines=>lines.map((l,n)=>n===index?{...l,part_id:String(v??'')}:l))}/>,
+            <StockField hideLabel label="Allocated amount" numeric value={line.amount} onChange={amount=>setExpenseLines(lines=>lines.map((l,n)=>n===index?{...l,amount}:l))}/>,
+            <StockButton title="Remove" onPress={()=>setExpenseLines(lines=>lines.filter((_,n)=>n!==index))}/>,
+          ]}))}/>:null}
           <StockButton title="Allocate to a Job Card" onPress={()=>setExpenseLines(lines=>[...lines,{part_id:'',amount:String(Math.max(0,Number(draft.amount)-lines.reduce((s,l)=>s+Number(l.amount),0))||'')}])}/>
         </View>:null}
         <StockField label="Reference" value={draft.reference} onChange={value=>editDraft('reference',value)}/>

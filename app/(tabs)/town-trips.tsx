@@ -98,7 +98,7 @@ export default function TownTrips(){
         options={eligible.filter(order=>!orders.includes(order.order_id)).map(order=>({id:order.order_id,label:[order.order_number,order.supplier_name??'Supplier to be confirmed',order.payment_terms].filter(Boolean).join(' · ')}))}
         onChange={value=>{if(value!==null)setOrders(current=>[...current,Number(value)]);}} disabled={busy||orders.length>=30}/>
       {orders.map(id=><View key={id} style={styles.row}>
-        <Text style={styles.text}>{eligible.find(order=>order.order_id===id)?.order_number??selectedTrip?.orders.find(order=>Number(order.order_id)===id)?.order_number??'Order unavailable'}</Text>
+        <Text style={[styles.text,{flex:1}]}>{eligible.find(order=>order.order_id===id)?.order_number??selectedTrip?.orders.find(order=>Number(order.order_id)===id)?.order_number??'Order unavailable'}</Text>
         <StockButton title="Remove" disabled={busy||!!selectedTrip?.orders.some(order=>Number(order.order_id)===id&&order.outcome!=='pending')} onPress={()=>setOrders(current=>current.filter(order=>order!==id))}/>
       </View>)}
       <StockButton title={editor==='edit'?'Save changes':'Assign trip'} disabled={busy||!driver||!tripDate||!orders.length}

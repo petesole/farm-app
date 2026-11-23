@@ -45,7 +45,7 @@ export default function StockDashboard(){
       {preview!=='actual'?<Text style={stockStyles.muted}>Dashboard preview. Select My assigned roles to open a module.</Text>:null}
       <View style={{flexDirection:'row',flexWrap:'wrap',gap:jsplSpacing.lg}}>
         {modules.filter(m=>visible&&(m.route==="/job-cards"?(visible.is_stock||visible.is_buyer||visible.is_workshop):m.route==="/town-trips"?(visible.is_stock||visible.is_driver||visible.is_buyer):m.route==="/stock-v2-approvals"?visible.is_admin:m.route==="/buying"?(visible.is_admin||visible.is_buyer):m.route==="/stock-test"?visible.is_stock:visible.can_main)).map(module=><View key={module.route} style={{width:240,maxWidth:'100%'}}>
-          <JsplDashboardButton disabled={preview!=='actual'} title={module.title} description={module.description}
+          <JsplDashboardButton fillTile disabled={preview!=='actual'} title={module.title} description={module.description}
             alertCount={preview!=='actual'?undefined:module.route==='/stock-v2-approvals'?counts.po_approvals:module.route==='/outstanding-issues'?Object.values(counts).reduce((total,n)=>total+Number(n),0):undefined}
             icon={<MaterialIcons name={module.icon} size={28} color={jsplColors.primaryDark}/>}
             onPress={()=>router.push(module.route==='/stock-v2-approvals'?purchaseOrderApproval('/stock-dashboard'):{pathname:module.route,params:{from:'stock-dashboard'}})}/>
