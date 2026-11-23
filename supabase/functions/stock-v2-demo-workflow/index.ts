@@ -219,7 +219,7 @@ Deno.serve(async(req)=>{
     coalesce((select jsonb_agg(jsonb_build_object(
      'item_code',i.item_code,'item_name',i.item_name,'quantity',p.requested_quantity,'unit',i.base_unit,
      'owner_code',replace(o.owner_code,'TEST_',''),'owner_name',ic.company_name,'issue_enabled',coalesce(ic.enabled,false),'sample_details',p.sample_details,'line_purpose',p.line_purpose,'part_id',p.id,
-     'category_id',p.category_id,'unit_price',p.unit_price,'direct_expense',i.buying_direct_expense,'part_number',i.buying_part_number,
+     'category_id',p.category_id,'unit_price',p.unit_price,'price_supplier_id',p.price_supplier_id::text,'price_supplier_name',ps.supplier_name,'direct_expense',i.buying_direct_expense,'part_number',i.buying_part_number,
      'reserved',r.quantity,'issued',coalesce(u.issued_quantity,0),'repair_cost',u.repair_cost,
      'stock_sources',case when p.owner_id is null and j.vehicle_id is null and not i.buying_direct_expense and ${access.is_stock||access.is_buyer} then (
        select coalesce(jsonb_agg(jsonb_build_object('code',src.owner_code,'name',src.owner_name,'available',src.available) order by src.owner_name),'[]'::jsonb)
@@ -230,6 +230,7 @@ Deno.serve(async(req)=>{
       stock_v2.available_after_job_reservations(p.owner_id,p.item_id,
        (select location_id from stock_v2.location where location_code='TEST_WH'))) end) order by p.id)
      from stock_v2.job_card_part p join stock_v2.item i using(item_id) left join stock_v2.owner o using(owner_id)
+     left join stock_v2.supplier ps on ps.supplier_id=p.price_supplier_id
      left join stock_v2.issue_company ic on ic.owner_id=p.owner_id
      join stock_v2.job_part_reserved r on r.part_id=p.id
      left join stock_v2.job_part_usage u on u.part_id=p.id
@@ -239,7 +240,7 @@ Deno.serve(async(req)=>{
     order by j.job_number desc`;
    const canReserve=access.is_stock||access.is_buyer;
    if(!access.is_buyer&&!access.is_admin)return reply({cards,can_create:false,can_main:access.can_main,can_buy:access.is_admin,can_reserve:canReserve});
-   const [vehicles,items,categories,traces]=await Promise.all([
+   const [vehicles,items,categories,traces,suppliers]=await Promise.all([
     db`select v.vehicle_id::float8,v.vehicle_name,v.vehicle_type_id::float8,coalesce(t.type_name,'Unclassified') as vehicle_type,
      coalesce(t.type_code,'') as type_code,company.company_name as owner_name,company.stock_owner_code as owner_code,stock_v2.job_asset_group(v.vehicle_id) as catalogue_group,f.farm_name as farm_name
      from public.vehicle v left join public.vehicle_type t using(vehicle_type_id)
@@ -254,8 +255,9 @@ Deno.serve(async(req)=>{
       from stock_v2.buying_category order by category_name`,
     db`select t.tracecode_id::float8 as id,t.tracecode_name as name from public.tracecode t left join public.crop c using(crop_id)
       where t.end_date is null and (c.crop_name is null or upper(c.crop_name)='COS') order by t.tracecode_name`,
+    db`select supplier_id::text,supplier_name from stock_v2.supplier where active order by supplier_name`,
    ]);
-   return reply({cards,vehicles,items,categories,traces,can_create:access.is_buyer,can_main:access.can_main,can_buy:access.is_buyer||access.is_admin,can_reserve:canReserve});
+   return reply({cards,vehicles,items,categories,traces,suppliers,can_create:access.is_buyer,can_main:access.can_main,can_buy:access.is_buyer||access.is_admin,can_reserve:canReserve});
   }
   if(req.method==="GET"&&(access.is_workshop||access.is_driver)&&new URL(req.url).searchParams.has("workflow_operation")){
    const id=new URL(req.url).searchParams.get("workflow_operation");
@@ -1184,7 +1186,8 @@ left join lateral (
    const result=await transaction(async tx=>{
     const p=body.payload??{};
     if(body.action==="set_job_part_price"){
-     const [row]=await tx`update stock_v2.job_card_part set unit_price=${p.unit_price??null}::numeric
+     if(p.unit_price!=null&&!p.price_supplier_id)throw Error("Choose a supplier for the Job Card item price.");
+     const [row]=await tx`update stock_v2.job_card_part set unit_price=${p.unit_price??null}::numeric,price_supplier_id=${p.price_supplier_id??null}::bigint
        where id=${Number(p.part_id)} and exists(select from stock_v2.job_card j where j.id=job_id and j.closed_at is null) and (${p.unit_price??null}::numeric is null or ${p.unit_price??null}::numeric between 0 and 999999999)
        returning id`;
      if(!row)throw Error("Select an open Job Card and valid item price.");
@@ -1277,13 +1280,13 @@ left join lateral (
     }
     for(const part of parts){
       if(editing&&part.part_id){
-        const [saved]=await tx`update stock_v2.job_card_part p set item_id=i.item_id,category_id=${part.category_id},requested_quantity=${part.quantity},unit_price=${part.unit_price??null},sample_details=${part.sample_details?.trim()||null},line_purpose=${part.line_purpose?.trim()||description}
+        const [saved]=await tx`update stock_v2.job_card_part p set item_id=i.item_id,category_id=${part.category_id},requested_quantity=${part.quantity},unit_price=${part.unit_price??null},price_supplier_id=${part.price_supplier_id??null}::bigint,sample_details=${part.sample_details?.trim()||null},line_purpose=${part.line_purpose?.trim()||description}
           from stock_v2.item i where p.id=${part.part_id}::bigint and p.job_id=${job.id}::uuid and i.item_code=${part.item_code} and i.active returning p.id`;
         if(!saved)throw Error("Reload the Job Card before editing this line.");
         continue;
       }
-      const [line]=await tx`insert into stock_v2.job_card_part(job_id,item_id,requested_quantity,sample_details,category_id,unit_price,line_purpose)
-        select ${job.id}::uuid,item_id,${part.quantity},${part.sample_details?.trim()||null},${part.category_id},${part.unit_price??null},${part.line_purpose?.trim()||description}
+      const [line]=await tx`insert into stock_v2.job_card_part(job_id,item_id,requested_quantity,sample_details,category_id,unit_price,price_supplier_id,line_purpose)
+        select ${job.id}::uuid,item_id,${part.quantity},${part.sample_details?.trim()||null},${part.category_id},${part.unit_price??null},${part.price_supplier_id??null}::bigint,${part.line_purpose?.trim()||description}
         from stock_v2.item where item_code=${part.item_code} and active returning id`;
       if(!line)throw Error("Choose an active catalogue part.");
     }

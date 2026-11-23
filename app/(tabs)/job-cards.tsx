@@ -7,23 +7,24 @@ import {StockButton, StockDateField, StockField, StockRecovery, StockSelect, sto
 import {stockMutation, stockRequest} from '@/utils/stock-workflow';
 import {displayJsplDate,parseJsplDateInput} from '@/utils/jspl-input';
 
-type Part = {part_id?:number;category_id:number|null;item_code:string;quantity:string;unit_price:string;sample_details:string;line_purpose:string};
+type Part = {part_id?:number;category_id:number|null;item_code:string;quantity:string;unit_price:string;price_supplier_id:string|null;sample_details:string;line_purpose:string};
 type CardType='general'|'asset'|'irrigation';
 type Category={category_id:number;catalogue_group:string;category_name:string;stock_only:boolean};
 type AssetPurchase = {id:string;part_number?:string;item_code:string;item_name:string;active:boolean;document_date:string;supplier_name:string;receipt:string;unit_price:string|null};
 type JobCard = {
   id: string; job_number: number; vehicle_name: string; work_description: string; transaction_date:string; closed_at:string|null; revision:string;card_type:CardType;vehicle_id:number|null;tracecode_id:number|null;
-  parts: {category_id:number;line_purpose?:string;part_id: number; owner_code: string; owner_name?:string; issue_enabled?:boolean; item_code: string; item_name: string; quantity: number; reserved: number; issued: number; repair_cost: number|null; pending_cost: boolean; unit_price:number|null; direct_expense:boolean; part_number?:string; available?: number;stock_sources?:{code:string;name:string;available:number}[]; unit: string; sample_details?: string}[];
+  parts: {category_id:number;line_purpose?:string;part_id: number; owner_code: string; owner_name?:string; issue_enabled?:boolean; item_code: string; item_name: string; quantity: number; reserved: number; issued: number; repair_cost: number|null; pending_cost: boolean; unit_price:number|null; price_supplier_id:string|null; price_supplier_name:string|null; direct_expense:boolean; part_number?:string; available?: number;stock_sources?:{code:string;name:string;available:number}[]; unit: string; sample_details?: string}[];
   purchase_orders: {owner_code: string; status: string; order_number?: string; request_number: number}[];
 };
 type CardData = {
   cards: JobCard[]; can_create: boolean; can_main?: boolean; can_buy?: boolean; can_reserve?: boolean;
   items?: {item_code: string; item_name: string; base_unit: string;part_number:string|null;stock_lubricant:boolean;category_ids:number[]}[];
   categories?:Category[];
+  suppliers?:{supplier_id:string;supplier_name:string}[];
   traces?:{id:number;name:string}[];
   vehicles?: {vehicle_id: number; vehicle_name: string; vehicle_type_id:number|null; vehicle_type:string;type_code:string; owner_code:string|null;owner_name:string;catalogue_group:string;farm_name:string|null}[];
 };
-const newPart = (): Part => ({category_id:null,item_code:'',quantity:'1',unit_price:'',sample_details:'',line_purpose:''});
+const newPart = (): Part => ({category_id:null,item_code:'',quantity:'1',unit_price:'',price_supplier_id:null,sample_details:'',line_purpose:''});
 
 export default function JobCards() {
   const router = useRouter();
@@ -38,7 +39,7 @@ export default function JobCards() {
   const [cardType,setCardType]=useState<CardType>('asset');
   const [irrigationTarget,setIrrigationTarget]=useState<'trace'|'asset'>('trace');
   const [trace,setTrace]=useState<number|null>(null);
-  const [priceEdit,setPriceEdit]=useState<{id:number;value:string}|null>(null);
+  const [priceEdit,setPriceEdit]=useState<{id:number;value:string;supplier:string|null}|null>(null);
   const [catalogueEdit,setCatalogueEdit]=useState<{mode:'category'|'part';index:number;name:string;number:string;unit:string}|null>(null);
   const [vehicleType,setVehicleType]=useState('');
   const [vehicle, setVehicle] = useState<number|null>(null);
@@ -74,7 +75,7 @@ export default function JobCards() {
   },[editing,vehicle]);
 
   function editPart(index: number, changes: Partial<Part>) {
-    setParts(current => current.map((part, offset) => offset === index ? {...part, ...changes} : part));
+    setParts(current => current.map((part, offset) => offset === index ? {...part, ...(changes.item_code!==undefined&&changes.item_code!==part.item_code?{unit_price:'',price_supplier_id:null}:{}), ...changes} : part));
   }
 
   function closeForm() {
@@ -88,7 +89,7 @@ export default function JobCards() {
     setEditingCard(card);setCardType(card.card_type);setIrrigationTarget(card.vehicle_id?'asset':'trace');
     setVehicle(card.vehicle_id);setVehicleType(String(data?.vehicles?.find(v=>v.vehicle_id===card.vehicle_id)?.vehicle_type_id??''));setTrace(card.tracecode_id);
     setDate(displayJsplDate(card.transaction_date));setDescription(card.work_description);
-    setParts(card.parts.map(p=>({part_id:p.part_id,category_id:p.category_id,item_code:p.item_code,quantity:String(p.quantity),unit_price:String(p.unit_price??''),sample_details:p.sample_details??'',line_purpose:p.line_purpose??''})));
+    setParts(card.parts.map(p=>({part_id:p.part_id,category_id:p.category_id,item_code:p.item_code,quantity:String(p.quantity),unit_price:String(p.unit_price??''),price_supplier_id:p.price_supplier_id??null,sample_details:p.sample_details??'',line_purpose:p.line_purpose??''})));
     setHistory(false);setEditing(true);setError('');setConfirmClose(false);
   }
   async function finalise(card:JobCard){
@@ -98,7 +99,7 @@ export default function JobCards() {
   }
 
   async function save() {
-    if (busy) return;
+    if (busy || !valid) return;
     setBusy(true);
     setError('');
     setNotice('');
@@ -149,9 +150,24 @@ export default function JobCards() {
   const categoryFor=(id:number|null)=>categories.find(c=>c.category_id===id);
   const traces=(data?.traces??[]).filter(entry=>cardType!=='irrigation'||/^IRR/i.test(entry.name));
   const validPrice=(value:string)=>!value.trim()||(Number.isFinite(Number(value))&&Number(value)>=0&&Number(value)<=999999999);
+  const suppliers=(data?.suppliers??[]).map(s=>({id:s.supplier_id,label:s.supplier_name}));
+  type SavedPart=JobCard['parts'][number];
+  function supplierOptions(prior?:SavedPart) {
+    if(prior?.price_supplier_id && !suppliers.some(s=>s.id===prior.price_supplier_id))
+      return [...suppliers,{id:prior.price_supplier_id,label:prior.price_supplier_name+' (inactive)'}];
+    return suppliers;
+  }
+  function priceReady(value:string,supplier:string|null,prior?:SavedPart,allowLegacy=false) {
+    if(!validPrice(value))return false;
+    if(!value.trim())return true;
+    if(supplier && suppliers.some(s=>s.id===supplier))return true;
+    return !!prior && prior.unit_price!=null && Number(value)===Number(prior.unit_price)
+      && supplier===(prior.price_supplier_id??null) && (!!supplier||allowLegacy);
+  }
+  const priorLine=(part:Part)=>editingCard?.parts.find(p=>p.part_id===part.part_id&&p.item_code===part.item_code);
   const valid=!!parseJsplDateInput(date)&&(usingAsset?!!asset:!!trace)&&description.trim().length>0&&description.trim().length<=1000
     && parts.length>0&&parts.every(part=>part.category_id&&part.item_code&&Number(part.quantity)>=0.000001
-      &&Number(part.quantity)<=100000&&validPrice(part.unit_price))
+      &&Number(part.quantity)<=100000&&priceReady(part.unit_price,part.price_supplier_id,priorLine(part),true))
     && new Set(parts.map(part=>part.item_code)).size===parts.length;
 
   function resetDestination(){
@@ -194,11 +210,11 @@ export default function JobCards() {
     finally{setBusy(false);}
   }
   async function savePrice(){
-    if(!priceEdit||busy||!validPrice(priceEdit.value))return;
+    if(!priceEdit||busy||!priceReady(priceEdit.value,priceEdit.supplier,data?.cards.find(c=>c.id===opened)?.parts.find(p=>p.part_id===priceEdit.id)))return;
     setBusy(true);setError('');
     try{
       await stockMutation('job-card-price',{action:'set_job_part_price',payload:{
-        part_id:priceEdit.id,unit_price:priceEdit.value.trim()?Number(priceEdit.value):null}});
+        part_id:priceEdit.id,price_supplier_id:priceEdit.supplier,unit_price:priceEdit.value.trim()?Number(priceEdit.value):null}});
       setPriceEdit(null);await load();
     }catch(failure){setError((failure as Error).message);}
     finally{setBusy(false);}
@@ -216,13 +232,13 @@ export default function JobCards() {
     });
   }
   const rowStyle={flexDirection:'row' as const,alignItems:'flex-start' as const,gap:8};
-  const columns=[185,255,84,105];
+  const columns=[185,255,84,105,205];
 
   return <ScrollView contentContainerStyle={styles.page}>
     <StockV2Header title={editing?(editingCard?'Edit Job Card':'New Job Card'):history?opened?"Job Card details":"Historical Job Cards":"Job Cards"} dashboard={from!=='buying'&&from!=='stock'} allowMain={data?.can_main}
       backLabel={editing?'← Job Cards':history?(opened?'← Historical Job Cards':'← Job Cards'):from==='buying'?'← Buying':from==='direct-issue'?'← Direct Issue':undefined}
-      onStock={editing?()=>{if(!busy)closeForm();}:history?()=>{if(opened){setOpened(null);setQuotePart(null);setReservationPart(null);}else setHistory(false);}:from==='buying'?()=>router.replace('/buying'):from==='direct-issue'?()=>router.back():undefined}/>
-    {error ? <><Text style={styles.error}>{error}</Text><StockRecovery scope={reservationPart!==null?'job-reservation':'job-card'} onRecovered={() => void load()}/></> : null}
+      onStock={editing?()=>{if(!busy)closeForm();}:history?()=>{if(opened){setOpened(null);setPriceEdit(null);setQuotePart(null);setReservationPart(null);}else setHistory(false);}:from==='buying'?()=>router.replace('/buying'):from==='direct-issue'?()=>router.back():undefined}/>
+    {error ? <><Text style={styles.error}>{error}</Text><StockRecovery scope={reservationPart!==null?'job-reservation':priceEdit?'job-card-price':'job-card'} onRecovered={() => void load()}/></> : null}
     {notice ? <Text style={styles.success}>{notice}</Text> : null}
     {data&&!editing&&!history?<View style={styles.row}>
       {data.can_create?<StockButton title="New Job Card" onPress={()=>{setEditing(true);setDate(new Date().toLocaleDateString('en-GB'));setParts([newPart()]);setError('');setNotice('');}}/>:null}
@@ -245,7 +261,7 @@ export default function JobCards() {
       <StockField label={usingAsset?'Problem description':'Purpose'} value={description} onChange={setDescription}/>
       <ScrollView horizontal keyboardShouldPersistTaps="handled">
         <View style={{gap:8}}>
-          <View style={rowStyle}>{['Category','Part','Qty','Unit price'].map((label,index)=><Text key={label} style={[styles.text,{width:columns[index]}]}>{label}</Text>)}</View>
+          <View style={rowStyle}>{['Category','Part','Qty','Unit price','Supplier'].map((label,index)=><Text key={label} style={[styles.text,{width:columns[index]}]}>{label}</Text>)}</View>
           {parts.map((part,index)=>{
             const stockOnly=categoryFor(part.category_id)?.stock_only===true;
             const items=stockItems.filter(i=>stockOnly?i.stock_lubricant:
@@ -263,7 +279,9 @@ export default function JobCards() {
             <TextInput accessibilityLabel={'Qty '+(index+1)} value={part.quantity} keyboardType="decimal-pad"
               onChangeText={quantity=>editPart(index,{quantity})} style={[styles.input,{width:columns[2],minWidth:0}]}/>
             <TextInput accessibilityLabel={'Unit price '+(index+1)} value={part.unit_price} keyboardType="decimal-pad"
-              placeholder="Optional" onChangeText={unit_price=>editPart(index,{unit_price})} style={[styles.input,{width:columns[3],minWidth:0}]}/>
+              placeholder="Optional" onChangeText={unit_price=>editPart(index,{unit_price,...(!unit_price.trim()?{price_supplier_id:null}:{})})} style={[styles.input,{width:columns[3],minWidth:0}]}/>
+            <View style={{width:columns[4]}}>{part.unit_price.trim()?<StockSelect label={'Supplier for price '+(index+1)} value={part.price_supplier_id}
+              options={supplierOptions(priorLine(part))} onChange={value=>editPart(index,{price_supplier_id:value==null?null:String(value)})}/>:null}</View>
             <StockButton title="Details" onPress={()=>setLineDetails(lineDetails===index?null:index)}/>
             <StockButton title="Remove" disabled={busy} onPress={()=>{setCatalogueEdit(null);setParts(lines=>lines.filter((_,offset)=>offset!==index));}}/>
           </View>;})}
@@ -322,12 +340,14 @@ export default function JobCards() {
         <Text style={styles.text}>{part.item_name}{part.owner_code?' · '+(part.owner_name||part.owner_code):''} · {part.quantity} {part.unit}{part.sample_details ? ' · ' + part.sample_details : ''}</Text>
         {part.line_purpose&&part.line_purpose!==card.work_description?<Text style={styles.muted}>{part.line_purpose}</Text>:null}
         {part.part_number?<Text style={styles.muted}>Part number · {part.part_number}</Text>:null}
-        <Text style={styles.text}>{part.unit_price===null?'Unit price pending':'Unit price · '+Number(part.unit_price).toFixed(2)}</Text>
+        <Text style={styles.text}>{part.unit_price===null?'Unit price pending':'Unit price · '+Number(part.unit_price).toFixed(2)+' · '+(part.price_supplier_name||'Supplier not recorded')}</Text>
         {data.can_buy&&!card.closed_at?(priceEdit?.id===part.part_id?<View style={styles.row}>
-          <StockField label="Unit price" value={priceEdit.value} numeric onChange={value=>setPriceEdit({id:part.part_id,value})}/>
-          <StockButton title="Save price" disabled={busy||!validPrice(priceEdit.value)} onPress={()=>void savePrice()}/>
+          <StockField label="Unit price" value={priceEdit.value} numeric onChange={value=>setPriceEdit({...priceEdit,value,supplier:value.trim()?priceEdit.supplier:null})}/>
+          {priceEdit.value.trim()?<StockSelect label="Supplier for price" value={priceEdit.supplier} options={supplierOptions(part)}
+            onChange={value=>setPriceEdit({...priceEdit,supplier:value==null?null:String(value)})}/>:null}
+          <StockButton title="Save price" disabled={busy||!priceReady(priceEdit.value,priceEdit.supplier,part)} onPress={()=>void savePrice()}/>
           <StockButton title="Cancel" disabled={busy} onPress={()=>setPriceEdit(null)}/>
-        </View>:<StockButton title="Edit unit price" disabled={busy} onPress={()=>setPriceEdit({id:part.part_id,value:String(part.unit_price??'')})}/>):null}
+        </View>:<StockButton title="Edit unit price" disabled={busy} onPress={()=>setPriceEdit({id:part.part_id,value:String(part.unit_price??''),supplier:part.price_supplier_id??null})}/>):null}
         {part.direct_expense?<Text style={styles.muted}>Direct expense</Text>:null}
         <Text style={styles.muted}>{part.reserved} {part.unit} reserved · {part.issued} {part.unit} issued</Text>
         {part.issued>0 ? <Text style={styles.text}>

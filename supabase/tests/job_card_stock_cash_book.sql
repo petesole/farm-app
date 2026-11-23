@@ -5,6 +5,7 @@ set local statement_timeout='55s';
 do $accept$
 declare
   admin_user uuid; buyer uuid; driver uuid; stores uuid; vehicle bigint; own bigint; owner_code_text text;
+  inactive_price_supplier bigint;
   supplier_id_test bigint; supplier text; trace bigint; category bigint; part_item bigint; part bigint;
   job uuid:=gen_random_uuid(); quote uuid:=gen_random_uuid(); request_id uuid:=gen_random_uuid();
   authorisation uuid:=gen_random_uuid(); trip uuid:=gen_random_uuid(); receipt uuid:=gen_random_uuid();
@@ -64,6 +65,31 @@ begin
   insert into stock_v2.job_card(id,vehicle_id,work_description,requested_by) values(job,vehicle,'Replace worn bearing',buyer);
   insert into stock_v2.job_card_part(job_id,item_id,category_id,requested_quantity) values(job,part_item,category,2) returning id into part;
   if not exists(select from stock_v2.job_card_part where id=part and owner_id=own and unit_price is null) then raise exception 'Asset owner or optional price failed'; end if;
+  -- A quoted or zero price identifies its supplier. An unpriced request is valid.
+  begin
+    insert into stock_v2.job_card_part(job_id,item_id,category_id,requested_quantity,unit_price)
+      values(job,part_item,category,1,12);
+    raise exception 'A priced insert accepted no supplier';
+  exception when check_violation then
+    if sqlerrm <> 'Choose a supplier for the Job Card item price.' then raise; end if;
+  end;
+  begin
+    update stock_v2.job_card_part set unit_price=0 where id=part;
+    raise exception 'A zero price accepted no supplier';
+  exception when check_violation then
+    if sqlerrm <> 'Choose a supplier for the Job Card item price.' then raise; end if;
+  end;
+  insert into stock_v2.supplier(supplier_name,active) values(code,false) returning supplier_id into inactive_price_supplier;
+  begin
+    update stock_v2.job_card_part set unit_price=15,price_supplier_id=inactive_price_supplier where id=part;
+    raise exception 'An inactive price supplier was accepted';
+  exception when check_violation then
+    if sqlerrm <> 'Choose an active supplier for the Job Card item price.' then raise; end if;
+  end;
+  update stock_v2.job_card_part set unit_price=0,price_supplier_id=supplier_id_test where id=part;
+  if not exists(select from stock_v2.job_card_part p join stock_v2.supplier s on s.supplier_id=p.price_supplier_id
+    where p.id=part and p.unit_price=0 and s.supplier_name=supplier) then raise exception 'Price and supplier did not persist together'; end if;
+  update stock_v2.job_card_part set unit_price=null,price_supplier_id=null where id=part;
   insert into stock_v2.job_part_quote(id,part_id,supplier_id,quote_reference,quote_date,currency,unit_price,quoted_by)
     values(quote,part,supplier_id_test,code,day,'USD',15,admin_user);
   submitted:=stock_v2.buying_workflow_command(buyer,gen_random_uuid(),'submit',jsonb_build_object('id',request_id,'kind','po','payload',
