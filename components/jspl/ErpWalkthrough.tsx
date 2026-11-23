@@ -8,7 +8,7 @@ import {jsplColors as C} from '@/constants/jspl-design';
 import {stockRequest} from '@/utils/stock-workflow';
 
 const topics=[
-  {title:'Job Cards',route:'/job-cards',body:'Choose New Job Card, then General, Asset or Irrigation. For equipment, select Vehicle Type and an active owned asset. Add category, part and quantity on each line. The price can be added later. Use + beside an earlier equipment purchase to reuse the part.'},
+  {title:'Job Cards',route:'/job-cards',body:'Choose New Job Card, then General, Asset or Irrigation. For equipment, select Vehicle Type and an active owned asset. Add category, part and quantity on each line. The price can be added later. Use + beside an earlier equipment purchase to reuse the part. Outstanding Job Cards shows how many cards are open. Finalising a card moves it to Historical Job Cards.'},
   {title:'Buying',route:'/buying',body:'Start from a Job Card to carry its parts into a purchase order. Admin authorises the order and records payment terms. Enter the actual delivery in Receiving. Admin verifies the receipt before stock changes.'},
   {title:'Town Trips',route:'/town-trips',body:'Admin uses Add New Trip to assign authorised orders to a driver. Drivers open Historical Trips to report collections on their own trips. Outstanding trips appear in red. Collection alone does not change stock.'},
   {title:'Stock Operations',route:'/stock-test',body:'In Awaiting Approval, Admin verifies a physical receipt. For oils and grease, open the Buyer’s Job Card, reserve the quantity, then issue what was handed out. Use Direct Issue for petrol and select the equipment and field or trace.'},

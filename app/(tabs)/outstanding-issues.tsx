@@ -13,7 +13,7 @@ const issues=[
   {key:'invoices_pending',title:'Posted receipts waiting for invoices',route:'/stock-v2-grv-outstanding'},
   {key:'pending_collections',title:'Town Trip collections pending',route:'/town-trips',view:'history'},
   {key:'collected_outstanding',title:'Collected orders with quantities outstanding',route:'/town-trips',view:'history'},
-  {key:'outstanding_parts',title:'Job Card parts still to issue',route:'/job-cards',view:'history'},
+  {key:'outstanding_parts',title:'Job Card parts still to issue',route:'/job-cards',view:'outstanding'},
   {key:'cash_drafts',title:'Cash Book drafts awaiting review',route:'/cashbook',view:'history'},
   {key:'unreconciled_advances',title:'Trip advances awaiting reconciliation',route:'/cashbook',view:'trips'},
 ] as const;

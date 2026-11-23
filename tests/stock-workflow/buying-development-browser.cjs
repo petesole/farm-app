@@ -35,6 +35,7 @@ async function displayFixture(context,role){
     serviceFilter,{...petrol,item_code:'FUEL-OTHER',item_name:'Tractor hire',standalone_po:false},
   ];
   const serviceCard={...oilCard,id:'service-card',job_number:11,parts:[{...oilLine,part_id:31,item_code:'FILTER-A',item_name:'Service filter',unit:'each'}]};
+  const clearedCard={...oilCard,id:'cleared-card',job_number:8,closed_at:'2026-11-20T12:00:00Z'};
   const lookups={
     purchasing_feed:{items:poItems,orders:[]},
     workflow_context:{access,documents:[],stocktakes:[],awaiting:0},supplier_list:{suppliers:[]},
@@ -42,8 +43,8 @@ async function displayFixture(context,role){
     equipment_catalog:{rows:[{vehicle_id:2,vehicle_name:'Petrol bike',fuel_type:'PETROL'}]},chemical_actives:{rows:[]},
     snapshot:{issue_companies:[{owner_code:'JS',company_name:'JS Farm'},{owner_code:'C73',company_name:'Third company'}],items:[lubricant,petrol,mineral],sprays:[],documents:[],orders:[]},
     stock_access:{access},cash_book:book,
-    cash_book_supplier_invoices:{invoices:[],creditOptions:[]},outstanding_issues:{counts:{},returned:[]},
-    job_cards:{cards:[oilCard,serviceCard],suppliers:[{supplier_id:'61',supplier_name:'Screen supplier'},{supplier_id:'62',supplier_name:'Second supplier'}],can_create:buyer,can_buy:buyer||admin,can_main:admin,can_reserve:buyer||stores,
+    cash_book_supplier_invoices:{invoices:[],creditOptions:[]},outstanding_issues:{counts:{outstanding_parts:1},returned:[]},
+    job_cards:{cards:[oilCard,serviceCard,clearedCard],suppliers:[{supplier_id:'61',supplier_name:'Screen supplier'},{supplier_id:'62',supplier_name:'Second supplier'}],can_create:buyer,can_buy:buyer||admin,can_main:admin,can_reserve:buyer||stores,
       vehicles:[{vehicle_id:11,vehicle_name:'Screen test tractor',vehicle_type_id:4,vehicle_type:'Tractor',type_code:'TRA',owner_name:'Screen owner',owner_code:'JS',catalogue_group:'vehicle'}],
       items:[{item_code:'FILTER-A',item_name:'Service filter',base_unit:'each',part_number:'F-12',category_ids:[3]},{...lubricant,stock_lubricant:true,part_number:null,category_ids:[4]},{...lubricant,item_code:'EMPTY',item_name:'Hydraulic oil',quantity:0,stock_lubricant:true,part_number:null,category_ids:[4]}],
       categories:[{category_id:3,catalogue_group:'vehicle',category_name:'Filters'},{category_id:4,catalogue_group:'vehicle',category_name:'Lubricants',stock_only:true},{category_id:5,catalogue_group:'vehicle',category_name:'Oils',stock_only:true}],traces:[]},
@@ -61,7 +62,7 @@ async function displayFixture(context,role){
     else if(u.pathname==='/rest/v1/tracecode'||u.pathname==='/rest/v1/crop')response=[];
     else if(req.method()==='GET'&&u.pathname.endsWith('/stock-buying-development'))response=lookups[[...u.searchParams.keys()][0]||'snapshot'];
     else if(req.method()==='POST'&&buyer&&u.pathname.endsWith('/stock-buying-development')&&
-      ['create_job_card','edit_job_card','set_job_part_price'].includes(req.postDataJSON().action)){
+      ['create_job_card','edit_job_card','set_job_part_price','finalise_job_card'].includes(req.postDataJSON().action)){
       const {action,payload}=req.postDataJSON();
       const jobs=lookups.job_cards;
       const supplier=part=>{
@@ -69,7 +70,13 @@ async function displayFixture(context,role){
         assert(part.unit_price==null?!part.price_supplier_id:record);
         return record?.supplier_name??null;
       };
-      if(action==='set_job_part_price'){
+      if(action==='finalise_job_card'){
+        const {id,revision}=req.postDataJSON();
+        const card=jobs.cards.find(c=>c.id===id);
+        assert(card&&!card.closed_at&&card.revision===revision);
+        card.closed_at=new Date().toISOString();
+        response={success:true,result:{id,job_number:card.job_number}};
+      }else if(action==='set_job_part_price'){
         const part=jobs.cards.flatMap(card=>card.parts).find(p=>p.part_id===payload.part_id);
         Object.assign(part,{unit_price:payload.unit_price,price_supplier_id:payload.price_supplier_id,price_supplier_name:supplier(payload)});
         response={success:true,result:{id:part.part_id}};
@@ -108,7 +115,11 @@ async function displayFixture(context,role){
 }
 
 async function click(page, name) {
-  await page.getByRole('button').filter({has:page.getByText(name,{exact:true})}).last().click({timeout:20000});
+  try{
+    await page.getByRole('button').filter({has:page.getByText(name,{exact:true})}).last().click({timeout:20000});
+  }catch(error){
+    throw Error(name+' on '+page.url()+': '+error.message);
+  }
 }
 
 async function check(browser, role, width) {
@@ -199,12 +210,30 @@ async function check(browser, role, width) {
       await page.getByText(/Add payer/i).first().waitFor();
       await click(page,'← Cash Book');
       await click(page,'← Stock');
-      await Promise.all([page.waitForResponse(r=>r.url().includes('outstanding_issues=')&&r.ok()),click(page,'Outstanding Issues')]);
+      await Promise.all([page.waitForResponse(r=>r.url().includes('outstanding_issues=')&&r.ok()),page.getByRole('button',{name:/Outstanding Issues/}).click()]);
+      if(fixture){
+        await click(page,'Open workflow');
+        await page.getByText('Outstanding Job Cards (2)',{exact:true}).waitFor();
+        await click(page,'← Outstanding Issues');
+      }
       await click(page,'← Stock');
     }
     if(role!=='driver'){
       await click(page,'Job Cards');
+      if(fixture){
+        await click(page,'Outstanding Job Cards (2)');
+        await page.getByRole('button',{name:'Job Card 9 · Screen test tractor',exact:true}).waitFor();
+        await page.getByRole('button',{name:'Job Card 11 · Screen test tractor',exact:true}).waitFor();
+        assert.equal(await page.getByRole('button',{name:'Job Card 8 · Screen test tractor',exact:true}).count(),0);
+        await click(page,'← Job Cards');
+      }
       await click(page,'Historical Job Cards');
+      if(fixture){
+        await click(page,'Job Card 8 · Screen test tractor');
+        assert.equal(await page.getByRole('button',{name:'Edit Job Card',exact:true}).count(),0);
+        await click(page,'← Historical Job Cards');
+        assert.equal(await page.getByRole('button',{name:'Job Card 9 · Screen test tractor',exact:true}).count(),0);
+      }
       await click(page,'← Job Cards');
       if(role==='buyer'||role==='admin'){
         await click(page,'New Job Card');
@@ -272,7 +301,16 @@ async function check(browser, role, width) {
           await page.getByText('Unit price · 18.50 · Screen supplier',{exact:true}).waitFor();
           await click(page,'Edit unit price');await editPrice.fill('');await click(page,'Save price');
           await page.getByText('Unit price pending',{exact:true}).waitFor();
-          await click(page,'← Historical Job Cards');
+          await click(page,'← Outstanding Job Cards');
+          await page.getByText('Outstanding Job Cards (3)',{exact:true}).waitFor();
+          await click(page,'Job Card 10 · Screen test tractor');
+          await click(page,'Finalise Job Card');
+          await click(page,'Confirm finalisation');
+          await page.getByText('Outstanding Job Cards (2)',{exact:true}).waitFor();
+          assert.equal(await page.getByRole('button',{name:'Job Card 10 · Screen test tractor',exact:true}).count(),0);
+          await click(page,'← Job Cards');
+          await click(page,'Historical Job Cards');
+          await page.getByRole('button',{name:'Job Card 10 · Screen test tractor',exact:true}).waitFor();
         }
         await click(page,'← Job Cards');
       }
@@ -309,6 +347,7 @@ async function check(browser, role, width) {
       assert.equal(await secondType.inputValue(),'Chemical');
       await page.getByRole('textbox',{name:'Petrol — Equipment',exact:true}).waitFor();
       await click(page,'Issue lubricants from a Job Card');
+      await page.getByText('Outstanding Job Cards (2)',{exact:true}).waitFor();
       await click(page,'Job Card 9 · Screen test tractor');
       await click(page,'Manage reservation');
       const qty=page.getByRole('textbox',{name:'Quantity',exact:true});
@@ -335,6 +374,16 @@ async function check(browser, role, width) {
         assert.equal(await page.getByRole('button',{name:'Urea · kg',exact:true}).count(),0);
         assert.equal(await page.getByRole('button',{name:/New Product for line/}).count(),0);
       }
+    }
+    if(fixture&&role==='admin'){
+      await page.route('**/stock-buying-development?job_cards=1',route=>route.fulfill({
+        headers:{'access-control-allow-origin':'*','access-control-allow-headers':'*'},json:{cards:[],can_create:true,can_main:true},
+      }));
+      await page.goto(site+'/job-cards?view=history');
+      await page.getByText('No historical job cards.',{exact:true}).waitFor();
+      await click(page,'← Job Cards');
+      await click(page,'Outstanding Job Cards (0)');
+      await page.getByText('No outstanding job cards.',{exact:true}).waitFor();
     }
     for(const key of readings[role])assert(received.has(key),role+' did not load '+key);
     await page.waitForLoadState('networkidle');

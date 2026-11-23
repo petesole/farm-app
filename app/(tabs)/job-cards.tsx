@@ -34,7 +34,7 @@ export default function JobCards() {
   const [editingCard,setEditingCard]=useState<JobCard|null>(null);
   const [confirmClose,setConfirmClose]=useState(false);
   const [lineDetails,setLineDetails]=useState<number|null>(null);
-  const [history,setHistory]=useState(view==='history');
+  const [list,setList]=useState<'outstanding'|'history'|null>(null);
   const [opened,setOpened]=useState<string|null>(null);
   const [cardType,setCardType]=useState<CardType>('asset');
   const [irrigationTarget,setIrrigationTarget]=useState<'trace'|'asset'>('trace');
@@ -55,6 +55,11 @@ export default function JobCards() {
   const [quotePart,setQuotePart]=useState<number|null>(null);
   const [reservationQuantity, setReservationQuantity] = useState('');
   const [reservationOwner,setReservationOwner]=useState('');
+
+  useEffect(()=>{
+    setList(view==='outstanding'||view==='history'?view:null);
+    setOpened(null);
+  },[view]);
 
   const load = useCallback(async () => {
     try { setData(await stockRequest('?job_cards=1')); }
@@ -90,11 +95,18 @@ export default function JobCards() {
     setVehicle(card.vehicle_id);setVehicleType(String(data?.vehicles?.find(v=>v.vehicle_id===card.vehicle_id)?.vehicle_type_id??''));setTrace(card.tracecode_id);
     setDate(displayJsplDate(card.transaction_date));setDescription(card.work_description);
     setParts(card.parts.map(p=>({part_id:p.part_id,category_id:p.category_id,item_code:p.item_code,quantity:String(p.quantity),unit_price:String(p.unit_price??''),price_supplier_id:p.price_supplier_id??null,sample_details:p.sample_details??'',line_purpose:p.line_purpose??''})));
-    setHistory(false);setEditing(true);setError('');setConfirmClose(false);
+    setEditing(true);setError('');setConfirmClose(false);
   }
   async function finalise(card:JobCard){
     setBusy(true);setError('');
-    try{await stockMutation('job-card',{action:'finalise_job_card',id:card.id,revision:card.revision});setConfirmClose(false);await load();setNotice('Job Card '+card.job_number+' finalised.');}
+    try{
+      await stockMutation('job-card',{action:'finalise_job_card',id:card.id,revision:card.revision});
+      closeDetails();
+      setList('outstanding');
+      setData(undefined);
+      setNotice('Job Card '+card.job_number+' finalised and moved to Historical Job Cards.');
+      await load();
+    }
     catch(failure){setError((failure as Error).message);}finally{setBusy(false);}
   }
 
@@ -108,7 +120,7 @@ export default function JobCards() {
         action:editingCard?'edit_job_card':'create_job_card',
         payload:{...(editingCard?{id:editingCard.id,revision:editingCard.revision}:{}),card_type:cardType,vehicle_id:vehicle,tracecode_id:trace,work_description:description.trim(),transaction_date:parseJsplDateInput(date),parts:parts.map(({quantity,unit_price,...part})=>({...part,quantity:Number(quantity),unit_price:unit_price.trim()?Number(unit_price):null}))},
       });
-      closeForm();setHistory(true);setOpened(result.id);
+      closeForm();setList('outstanding');setOpened(result.id);
       setNotice('Job Card ' + result.job_number + ' saved.');
       await load();
     } catch (failure) {
@@ -231,18 +243,42 @@ export default function JobCards() {
       return empty>=0?lines.map((row,index)=>index===empty?line:row):lines.length<30?[...lines,line]:lines;
     });
   }
+  function closeDetails(){
+    setOpened(null);setPriceEdit(null);setQuotePart(null);setReservationPart(null);setConfirmClose(false);
+  }
+  const openCards=data?.cards.filter(card=>!card.closed_at)??[];
+  const card=data?.cards.find(entry=>entry.id===opened);
+  const currentList=card?(card.closed_at?'history':'outstanding'):list;
+  const listTitle=currentList==='history'?'Historical Job Cards':'Outstanding Job Cards';
+  const outstandingTitle=data?'Outstanding Job Cards ('+openCards.length+')':'Outstanding Job Cards';
+  const listedCards=currentList==='history'?(data?.cards.filter(card=>card.closed_at)??[]):openCards;
+  const sourceBack=from==='outstanding-issues'
+    ?{label:'← Outstanding Issues',go:()=>router.replace({pathname:'/outstanding-issues',params:{from:'stock-dashboard'}})}
+    :from==='direct-issue'
+    ?{label:'← Direct Issue',go:()=>router.replace({pathname:'/stock-test',params:{operation:'Direct Issue'}})}
+    :from==='buying'?{label:'← Buying',go:()=>router.replace('/buying')}:null;
+  const returnToMenu=list&&!(view===list&&sourceBack);
+  function goBack(){
+    if(busy)return;
+    if(editing){closeForm();return;}
+    if(opened){setList(currentList);closeDetails();return;}
+    if(returnToMenu){setList(null);return;}
+    sourceBack?.go();
+  }
   const rowStyle={flexDirection:'row' as const,alignItems:'flex-start' as const,gap:8};
   const columns=[185,255,84,105,205];
 
   return <ScrollView contentContainerStyle={styles.page}>
-    <StockV2Header title={editing?(editingCard?'Edit Job Card':'New Job Card'):history?opened?"Job Card details":"Historical Job Cards":"Job Cards"} dashboard={from!=='buying'&&from!=='stock'} allowMain={data?.can_main}
-      backLabel={editing?'← Job Cards':history?(opened?'← Historical Job Cards':'← Job Cards'):from==='buying'?'← Buying':from==='direct-issue'?'← Direct Issue':undefined}
-      onStock={editing?()=>{if(!busy)closeForm();}:history?()=>{if(opened){setOpened(null);setPriceEdit(null);setQuotePart(null);setReservationPart(null);}else setHistory(false);}:from==='buying'?()=>router.replace('/buying'):from==='direct-issue'?()=>router.back():undefined}/>
+    <StockV2Header title={editing?(editingCard?'Edit Job Card':'New Job Card'):opened?'Job Card details':list==='outstanding'?outstandingTitle:list?listTitle:'Job Cards'} dashboard={from!=='buying'&&from!=='stock'} allowMain={data?.can_main}
+      backLabel={editing?(editingCard?'← Job Card details':'← Job Cards'):opened?'← '+listTitle:returnToMenu?'← Job Cards':sourceBack?.label}
+      onStock={editing||opened||list||sourceBack?goBack:undefined}
+      onRefresh={()=>void load()}/>
     {error ? <><Text style={styles.error}>{error}</Text><StockRecovery scope={reservationPart!==null?'job-reservation':priceEdit?'job-card-price':'job-card'} onRecovered={() => void load()}/></> : null}
     {notice ? <Text style={styles.success}>{notice}</Text> : null}
-    {data&&!editing&&!history?<View style={styles.row}>
+    {data&&!editing&&!list?<View style={styles.row}>
       {data.can_create?<StockButton title="New Job Card" onPress={()=>{setEditing(true);setDate(new Date().toLocaleDateString('en-GB'));setParts([newPart()]);setError('');setNotice('');}}/>:null}
-      <StockButton title="Historical Job Cards" onPress={()=>setHistory(true)}/>
+      <StockButton title={outstandingTitle} onPress={()=>setList('outstanding')}/>
+      <StockButton title="Historical Job Cards" onPress={()=>setList('history')}/>
     </View>:null}
     {editing ? <View style={styles.card}>
       <StockSelect label="Job Card type" disabled={!!editingCard} value={cardType} options={[{id:'general',label:'General'},{id:'asset',label:'Asset'},{id:'irrigation',label:'Irrigation'}]}
@@ -323,8 +359,9 @@ export default function JobCards() {
           </View>)}
       </View>:null}
     </View> : null}
-    {history&&!opened?data?.cards.map(card=><View key={card.id} style={[styles.card,!card.closed_at&&{borderColor:'#b91c1c'}]}><Text style={!card.closed_at?styles.error:styles.muted}>{card.closed_at?'Finalised':'Outstanding'} · {displayJsplDate(card.transaction_date)}</Text><StockButton title={'Job Card '+card.job_number+' · '+card.vehicle_name} onPress={()=>{setOpened(card.id);setConfirmClose(false);}}/></View>):null}
-    {history?data?.cards.filter(card=>card.id===opened).map(card => <View key={card.id} style={styles.card}>
+    {data&&list&&!editing&&!opened&&listedCards.length===0?<Text style={styles.muted}>{currentList==='history'?'No historical job cards.':'No outstanding job cards.'}</Text>:null}
+    {list&&!editing&&!opened?listedCards.map(card=><View key={card.id} style={[styles.card,!card.closed_at&&{borderColor:'#b91c1c'}]}><Text style={!card.closed_at?styles.error:styles.muted}>{card.closed_at?'Finalised':'Outstanding'} · {displayJsplDate(card.transaction_date)}</Text><StockButton title={'Job Card '+card.job_number+' · '+card.vehicle_name} onPress={()=>{setOpened(card.id);setConfirmClose(false);}}/></View>):null}
+    {!editing&&list&&data&&card?<View key={card.id} style={styles.card}>
       <Text style={styles.title}>Job Card {card.job_number} · {card.vehicle_name}</Text>
       <Text style={styles.text}>{displayJsplDate(card.transaction_date)} · {card.closed_at?'Finalised':'Open'}</Text><Text style={styles.text}>{card.work_description}</Text>
       {data.can_buy&&!card.closed_at?<View style={styles.row}>
@@ -379,6 +416,6 @@ export default function JobCards() {
           pathname:'/stock-v2-purchase-orders', params:{from:'job-card', job:card.id, owner},
         })}/>
       )) : null}
-    </View>):null}
+    </View>:null}
   </ScrollView>;
 }
