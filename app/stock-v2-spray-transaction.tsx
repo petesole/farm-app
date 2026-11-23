@@ -16,6 +16,7 @@ type SprayLine = {owner_code:string;owner_name:string;issue_enabled:boolean;job_
 type Product = OwnerBalances & {item_code:string;item_name:string};
 type ReturnLine = {document_id:number;document_number:string;source_line_id:number;item_name:string;base_unit:string;available_to_return:number};
 const fmt=(n:number)=>Number.isFinite(n)?n.toLocaleString("en-GB",{minimumFractionDigits:3,maximumFractionDigits:3}):"—";
+import {StockLineTable} from '@/components/jspl/StockLineTable';
 export default function SprayTransaction(){
  const params=useLocalSearchParams<{jobId?:string;mode?:string}>();
  const jobId=Number(params.jobId); const mode=params.mode==="return"?"return":"issue";
@@ -72,8 +73,8 @@ export default function SprayTransaction(){
  const docOptions=[...new Map(issues.map(x=>[x.document_id,x.document_number])).entries()].map(([id,label])=>({id,label,active:true}));
  return <ScrollView contentContainerStyle={s.page}>
   {error?<StockRecovery scope="spray-transaction" onRecovered={()=>router.replace("/stock-v2-spray-planning")}/>:null}
-  <StockV2Header title={mode==="return"?"Spray Stock Return":"Spray Transfer / Issue"} backLabel="← Spray Planning" onStock={()=>router.replace("/stock-v2-spray-planning")}/>
-  <Text style={s.title}>Spray #{jobId} {selected[0]?.tracecode_name??""}</Text>
+  <StockV2Header title={loading?"Spray Stock":mode==="return"?"Spray Stock Return":"Spray Transfer / Issue"} backLabel="← Spray Planning" onStock={()=>router.replace("/stock-v2-spray-planning")}/>
+  {!loading&&<Text style={s.title}>Spray #{jobId} {selected[0]?.tracecode_name??""}</Text>}
   {loading?<ActivityIndicator/>:null}
   {!!error&&<Text style={s.error}>{error}</Text>}
   {!loading&&!error&&!selected.length?<Text style={s.error}>Spray details could not be displayed. Return to Spray Planning and reopen the issue.</Text>:null}
@@ -86,8 +87,13 @@ export default function SprayTransaction(){
     {selected.map(l=><View key={l.item_code} style={s.row}><Text style={s.name}>{l.item_name}</Text><Text style={s.value}>{fmt(Number(hectares)*l.rate_per_ha)} {l.base_unit}</Text><Text style={s.value}>{fmt(stock(l.item_code))}</Text></View>)}
    </>:<>
     <JsplSearchCombo label="Original issue" selector="product" options={docOptions} value={documentId} onChange={v=>{setDocumentId(typeof v==="number"?v:null);setAmounts({});setConfirmed(false)}} placeholder="Select issue document"/>
-    <View style={s.row}><Text style={s.name}>Product</Text><Text style={s.value}>Maximum return</Text><Text style={s.value}>Return quantity</Text></View>
-    {chosenIssues.map(x=><View key={x.source_line_id} style={s.row}><Text style={s.name}>{x.item_name}</Text><Text style={s.value}>{fmt(x.available_to_return)} {x.base_unit}</Text><StockDecimalInput accessibilityLabel={"Return quantity "+x.source_line_id} style={[s.input,s.value]} keyboardType="decimal-pad" value={amounts[x.source_line_id]??""} onChangeText={v=>{setAmounts(a=>({...a,[x.source_line_id]:v}));setConfirmed(false)}}/></View>)}
+    <StockLineTable columns={[{label:'Product',width:180,grow:2},{label:'Maximum return',width:120,grow:1},{label:'Return quantity',width:130,grow:1}]}
+      rows={chosenIssues.map(line=>({key:line.source_line_id,cells:[
+        <Text>{line.item_name}</Text>,
+        <Text>{fmt(line.available_to_return)} {line.base_unit}</Text>,
+        <StockDecimalInput accessibilityLabel={'Return quantity '+line.source_line_id} style={s.input} keyboardType="decimal-pad"
+          value={amounts[line.source_line_id]??''} onChangeText={value=>{setAmounts(previous=>({...previous,[line.source_line_id]:value}));setConfirmed(false)}}/>,
+      ]}))}/>
     <JsplSearchCombo label="Spray status" selector="product" options={[{id:"incomplete",label:"Incomplete — keep outstanding",active:true},{id:"complete",label:"Complete — close spray",active:true}]} value={complete?"complete":"incomplete"} onChange={v=>{setComplete(v==="complete");setConfirmed(false)}}/>
    </>}
    <Pressable accessibilityRole="checkbox" accessibilityState={{checked:confirmed}} onPress={()=>setConfirmed(c=>!c)}><Text style={s.check}>{confirmed?"☑":"☐"} Confirm {mode==="issue"?"stock issue":"stock return"}</Text></Pressable>

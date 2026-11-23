@@ -33,7 +33,7 @@ export default function Suppliers(){
   {list.filter(s=>s.supplier_name.toLowerCase().includes(search.toLowerCase())).map(s=><View key={s.supplier_id} style={styles.lineRow}>
     <View style={{flex:1}}><ThemedText style={styles.label}>{s.supplier_name}</ThemedText><ThemedText>{s.active?"Active":"Inactive"}</ThemedText></View>
     {button("Edit",()=>setCurrent({...s}))}
-    {button(s.active?"Deactivate":"Activate",()=>void save({...s,active:!s.active}))}
+    <View style={{width:108}}>{button(s.active?"Deactivate":"Activate",()=>void save({...s,active:!s.active}))}</View>
   </View>)}
  </ScrollView></ThemedView>
 }

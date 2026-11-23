@@ -31,7 +31,7 @@ export default function StockV2MovementReport(){
  const rows=result?.movements??[];
  return <ThemedView style={styles.root}>
   <StockV2Header title="Stock Movement Report"/>
-  <View style={styles.header}><View style={styles.productHeading}><View style={{flex:1,minWidth:0}}><ThemedText style={styles.heading}>{result?.item?.item_name??itemCode}</ThemedText><ThemedText style={styles.sub}>{owner} · {result?.item?.base_unit??""}</ThemedText></View><View style={styles.stockBox}><ThemedText style={styles.stockLabel}>Current stock</ThemedText><ThemedText style={styles.stockValue}>{loading?"…":fmt(Number(result?.current_stock??0))} {result?.item?.base_unit??""}</ThemedText></View></View></View>
+  <View style={styles.header}><View style={styles.productHeading}><View style={{flex:1,minWidth:0}}><ThemedText style={styles.heading}>{loading?"":result?.item?.item_name??itemCode}</ThemedText><ThemedText style={styles.sub}>{loading?"":owner} · {result?.item?.base_unit??""}</ThemedText></View><View style={styles.stockBox}><ThemedText style={styles.stockLabel}>Current stock</ThemedText><ThemedText style={styles.stockValue}>{loading?"…":fmt(Number(result?.current_stock??0))} {result?.item?.base_unit??""}</ThemedText></View></View></View>
   {loading?<ActivityIndicator/>:error?<ThemedText style={styles.error}>{error}</ThemedText>:<StockReport title={(result?.item?.item_name??itemCode)+' — '+owner+' Stock Movements'} rows={rows} measures={['stock_in','stock_out']} columns={[
    {key:'transaction_date',title:'Transaction Date',value:r=>r.transaction_date},
    {key:'document',title:'Document',value:r=>r.document_number},

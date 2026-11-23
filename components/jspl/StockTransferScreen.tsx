@@ -1,6 +1,7 @@
 import {useCallback,useMemo,useState} from 'react';
 import {useFocusEffect} from 'expo-router';
 import {ActivityIndicator,ScrollView,Text,View} from 'react-native';
+import {StockLineTable} from './StockLineTable';
 import {StockV2Header} from './StockV2Header';
 import {StockButton as Button,StockField as Field,StockSelect as Select,StockRecovery,stockStyles as S} from './StockWorkflowControls';
 import {stockMutation,stockRequest} from '@/utils/stock-workflow';
@@ -27,7 +28,21 @@ export default function StockTransfer(){
  <Text style={S.text}>Choose the stock owner sending the goods and the receiving owner. Products show the sending owner's available stock.</Text>
  {error?<><Text style={S.error}>{error}</Text><StockRecovery scope="owner-transfer" onRecovered={()=>void load()}/></>:null}{notice?<Text style={S.success}>{notice}</Text>:null}{busy?<ActivityIndicator/>:null}
  <View style={[S.row,{alignItems:'flex-start'}]}><View style={{flex:1,minWidth:250}}><Select label="From stock owner" value={from} options={activeOwners.map(o=>({id:o.owner_code,label:o.owner_code+' · '+o.owner_name}))} onChange={chooseFrom}/></View><View style={{flex:1,minWidth:250}}><Select label="To stock owner" value={to} options={destinations.map(o=>({id:o.owner_code,label:o.owner_code+' · '+o.owner_name}))} onChange={v=>{setTo(String(v??''));reset()}}/></View></View>
- {lines.map((l,n)=>{const balance=available.find(b=>b.item_code===l.item_code);return <View style={S.card} key={l.id}><View style={[S.row,{alignItems:'flex-start'}]}><View style={{flex:3,minWidth:250}}><Select label={'Product '+(n+1)} value={l.item_code} options={available.filter(b=>!lines.some(x=>x.id!==l.id&&x.item_code===b.item_code)).map(b=>({id:b.item_code,label:b.item_name+' · '+Number(b.quantity).toLocaleString('en-GB')+' '+b.base_unit}))} onChange={v=>change(l.id,'item_code',String(v??''))}/></View><View style={{flex:1,minWidth:140}}><Field label="Quantity" numeric value={l.quantity} onChange={v=>change(l.id,'quantity',v)}/></View>{lines.length>1?<Button title="Remove line" disabled={busy} onPress={()=>{setLines(ls=>ls.filter(x=>x.id!==l.id));reset()}}/>:null}</View>{balance?<Text style={S.muted}>Available from {from}: {balance.quantity} {balance.base_unit}</Text>:null}</View>})}
+ <StockLineTable columns={[
+   {label:'Product',width:230,grow:3},{label:'Quantity',width:120,grow:1},
+   ...(lines.length>1?[{label:'',width:122}]:[]),
+ ]} rows={lines.map((line,index)=>{
+   const balance=available.find(item=>item.item_code===line.item_code);
+   return {key:line.id,cells:[
+     <View><Select hideLabel label={'Product '+(index+1)} value={line.item_code}
+       options={available.filter(item=>!lines.some(other=>other.id!==line.id&&other.item_code===item.item_code))
+         .map(item=>({id:item.item_code,label:item.item_name+' · '+Number(item.quantity).toLocaleString('en-GB')+' '+item.base_unit}))}
+       onChange={value=>change(line.id,'item_code',String(value??''))}/>
+       {balance?<Text style={S.muted}>Available from {from}: {balance.quantity} {balance.base_unit}</Text>:null}</View>,
+     <Field hideLabel label="Quantity" numeric value={line.quantity} onChange={value=>change(line.id,'quantity',value)}/>,
+     ...(lines.length>1?[<Button title="Remove line" disabled={busy} onPress={()=>{setLines(current=>current.filter(other=>other.id!==line.id));reset()}}/>]:[]),
+   ]};
+ })}/>
  {!available.length&&!busy?<Text>No stock is available for the selected sending owner.</Text>:null}
  <View style={S.row}><Button title="Add product" disabled={busy||lines.length>=30} onPress={()=>{setLines(ls=>[...ls,{id:seq,item_code:'',quantity:''}]);setSeq(n=>n+1);reset()}}/><Button title={confirmed?'✓ Transfer confirmed':'Confirm transfer'} disabled={busy||!valid} onPress={()=>setConfirmed(v=>!v)}/><Button title="Save Stock Transfer" disabled={busy||!valid||!confirmed} onPress={()=>void post()}/></View>
  </ScrollView>;

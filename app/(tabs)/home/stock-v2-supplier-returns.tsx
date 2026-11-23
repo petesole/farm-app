@@ -1,4 +1,5 @@
 import {stockV2Endpoint} from "@/utils/stock-v2-endpoint";
+import {StockLineTable} from "@/components/jspl/StockLineTable";
 import {StockSelect} from "@/components/jspl/StockWorkflowControls";
 import {stockMutation} from "@/utils/stock-workflow";
 import {parseJsplDateInput,displayJsplDate} from "@/utils/jspl-input";
@@ -11,6 +12,7 @@ import {ThemedText} from "@/components/themed-text";
 import {ThemedView} from "@/components/themed-view";
 import {supabase} from "../../../supabase";
 import {jsplColors} from "@/constants/jspl-design";
+const returnColumns=[{label:'Product',width:210,grow:2},{label:'Return qty',width:110},{label:'Est. credit $/unit',width:150}];
 const endpoint=stockV2Endpoint;
 type Product={item_code:string;item_name:string;quantity:number;base_unit:string;ao_quantity?:number};
 type Receipt={display_no:number;document_id:number;receipt_line_id:number;document_number:string;document_date:string;item_code:string;item_name:string;received_quantity:number;previously_returned:number;original_unit_price:number|null};
@@ -49,22 +51,22 @@ export default function SupplierReturns(){
  </View>:null}
  <ThemedText>{mode==="specific_grv"?"Allocate each returned quantity against its original GRV.":"Return any available stock to the selected supplier without linking it to a specific GRV. Inventory value and negotiated credit are reconciled separately."}</ThemedText>
  {mode==="supplier_stock"?<View style={{gap:6}}> <TextInput style={styles.input} placeholder="Find product" value={search} onChangeText={setSearch}/>
- {loading?<ActivityIndicator/>:products.filter(p=>p.item_name.toLowerCase().includes(search.toLowerCase())||p.item_code.toLowerCase().includes(search.toLowerCase())).filter(p=>Number(owner==="JS"?p.quantity:p.ao_quantity)>0).slice(0,45).map(p=><View key={p.item_code} style={styles.product}>
- <View style={{flex:2}}><ThemedText style={styles.strong}>{p.item_name}</ThemedText><ThemedText>{p.item_code} · Available {owner==="JS"?p.quantity:p.ao_quantity} {p.base_unit==="UNVERIFIED"?"":p.base_unit}</ThemedText></View>
- <TextInput style={[styles.input,{flex:1}]} placeholder="Qty" keyboardType="decimal-pad" value={lines[p.item_code]?.qty??""} onChangeText={v=>setLines(old=>({...old,[p.item_code]:{qty:v,price:old[p.item_code]?.price??""}}))}/>
- <TextInput style={[styles.input,{flex:1}]} placeholder="Est. credit $/unit" keyboardType="decimal-pad" value={lines[p.item_code]?.price??""} onChangeText={v=>setLines(old=>({...old,[p.item_code]:{qty:old[p.item_code]?.qty??"",price:v}}))}/>
- </View>)}
+ {loading?<ActivityIndicator/>:<StockLineTable columns={returnColumns} rows={products.filter(p=>p.item_name.toLowerCase().includes(search.toLowerCase())||p.item_code.toLowerCase().includes(search.toLowerCase())).filter(p=>Number(owner==="JS"?p.quantity:p.ao_quantity)>0).slice(0,45).map(p=>({key:p.item_code,cells:[
+ <View><ThemedText style={styles.strong}>{p.item_name}</ThemedText><ThemedText>{p.item_code} · Available {owner==="JS"?p.quantity:p.ao_quantity} {p.base_unit==="UNVERIFIED"?"":p.base_unit}</ThemedText></View>,
+ <TextInput style={styles.input} accessibilityLabel={'Return qty '+p.item_code} placeholder="Qty" keyboardType="decimal-pad" value={lines[p.item_code]?.qty??""} onChangeText={v=>setLines(old=>({...old,[p.item_code]:{qty:v,price:old[p.item_code]?.price??""}}))}/>,
+ <TextInput style={styles.input} accessibilityLabel={'Est. credit '+p.item_code} placeholder="Est. credit $/unit" keyboardType="decimal-pad" value={lines[p.item_code]?.price??""} onChangeText={v=>setLines(old=>({...old,[p.item_code]:{qty:old[p.item_code]?.qty??"",price:v}}))}/>
+ ]}))}/>}
  </View>:null}
  {mode==="specific_grv"&&grvId?<View style={{gap:7}}><ThemedText style={styles.strong}>Original GRV Products</ThemedText>
- {selectedGrvLines.map(r=>{const p=products.find(x=>x.item_code===r.item_code);const physical=Number(owner==="JS"?p?.quantity:p?.ao_quantity)||0;const eligible=Math.max(0,Math.min(r.received_quantity-r.previously_returned,physical));return <View key={r.receipt_line_id} style={styles.product}>
- <View style={{flex:3}}><ThemedText style={styles.strong}>{r.item_name}</ThemedText><ThemedText>Original GRV qty: {r.received_quantity} · Original price: {r.original_unit_price==null?"Unpriced":"$"+Number(r.original_unit_price).toFixed(2)}</ThemedText><ThemedText>Previously returned: {r.previously_returned} · Physical stock: {physical} · Max return: {eligible}</ThemedText></View>
- <TextInput style={[styles.input,{flex:1}]} placeholder="Return qty" keyboardType="decimal-pad" value={alloc[r.receipt_line_id]??""} onChangeText={v=>{setAlloc(a=>({...a,[r.receipt_line_id]:v}));setLines(a=>({...a,[r.item_code]:{qty:v,price:a[r.item_code]?.price??(r.original_unit_price==null?"":String(r.original_unit_price))}}))}}/>
- <TextInput style={[styles.input,{flex:1}]} placeholder="Est. credit $/unit" keyboardType="decimal-pad" value={lines[r.item_code]?.price??(r.original_unit_price==null?"":String(r.original_unit_price))} onChangeText={v=>setLines(a=>({...a,[r.item_code]:{qty:a[r.item_code]?.qty??"",price:v}}))}/>
- </View>})}</View>:null}
+ <StockLineTable columns={returnColumns} rows={selectedGrvLines.map(r=>{const p=products.find(x=>x.item_code===r.item_code);const physical=Number(owner==="JS"?p?.quantity:p?.ao_quantity)||0;const eligible=Math.max(0,Math.min(r.received_quantity-r.previously_returned,physical));return {key:r.receipt_line_id,cells:[
+ <View><ThemedText style={styles.strong}>{r.item_name}</ThemedText><ThemedText>Original GRV qty: {r.received_quantity} · Original price: {r.original_unit_price==null?"Unpriced":"$"+Number(r.original_unit_price).toFixed(2)}</ThemedText><ThemedText>Previously returned: {r.previously_returned} · Physical stock: {physical} · Max return: {eligible}</ThemedText></View>,
+ <TextInput style={styles.input} accessibilityLabel={'Return qty '+r.item_code} placeholder="Return qty" keyboardType="decimal-pad" value={alloc[r.receipt_line_id]??""} onChangeText={v=>{setAlloc(a=>({...a,[r.receipt_line_id]:v}));setLines(a=>({...a,[r.item_code]:{qty:v,price:a[r.item_code]?.price??(r.original_unit_price==null?"":String(r.original_unit_price))}}))}}/>,
+ <TextInput style={styles.input} accessibilityLabel={'Est. credit '+r.item_code} placeholder="Est. credit $/unit" keyboardType="decimal-pad" value={lines[r.item_code]?.price??(r.original_unit_price==null?"":String(r.original_unit_price))} onChangeText={v=>setLines(a=>({...a,[r.item_code]:{qty:a[r.item_code]?.qty??"",price:v}}))}/>
+ ]};})}/></View>:null}
  <Pressable disabled={saving} style={styles.button} onPress={()=>void post()}><ThemedText style={styles.white}>{saving?"Posting…":"Post Physical Supplier Return"}</ThemedText></Pressable>
   <ThemedText style={styles.heading}>Credited Returns (History)</ThemedText>
  {returns.filter(r=>r.credit_status==="confirmed").map(r=><View key={r.document_id} style={styles.panel}><ThemedText style={styles.strong}>{r.document_number} · {r.supplier_name}</ThemedText><ThemedText>Credit note confirmed · {r.lines.length} product lines</ThemedText></View>)}
  {error?<ThemedText style={styles.error}>{error}</ThemedText>:null}{notice?<ThemedText style={styles.link}>{notice}</ThemedText>:null}
  </ScrollView></ThemedView>;
 }
-const styles=StyleSheet.create({root:{flex:1,backgroundColor:jsplColors.background},page:{padding:16,gap:12},heading:{fontSize:20,fontWeight:"700"},row:{flexDirection:"row",gap:8},choice:{padding:11,borderWidth:1,borderColor:"#b6cabd",borderRadius:5},active:{backgroundColor:"#cee8d6"},input:{borderWidth:1,borderColor:"#cbd8cf",padding:10,backgroundColor:"#fff",borderRadius:5,minHeight:42},product:{flexDirection:"row",alignItems:"center",gap:6,borderBottomWidth:1,borderColor:"#e0e6e0",paddingVertical:5},strong:{fontWeight:"700"},button:{backgroundColor:jsplColors.primary,padding:13,borderRadius:5,alignSelf:"flex-start"},white:{color:"#fff",fontWeight:"700"},panel:{backgroundColor:"#fff",padding:12,borderRadius:7,gap:7},error:{color:"#b02d20",fontWeight:"700"},link:{color:jsplColors.primary}});
+const styles=StyleSheet.create({root:{flex:1,backgroundColor:jsplColors.background},page:{padding:16,gap:12},heading:{fontSize:20,fontWeight:"700"},row:{flexDirection:"row",gap:8},choice:{padding:11,borderWidth:1,borderColor:"#b6cabd",borderRadius:5},active:{backgroundColor:"#cee8d6"},input:{borderWidth:1,borderColor:"#cbd8cf",padding:10,backgroundColor:"#fff",borderRadius:5,minHeight:42},strong:{fontWeight:"700"},button:{backgroundColor:jsplColors.primary,padding:13,borderRadius:5,alignSelf:"flex-start"},white:{color:"#fff",fontWeight:"700"},panel:{backgroundColor:"#fff",padding:12,borderRadius:7,gap:7},error:{color:"#b02d20",fontWeight:"700"},link:{color:jsplColors.primary}});

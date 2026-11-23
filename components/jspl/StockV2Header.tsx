@@ -25,9 +25,9 @@ export function StockV2Header({title,dashboard=false,stockRoot=false,allowMain=f
   </View>;
 }
 const styles=StyleSheet.create({
- header:{backgroundColor:C.primaryDark,flexDirection:"row",alignItems:"center",borderRadius:R.lg,padding:S.lg,gap:S.md,marginBottom:S.md},
- left:{flex:1,gap:S.sm},title:{fontSize:20,color:"#fff",fontWeight:"800"},
- actions:{flexDirection:"row",flexWrap:"wrap",gap:S.sm,alignItems:"center",justifyContent:"flex-end"},
+ header:{backgroundColor:C.primaryDark,flexDirection:"row",flexWrap:"wrap",alignItems:"center",borderRadius:R.lg,padding:S.lg,gap:S.md,marginBottom:S.md},
+ left:{flexBasis:150,flexGrow:1,flexShrink:1,gap:S.sm},title:{fontSize:20,color:"#fff",fontWeight:"800"},
+ actions:{maxWidth:"100%",flexDirection:"row",flexWrap:"wrap",gap:S.sm,alignItems:"center",justifyContent:"flex-end"},
  button:{borderColor:"#A8CAB3",borderWidth:1,borderRadius:R.sm,paddingHorizontal:13,paddingVertical:8},
  buttonText:{color:"#fff",fontWeight:"700"},logo:{width:64,height:64}
 });

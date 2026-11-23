@@ -77,9 +77,11 @@ export default function ApplicationSheet(){
     <View style={styles.tankRow}><View><ThemedText style={styles.label}>Tank capacity (L) — confirm before printing</ThemedText><StockDecimalInput style={styles.input} value={tankSize} onChangeText={setTankSize} keyboardType="decimal-pad"/></View></View>
     {!validTank?<ThemedText style={styles.error}>Enter valid tank capacity and spray water rate.</ThemedText>:null}
    </View>
+   <ScrollView horizontal nestedScrollEnabled contentContainerStyle={{flexGrow:1}}><View style={{minWidth:645,flexGrow:1}}>
    <View style={styles.header}><View style={styles.product}/><View style={styles.n}/><View style={styles.n}/><ThemedText style={[styles.n,styles.bold]}>{validTank?String(full):"—"}</ThemedText><ThemedText style={[styles.n,styles.bold]}>{validTank?fmt(rest)+" L":"—"}</ThemedText></View>
    <View style={styles.header}><ThemedText style={[styles.product,styles.bold]}>Input Name</ThemedText><ThemedText style={[styles.n,styles.bold]}>Rate/Ha</ThemedText><ThemedText style={[styles.n,styles.bold]}>Required</ThemedText><ThemedText style={[styles.n,styles.bold]}>Full Tank Mix</ThemedText><ThemedText style={[styles.n,styles.bold]}>Part Tank Mix</ThemedText></View>
    {rows.map((line,i)=><View testID="application-print-row" key={line.item_code+":"+i} style={[styles.line,i%2===1&&styles.alt]}><ThemedText style={styles.product}>{line.item_name}</ThemedText><ThemedText style={styles.n}>{fmt(Number(line.rate_per_ha),3)}</ThemedText><ThemedText style={styles.n}>{fmt(area*Number(line.rate_per_ha),3)} {line.base_unit}</ThemedText><ThemedText style={styles.n}>{validTank?fmt(fullHa*Number(line.rate_per_ha),3):"—"} {line.base_unit}</ThemedText><ThemedText style={styles.n}>{validTank?fmt(partHa*Number(line.rate_per_ha),3):"—"} {line.base_unit}</ThemedText></View>)}
+   </View></ScrollView>
    <ThemedText style={styles.note}>Full Tank Mix quantities are per full tank, not the combined quantity for all full tanks. Part Tank Mix quantities are for the remaining water volume. Confirm tank capacity and sprayer calibration before application.</ThemedText>
   </View>:null}
  </ScrollView></ThemedView>;

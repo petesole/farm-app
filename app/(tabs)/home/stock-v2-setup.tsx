@@ -47,7 +47,7 @@ export default function StockSetup(){
    {contracts.map(c=><View key={c.contract_id} style={styles.item}>
     <View style={{flex:1}}><ThemedText style={styles.label}>{c.contract_code}</ThemedText><ThemedText>{c.contract_name} · {c.active?"Active":"Inactive"}</ThemedText></View>
     {button("Edit",()=>setSelectedContract({...c}))}
-    {button(c.active?"Deactivate":"Activate",()=>void save("save_contract",{...c,active:!c.active}))}
+    <View style={{width:108}}>{button(c.active?"Deactivate":"Activate",()=>void save("save_contract",{...c,active:!c.active}))}</View>
    </View>)}
    {selectedContract?<View style={styles.editor}><ThemedText style={styles.heading}>{selectedContract.contract_id?"Edit Contract":"New Contract"}</ThemedText>
     {field("Contract Code",selectedContract.contract_code,v=>setSelectedContract({...selectedContract,contract_code:v}))}

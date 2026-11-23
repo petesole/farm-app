@@ -13,7 +13,7 @@ const readings = {
 
 // Optional display-only fixtures. Every Supabase request from this context is
 // intercepted, including Auth. No fixture session or write reaches the project.
-async function displayFixture(context,role){
+async function displayFixture(context,role,configure){
   const user={id:'00000000-0000-4000-8000-000000000001',email:'screen@example.invalid',aud:'authenticated',user_metadata:{},app_metadata:{}};
   const session={user,access_token:'display-fixture-only',token_type:'bearer',refresh_token:'display-fixture-only',expires_in:3600,expires_at:Math.floor(Date.now()/1000)+3600};
   const admin=role==='admin', buyer=admin||role==='buyer', stores=role==='stock', driver=role==='driver';
@@ -53,6 +53,7 @@ async function displayFixture(context,role){
     job_asset_purchase_history:{rows:[{id:'1',item_code:'FILTER-A',item_name:'Service filter',part_number:'F-12',active:true,supplier_name:'Screen supplier',receipt:'GRV-1',document_date:'2026-11-20',unit_price:'12.00'}]},
     town_trips:{trips:[{id:'screen-trip',trip_number:1,trip_date:'2026-11-20',driver_name:'Test driver',orders:[{order_id:22,order_number:'PO-22',owner:'JS',supplier:'Screen supplier',outcome:'collected',can_receive:true,items:[]}],finalised_at:null}],drivers:[{id:'audit-driver',email:'Assigned driver'}],orders:[{order_id:24,order_number:'PO-24',supplier_name:'Screen supplier',payment_terms:'Cash on collection'}],can_create:admin,can_report:driver,can_receive:!driver},
   };
+  if(configure)configure(lookups);
   const driverOrder={order_id:24,order_number:'PO-24',supplier:'Screen supplier',owner:'JS',outcome:'pending',payment_terms:'Cash on collection',items:[]};
   if(driver)lookups.town_trips.trips.push({id:'assigned-trip',trip_number:3,trip_date:'2026-11-20',driver_id:'audit-driver',can_report:true,orders:[{...driverOrder}],finalised_at:null});
   await context.route('https://*.supabase.co/**',async route=>{
