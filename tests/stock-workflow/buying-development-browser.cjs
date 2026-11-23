@@ -21,7 +21,7 @@ async function displayFixture(context,role){
   const cashEntry=(day,number)=>({id:'entry-'+number,entry_number:number,reference:'Test receipt '+number,entry_date:day,created_at:day+'T12:00:00Z',kind:'receipt',status:'confirmed',currency:'USD',account_id:'USD-account',amount:'5.00',narrative:'Test deposit '+number});
   const book={accounts:[],entries:[cashEntry('2026-11-10',1),cashEntry('2026-11-19',2)],notes:[],balances:[{currency:'USD',balance:'42.00'},{currency:'ZiG',balance:'5.00'}],
     trips:[],advances:[],tripInvoices:[],counterparties:[],expenses:[]};
-  const lubricant={item_code:'LUBE',item_name:'Gear Oil',base_unit:'L',input_type:'Lubricants',input_category:'Lubricants',active:true,quantity:8,ao_quantity:0};
+  const lubricant={item_code:'LUBE',item_name:'Gear Oil',base_unit:'L',input_type:'Lubricants',input_category:'Lubricants',active:true,quantity:8,ao_quantity:0,owner_quantities:{JS:8,C73:3}};
   const petrol={...lubricant,item_code:'PET',item_name:'Petrol',input_type:'Fuel',input_category:'Fuel'};
   const mineral={...lubricant,item_code:'SPRAY',item_name:'Mineral spray oil',input_type:'Chemical',input_category:'Insecticide'};
   const oilLine={part_id:15,owner_code:'JS',item_code:'LUBE',item_name:'Gear Oil',quantity:5,unit:'L',unit_price:null,category_id:4,reserved:0,issued:0,available:8};
@@ -30,7 +30,7 @@ async function displayFixture(context,role){
     workflow_context:{access,documents:[],stocktakes:[],awaiting:0},supplier_list:{suppliers:[]},
     stock_setup:{owners:[{owner_code:'JS',owner_name:'JS',active:true}],contracts:[]},
     equipment_catalog:{rows:[{vehicle_id:2,vehicle_name:'Petrol bike',fuel_type:'PETROL'}]},chemical_actives:{rows:[]},
-    snapshot:{items:[lubricant,petrol,mineral],sprays:[],documents:[],orders:[]},
+    snapshot:{issue_companies:[{owner_code:'JS',company_name:'JS Farm'},{owner_code:'C73',company_name:'Third company'}],items:[lubricant,petrol,mineral],sprays:[],documents:[],orders:[]},
     stock_access:{access},cash_book:book,
     cash_book_supplier_invoices:{invoices:[],creditOptions:[]},outstanding_issues:{counts:{},returned:[]},
     job_cards:{cards:[oilCard],can_create:buyer,can_buy:buyer||admin,can_main:admin,can_reserve:buyer||stores,
@@ -226,11 +226,29 @@ async function check(browser, role, width) {
     if(fixture)await page.getByText(/Trip 1.+Outstanding/).waitFor();
     if(fixture&&role==='stock'){
       await page.goto(site+'/stock-test?operation=Direct%20Issue');
+      const owner=page.getByRole('textbox',{name:'Stock owner',exact:true});
+      await owner.click();await click(page,'Third company');
+      const type=page.getByRole('textbox',{name:'Input Type 1',exact:true});
+      assert.equal(await type.inputValue(),'All input types');
       await page.getByText('Select product ▾',{exact:true}).click();
       await page.getByText(/^Petrol \(L\).*Available/).first().waitFor();
       await page.getByText(/^Mineral spray oil \(L\).*Available/).first().waitFor();
       assert.equal(await page.getByText(/^Gear Oil \(L\).*Available/).count(),0);
-      await page.getByText(/^Petrol \(L\).*Available/).first().click();
+      await type.click();await click(page,'Chemical');
+      await page.getByText('Select product ▾',{exact:true}).click();
+      await page.getByText(/^Mineral spray oil \(L\).*3\.000 L/).waitFor();
+      assert.equal(await page.getByText(/^Petrol \(L\).*Available/).count(),0);
+      await type.click();await click(page,'Fuel');
+      await page.getByText('Select product ▾',{exact:true}).click();
+      assert.equal(await page.getByText(/^Mineral spray oil \(L\).*Available/).count(),0);
+      await page.getByText(/^Petrol \(L\).*3\.000 L/).click();
+      await page.getByRole('textbox',{name:'Petrol — Equipment',exact:true}).waitFor();
+      await page.getByText('＋ Add product line',{exact:true}).click();
+      const secondType=page.getByRole('textbox',{name:'Input Type 2',exact:true});
+      assert.equal(await secondType.inputValue(),'All input types');
+      await secondType.click();await click(page,'Chemical');
+      await type.click();await click(page,'All input types');
+      assert.equal(await secondType.inputValue(),'Chemical');
       await page.getByRole('textbox',{name:'Petrol — Equipment',exact:true}).waitFor();
       await click(page,'Issue lubricants from a Job Card');
       await click(page,'Job Card 9 · Screen test tractor');

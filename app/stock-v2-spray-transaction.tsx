@@ -1,3 +1,4 @@
+import {available,type OwnerBalances} from '@/utils/spray-allocation';
 import {stockV2Endpoint} from "@/utils/stock-v2-endpoint";
 import {StockDecimalInput} from "@/components/jspl/StockDecimalInput";
 import {stockMutation} from "@/utils/stock-workflow";
@@ -11,8 +12,8 @@ import { StockV2Header } from "@/components/jspl/StockV2Header";
 import { jsplColors as C } from "@/constants/jspl-design";
 
 const endpoint = stockV2Endpoint;
-type SprayLine = {owner_code:string;job_id:number;external_tracecode_id:number;tracecode_name:string;area_ha:number;status:string;item_code:string;item_name:string;base_unit:string;rate_per_ha:number;planned_quantity:number;issued_quantity:number};
-type Product = {item_code:string;item_name:string;quantity:number;ao_quantity:number};
+type SprayLine = {owner_code:string;owner_name:string;issue_enabled:boolean;job_id:number;external_tracecode_id:number;tracecode_name:string;area_ha:number;status:string;item_code:string;item_name:string;base_unit:string;rate_per_ha:number;planned_quantity:number;issued_quantity:number};
+type Product = OwnerBalances & {item_code:string;item_name:string};
 type ReturnLine = {document_id:number;document_number:string;source_line_id:number;item_name:string;base_unit:string;available_to_return:number};
 const fmt=(n:number)=>Number.isFinite(n)?n.toLocaleString("en-GB",{minimumFractionDigits:3,maximumFractionDigits:3}):"—";
 export default function SprayTransaction(){
@@ -23,8 +24,8 @@ export default function SprayTransaction(){
  const [hectares,setHectares]=useState(""),[documentId,setDocumentId]=useState<number|null>(null);
  const [amounts,setAmounts]=useState<Record<number,string>>({}),[complete,setComplete]=useState(false),[confirmed,setConfirmed]=useState(false);
  const selected=useMemo(()=>lines.filter(l=>Number(l.job_id)===jobId),[lines,jobId]);
- const owner=selected[0]?.owner_code??'JS';
- const stock=(code:string)=>{const p=products.find(p=>p.item_code===code);return Number(owner==='AO'?p?.ao_quantity:p?.quantity)||0};
+ const owner=selected[0]?.owner_code??'';
+ const stock=(code:string)=>available(products.find(p=>p.item_code===code),owner);
  const area=selected.length?Math.min(...selected.map(l=>l.rate_per_ha>0?Math.max(0,(l.planned_quantity-l.issued_quantity)/l.rate_per_ha):0)):0;
  const chosenIssues=issues.filter(x=>Number(x.document_id)===documentId);
  const token=async()=>{const {data:{session}}=await supabase.auth.getSession();if(!session?.access_token)throw Error("Sign in required");return session.access_token};
@@ -35,6 +36,7 @@ export default function SprayTransaction(){
   const data=await res.json();if(!res.ok)throw Error(data.error||"Unable to load spray");
   const job=(data.sprays??[]).filter((l:SprayLine)=>Number(l.job_id)===jobId);
   if(!job.length)throw Error("Spray not found");
+  if(mode==="issue"&&!job[0].issue_enabled)throw Error("The spray company is no longer enabled to own stock.");
   if(mode==="return"&&job[0].status!=="completed")throw Error("Only completed sprays can return unused stock");
   if(mode==="issue"&&(job[0].status!=="planned"||job.every((l:SprayLine)=>Number(l.planned_quantity)<=Number(l.issued_quantity))))throw Error("No outstanding spray stock to issue");
   if(!alive)return;
@@ -77,7 +79,7 @@ export default function SprayTransaction(){
   {!loading&&!error&&!selected.length?<Text style={s.error}>Spray details could not be displayed. Return to Spray Planning and reopen the issue.</Text>:null}
   {!loading&&selected.length>0&&<View style={s.panel}>
    {mode==="issue"?<>
-    <Text>Stock owner: {owner==='AO'?'AO':'HS'}</Text><Text>Remaining: {fmt(area)} ha</Text>
+    <Text>Stock owner: {selected[0].owner_name||owner}</Text><Text>Remaining: {fmt(area)} ha</Text>
     <Text>Hectares to issue</Text>
     <StockDecimalInput accessibilityLabel="Hectares to issue" style={s.input} value={hectares} onChangeText={x=>{setHectares(x);setConfirmed(false)}} keyboardType="decimal-pad"/>
     <View style={s.row}><Text style={s.name}>Product</Text><Text style={s.value}>Required</Text><Text style={s.value}>Available</Text></View>

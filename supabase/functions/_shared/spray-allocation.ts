@@ -1,9 +1,15 @@
 export type Active = {name:string;amount:number;unit:string};
-export type SprayProduct = {item_code:string;inputs_name:string;base_unit:string;quantity:number;ao_quantity:number;formulation_type?:string|null;actives:Active[]};
+export type IssueCompany = {owner_code:string;company_name:string};
+export type OwnerBalances = {quantity:number;ao_quantity:number;owner_quantities?:Record<string,number>};
+export type SprayProduct = {item_code:string;inputs_name:string;base_unit:string;quantity:number;ao_quantity:number;owner_quantities?:Record<string,number>;formulation_type?:string|null;actives:Active[]};
 export type StockChoice = {useUp:boolean;rate:string};
 export type Treatment = {input:string;rate:string;choices?:Record<string,StockChoice>;compatibilityConfirmed?:boolean};
 export const activeName=(s:string)=>s.trim().toLowerCase().replace(/\s+/g,' ');
-export const available=(p:SprayProduct,owner:string)=>Math.max(0,Number(owner==='AO'?p.ao_quantity:p.quantity)||0);
+export function available(p:OwnerBalances|undefined,owner:string){
+ if(!p)return 0;
+ const quantity=p.owner_quantities?p.owner_quantities[owner]:owner==='JS'?p.quantity:owner==='AO'?p.ao_quantity:0;
+ return Math.max(0,Number(quantity)||0);
+}
 export const similar=(a:SprayProduct,b:SprayProduct)=>a.item_code===b.item_code||a.actives.some(x=>b.actives.some(y=>activeName(x.name)===activeName(y.name)));
 export function equivalent(a:SprayProduct,b:SprayProduct,ar:number,br:number){
  if(!a.formulation_type?.trim()||!b.formulation_type?.trim()||activeName(a.formulation_type)!==activeName(b.formulation_type))return false;
@@ -36,7 +42,7 @@ export function allocateTreatment(t:Treatment,products:SprayProduct[],area:numbe
 }
 
 export function allocateSpray(groups:Treatment[],products:SprayProduct[],area:number,owner:string){
- if(!['JS','AO'].includes(owner)||!Array.isArray(groups)||groups.length<1||groups.length>30)throw Error('Choose a stock owner and 1–30 treatments.');
+ if(!owner||!Array.isArray(groups)||groups.length<1||groups.length>30)throw Error('Choose a stock owner and 1–30 treatments.');
  const allocations=groups.map(g=>allocateTreatment(g,products,area,owner));
  if(allocations.some(a=>a.unallocated>1e-6))throw Error('Coverage remains: select an unchecked brand for the remaining requirement.');
  const rows=allocations.flatMap(a=>a.rows);

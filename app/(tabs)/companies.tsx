@@ -50,7 +50,7 @@ export default function Companies(){
   if(!allowed)return <Redirect href="/(tabs)/fuel"/>;
   const switches=(company:Company,change:(next:Company)=>void)=><>
     <View style={styles.row}><Text style={styles.text}>Owns stock</Text>
-      <Switch accessibilityLabel={company.company_name+' owns stock'} value={company.owns_stock} disabled={busy||!company.stock_owner_code}
+      <Switch accessibilityLabel={company.company_name+' owns stock'} value={company.owns_stock} disabled={busy}
         onValueChange={owns_stock=>change({...company,owns_stock})}/></View>
     <View style={styles.row}><Text style={styles.text}>Owns vehicles</Text>
       <Switch accessibilityLabel={company.company_name+' owns vehicles'} value={company.owns_vehicles} disabled={busy}
@@ -70,7 +70,6 @@ export default function Companies(){
         <StockButton title="Cancel" disabled={busy} onPress={()=>setAdding(false)}/>
       </View>
     </View>:<View style={styles.row}><StockButton title="+ Add company" disabled={busy} onPress={()=>setAdding(true)}/></View>}
-    <Text style={styles.muted}>Stock ownership is available for companies already linked to a Stock owner.</Text>
   </ScrollView>;
 }
 

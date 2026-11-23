@@ -13,7 +13,7 @@ type Category={category_id:number;catalogue_group:string;category_name:string;st
 type AssetPurchase = {id:string;part_number?:string;item_code:string;item_name:string;active:boolean;document_date:string;supplier_name:string;receipt:string;unit_price:string|null};
 type JobCard = {
   id: string; job_number: number; vehicle_name: string; work_description: string; transaction_date:string; closed_at:string|null; revision:string;card_type:CardType;vehicle_id:number|null;tracecode_id:number|null;
-  parts: {category_id:number;line_purpose?:string;part_id: number; owner_code: string; item_code: string; item_name: string; quantity: number; reserved: number; issued: number; repair_cost: number|null; pending_cost: boolean; unit_price:number|null; direct_expense:boolean; part_number?:string; available?: number;stock_sources?:{code:string;name:string;available:number}[]; unit: string; sample_details?: string}[];
+  parts: {category_id:number;line_purpose?:string;part_id: number; owner_code: string; owner_name?:string; issue_enabled?:boolean; item_code: string; item_name: string; quantity: number; reserved: number; issued: number; repair_cost: number|null; pending_cost: boolean; unit_price:number|null; direct_expense:boolean; part_number?:string; available?: number;stock_sources?:{code:string;name:string;available:number}[]; unit: string; sample_details?: string}[];
   purchase_orders: {owner_code: string; status: string; order_number?: string; request_number: number}[];
 };
 type CardData = {
@@ -319,7 +319,7 @@ export default function JobCards() {
       {card.parts.map(part => {
         const available=part.owner_code?(part.available??0):(part.stock_sources?.find(s=>s.code===reservationOwner)?.available??0);
         return <View key={part.part_id} style={{gap:8}}>
-        <Text style={styles.text}>{part.item_name}{part.owner_code?' · '+part.owner_code:''} · {part.quantity} {part.unit}{part.sample_details ? ' · ' + part.sample_details : ''}</Text>
+        <Text style={styles.text}>{part.item_name}{part.owner_code?' · '+(part.owner_name||part.owner_code):''} · {part.quantity} {part.unit}{part.sample_details ? ' · ' + part.sample_details : ''}</Text>
         {part.line_purpose&&part.line_purpose!==card.work_description?<Text style={styles.muted}>{part.line_purpose}</Text>:null}
         {part.part_number?<Text style={styles.muted}>Part number · {part.part_number}</Text>:null}
         <Text style={styles.text}>{part.unit_price===null?'Unit price pending':'Unit price · '+Number(part.unit_price).toFixed(2)}</Text>
@@ -337,15 +337,16 @@ export default function JobCards() {
           pathname:'/stock-v2-purchase-orders',params:{from:'job-card',job:card.id,owner:part.owner_code,part:String(part.part_id),quote:quoteId},
         })}/>:null}
         {data.can_reserve && !card.closed_at && (!!part.owner_code||part.stock_sources!=null) && !part.direct_expense && (reservationPart===part.part_id ? <>
+          {part.owner_code&&part.issue_enabled===false?<Text style={styles.error}>This company is not enabled to own stock.</Text>:null}
           {!part.owner_code&&part.stock_sources?<StockSelect label="Issue from stock owner" value={reservationOwner||null}
             options={part.stock_sources.map(s=>({id:s.code,label:s.name+' · '+s.available+' '+part.unit}))}
             onChange={v=>setReservationOwner(String(v??''))}/>:null}
           <Text style={styles.muted}>{available} {part.unit} available to reserve</Text>
           <StockField label="Quantity" value={reservationQuantity} numeric onChange={setReservationQuantity}/>
           <View style={styles.row}>
-            <StockButton title="Reserve" disabled={busy||!(Number(reservationQuantity)>0)||Number(reservationQuantity)>Math.min(part.quantity-part.reserved-part.issued,available)} onPress={()=>void changeReservation(part.part_id,'reserve')}/>
+            <StockButton title="Reserve" disabled={busy||(!!part.owner_code&&part.issue_enabled===false)||!(Number(reservationQuantity)>0)||Number(reservationQuantity)>Math.min(part.quantity-part.reserved-part.issued,available)} onPress={()=>void changeReservation(part.part_id,'reserve')}/>
             <StockButton title="Release" disabled={busy||!(Number(reservationQuantity)>0)||Number(reservationQuantity)>part.reserved} onPress={()=>void changeReservation(part.part_id,'release')}/>
-            <StockButton title="Issue reserved stock" disabled={busy||!(Number(reservationQuantity)>0)||Number(reservationQuantity)>part.reserved} onPress={()=>void changeReservation(part.part_id,'issue')}/>
+            <StockButton title="Issue reserved stock" disabled={busy||part.issue_enabled===false||!(Number(reservationQuantity)>0)||Number(reservationQuantity)>part.reserved} onPress={()=>void changeReservation(part.part_id,'issue')}/>
             <StockButton title="Close" disabled={busy} onPress={()=>setReservationPart(null)}/>
           </View>
         </> : <StockButton title="Manage reservation" disabled={busy} onPress={()=>{setReservationPart(part.part_id);setReservationQuantity('');setReservationOwner('');}}/>)}

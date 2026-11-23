@@ -1,3 +1,4 @@
+import {available,type IssueCompany} from '@/utils/spray-allocation';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import {JsplSearchCombo} from "@/components/jspl/JsplSearchCombo";
 import {StockProductEditor} from '@/components/jspl/StockProductEditor';
@@ -25,15 +26,15 @@ import { supabase } from "../../../supabase";
 const endpoint=stockV2Endpoint;
 type ChemicalActive={name:string;amount:string;unit:"g/L"|"g/kg"};
 type ChemicalActiveRow={item_code:string;active_name:string;concentration:number;concentration_unit:"g/L"|"g/kg"};
-type Item={item_code:string;item_name:string;base_unit:string;active:boolean;opening_heyshott_quantity:number|null;opening_ao_quantity:number|null;historical_unit_cost:number|null;quantity:number;ao_quantity:number;input_type:string|null;input_category:string|null;active_ingredient:string|null;last_purchase_price:number|null;weighted_average_price:number|null;last_purchase_supplier:string|null};
+type Item={owner_quantities?:Record<string,number>;item_code:string;item_name:string;base_unit:string;active:boolean;opening_heyshott_quantity:number|null;opening_ao_quantity:number|null;historical_unit_cost:number|null;quantity:number;ao_quantity:number;input_type:string|null;input_category:string|null;active_ingredient:string|null;last_purchase_price:number|null;weighted_average_price:number|null;last_purchase_supplier:string|null};
 type OrderLine={owner_code:string;contract_id:number|null;order_id:number;order_number:string;supplier_name:string;item_code:string;item_name:string;base_unit:string;ordered_quantity:number;received_quantity:number;ordered_unit_price:number|null;status:string};
-type SprayLine={job_id:number;external_tracecode_id:number;tracecode_name:string;item_code:string;item_name:string;area_ha:number;rate_per_ha:number;planned_quantity:number;issued_quantity:number;status:string};
+type SprayLine={owner_code:string;owner_name:string;issue_enabled:boolean;job_id:number;external_tracecode_id:number;tracecode_name:string;item_code:string;item_name:string;area_ha:number;rate_per_ha:number;planned_quantity:number;issued_quantity:number;status:string};
 type Doc={document_id:number;document_type:string;document_number:string;item_name:string;quantity:number;tracecode_name:string|null};
-type Snapshot={items:Item[];orders:OrderLine[];sprays:SprayLine[];documents:Doc[];pending_invoice_count?:number;outstanding_spray_count?:number;sprayers?:{setup_name:string;water_litres_per_ha:number}[]};
+type Snapshot={issue_companies:IssueCompany[];items:Item[];orders:OrderLine[];sprays:SprayLine[];documents:Doc[];pending_invoice_count?:number;outstanding_spray_count?:number;sprayers?:{setup_name:string;water_litres_per_ha:number}[]};
 type Trace={tracecode_id:number;tracecode_name:string;tracecode_size:number;crop_id:number|null};
 type Crop={crop_id:number;crop_name:string};
-type Line={equipment_id:string;equipment_other:string;id:number;item_code:string;quantity:string;unit_price:string;rate_per_ha:string;mix_instruction:string};
-const emptyLine=(id:number,item_code=""):Line=>({id,item_code,equipment_id:"",equipment_other:"",quantity:"",unit_price:"",rate_per_ha:"",mix_instruction:""});
+type Line={input_type:string;equipment_id:string;equipment_other:string;id:number;item_code:string;quantity:string;unit_price:string;rate_per_ha:string;mix_instruction:string};
+const emptyLine=(id:number,item_code=""):Line=>({id,item_code,input_type:'',equipment_id:"",equipment_other:"",quantity:"",unit_price:"",rate_per_ha:"",mix_instruction:""});
 const uuid=()=>"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const r=Math.floor(Math.random()*16);return(c==="x"?r:(r&3)|8).toString(16)});
 const number=(x:string)=>Number(x);
 const currency=(n:number)=>Number.isFinite(n)?n.toFixed(2):"—";
@@ -136,7 +137,10 @@ export default function StockV2Workflow(){
  const owner=owners.find(o=>o.owner_code===ownerCode);
  const effectiveContract=owner?.default_contract_id??contractId;
  const directGrv=tab==="POs Outstanding"&&!!owner?.allow_direct_grv&&!owner.po_required_for_grv;
- const ownerReady=!!owner?.active;
+ const issueCompanies=snapshot?.issue_companies??[];
+ const issueCompany=issueCompanies.find(c=>c.owner_code===ownerCode);
+ const isIssue=tab==="Direct Issue"||tab==="Planned Issue";
+ const ownerReady=isIssue?!!issueCompany:!!owner?.active;
  const contractReady=!!effectiveContract&&contracts.some(c=>c.contract_id===effectiveContract&&(c.active||tab==="POs Outstanding"));
  const selectOwner=(code:string)=>{setOwnerCode(code);setContractId(null);setOrderId(null);setSupplier("");setLines([emptyLine(nextLine)]);setNextLine(x=>x+1);resetEdit()};
  const changeLine=(id:number,key:keyof Line,value:string)=>{setLines(old=>old.map(l=>l.id===id?{...l,[key]:value,...(key==="item_code"?{equipment_id:"",equipment_other:""}:{}),...(key==="equipment_id"&&value!=="other"?{equipment_other:""}:{})}:l));resetEdit()};
@@ -148,10 +152,20 @@ export default function StockV2Workflow(){
  const showOtherColumn=showEquipmentColumn&&lines.some(l=>l.equipment_id==="other");
  const missingActiveCount=activesReady?products.filter(activeMissing).length:0;
  const activeDescription=(p:Item)=>chemicalActives[p.item_code]?.map(a=>a.name+" "+a.amount+" "+a.unit).join(" + ")||"—";
- const issueStock=(p?:Item)=>{const n=Number(ownerCode==="AO"?p?.ao_quantity:p?.quantity);return Number.isFinite(n)?Math.max(0,n):0};
+ const issueStock=(p?:Item)=>available(p,ownerCode);
+ const directInputs=products.filter(p=>p.active&&!requiresLubricantJobCard(p)&&equipmentIssueKind(p)!=='DIESEL');
+ const issueType=(p:Item)=>p.input_type?.trim()||'Unclassified';
+ const availableInputs=(line:Line)=>directInputs.filter(p=>!lines.some(l=>l.id!==line.id&&l.item_code===p.item_code));
+ const changeIssueType=(line:Line,type:string)=>{
+  const product=products.find(p=>p.item_code===line.item_code);
+  if(product&&type&&issueType(product)!==type)setLines(rows=>rows.map(l=>l.id===line.id?{...emptyLine(l.id),input_type:type}:l));
+  else changeLine(line.id,'input_type',type);
+  setPickerLine(null);resetEdit();
+ };
  const stockLabel=(p:Item)=>issueStock(p).toLocaleString("en-GB",{minimumFractionDigits:3,maximumFractionDigits:3})+" "+p.base_unit;
  const inputTypes=[...new Set(products.filter(p=>(!categoryFilter||p.input_category===categoryFilter)&&(stockFilter==="all"||(stockFilter==="stock"?(p.quantity>0||p.ao_quantity>0):(p.quantity<=0&&p.ao_quantity<=0)))).map(x=>x.input_type).filter((x):x is string=>!!x))].sort();
  const inputCategories=[...new Set(products.filter(p=>(!typeFilter||p.input_type===typeFilter)&&(stockFilter==="all"||(stockFilter==="stock"?(p.quantity>0||p.ao_quantity>0):(p.quantity<=0&&p.ao_quantity<=0)))).map(x=>x.input_category).filter((x):x is string=>!!x))].sort();
+ const pickerType=lines.find(l=>l.id===pickerLine)?.input_type;
  const balanceRows=products.filter(p=>(!typeFilter||p.input_type===typeFilter)&&(!categoryFilter||p.input_category===categoryFilter)&&(stockFilter==="all"||(stockFilter==="stock"?(p.quantity>0||p.ao_quantity>0):(p.quantity<=0&&p.ao_quantity<=0))));
  const orders=useMemo(()=>{
   const map=new Map<number,OrderLine[]>();
@@ -160,7 +174,7 @@ export default function StockV2Workflow(){
  },[snapshot,ownerCode]);
  const selectedPO=orders.find(x=>x.id===orderId);
  const jobs=useMemo(()=>{
-  const map=new Map<number,SprayLine[]>();for(const j of snapshot?.sprays??[]){if(j.status!=="planned")continue;if(!map.has(j.job_id))map.set(j.job_id,[]);map.get(j.job_id)!.push(j)}
+  const map=new Map<number,SprayLine[]>();for(const j of snapshot?.sprays??[]){if(j.status!=="planned"||!j.issue_enabled)continue;if(!map.has(j.job_id))map.set(j.job_id,[]);map.get(j.job_id)!.push(j)}
   return [...map.entries()].map(([id,lines])=>({id,lines,trace:lines[0].tracecode_name,remaining:lines.reduce((s,x)=>s+Math.max(0,x.planned_quantity-x.issued_quantity),0)})).filter(x=>x.remaining>0);
  },[snapshot]);
  const outstandingSprays=snapshot?.outstanding_spray_count??jobs.filter(j=>j.lines.length>0&&Math.min(...j.lines.map(l=>l.rate_per_ha>0?Math.max(0,(l.planned_quantity-l.issued_quantity)/l.rate_per_ha):0))>0.0001).length;
@@ -169,7 +183,7 @@ export default function StockV2Workflow(){
  const traceLabel=(t:Trace)=>isWorkshop(t)?"HS Workshop":t.tracecode_name;
  const activeTraces=traces.filter(t=>isWorkshop(t)?(cropId===null||cropId===-1):(cropId===null||(cropId===-1?t.crop_id==null:t.crop_id===cropId))&&(t.crop_id==null||crops.some(c=>c.crop_id===t.crop_id)));
  const choosePO=(po:typeof orders[number])=>{setCheckedPOItems([]);setOrderId(po.id);setContractId(po.contract_id);setSupplier(po.supplier);setLines(po.lines.filter(x=>x.received_quantity<x.ordered_quantity).map((x,i)=>({...emptyLine(nextLine+i,x.item_code),quantity:"",unit_price:""})));setNextLine(n=>n+po.lines.length);setDropdown(null);resetEdit()};
- const chooseJob=(job:typeof jobs[number])=>{setJobId(job.id);setTraceId(job.lines[0].external_tracecode_id);setLines(job.lines.filter(x=>x.planned_quantity>x.issued_quantity).map((x,i)=>({...emptyLine(nextLine+i,x.item_code),quantity:String(Number((x.planned_quantity-x.issued_quantity).toFixed(4))),rate_per_ha:String(x.rate_per_ha)})));setNextLine(n=>n+job.lines.length);setDropdown(null);resetEdit()};
+ const chooseJob=(job:typeof jobs[number])=>{setOwnerCode(job.lines[0].owner_code);setJobId(job.id);setTraceId(job.lines[0].external_tracecode_id);setLines(job.lines.filter(x=>x.planned_quantity>x.issued_quantity).map((x,i)=>({...emptyLine(nextLine+i,x.item_code),quantity:String(Number((x.planned_quantity-x.issued_quantity).toFixed(4))),rate_per_ha:String(x.rate_per_ha)})));setNextLine(n=>n+job.lines.length);setDropdown(null);resetEdit()};
  const menu=(id:string,title:string,choices:{label:string;value:string;onSelect:()=>void}[],searchable=false)=> <View style={styles.dropdown}>
   <Pressable style={styles.selector} onPress={()=>{setDropdown(dropdown===id?null:id);setSearch("")}}><ThemedText>{title}  ▾</ThemedText></Pressable>
   {dropdown===id?<View style={[styles.choices,id==="orders"&&styles.poChoices]}>{searchable?<TextInput style={styles.input} placeholder="Search..." placeholderTextColor="#777" value={search} onChangeText={setSearch}/>:null}
@@ -184,6 +198,9 @@ export default function StockV2Workflow(){
   const grvSelectable=tab==="POs Outstanding"&&!directGrv;
   const enabled=!grvSelectable||checkedPOItems.includes(l.item_code);
   return <View key={l.id} style={styles.line}>
+   {tab==="Direct Issue"?<View style={styles.numberColumn}><StockSelect label={'Input Type '+(lines.indexOf(l)+1)} value={l.input_type||'__all__'}
+     options={[{id:'__all__',label:'All input types'},...[...new Set(availableInputs(l).filter(p=>issueStock(p)>0||p.item_code===l.item_code).map(issueType))].sort().map(t=>({id:t,label:t}))]}
+     onChange={v=>changeIssueType(l,v&&v!=='__all__'?String(v):'')}/></View>:null}
    {grvSelectable?<Pressable style={{width:55,alignItems:"center",justifyContent:"center"}} onPress={()=>{setCheckedPOItems(old=>old.includes(l.item_code)?old.filter(x=>x!==l.item_code):[...old,l.item_code]);resetEdit()}}><ThemedText style={{fontSize:23,color:enabled?jsplColors.primary:jsplColors.textSecondary}}>{enabled?"☑":"☐"}</ThemedText></Pressable>:null}
    <View style={styles.productColumn}>
     {locked?<ThemedText>{product?.item_name??l.item_code}</ThemedText>:<Pressable style={styles.selector} onPress={()=>{setPickerLine(l.id);setPickerSearch("");if(tab==="Direct Issue")void refresh(false)}}><ThemedText numberOfLines={2}>{product?.item_name??"Select product"} ▾</ThemedText></Pressable>}
@@ -212,7 +229,7 @@ export default function StockV2Workflow(){
  (tab!=="POs Outstanding"||!directGrv||(contractReady&&!!supplier.trim()))&&(tab!=="Purchase Orders"||!!parseJsplDateInput(orderDate))&&selectedLines.length>0&&selectedLines.length<=30&&new Set(selectedLines.map(l=>l.item_code)).size===selectedLines.length&&selectedLines.every(l=>{
   if(!products.some(p=>p.item_code===l.item_code&&p.active))return false;
   const kind=equipmentIssueKind(products.find(p=>p.item_code===l.item_code));
-  if(tab==="Direct Issue"&&requiresLubricantJobCard(products.find(p=>p.item_code===l.item_code)))return false;
+  if(tab==="Direct Issue"&&!directInputs.some(p=>p.item_code===l.item_code&&(!l.input_type||issueType(p)===l.input_type)))return false;
   if(tab==="Direct Issue"&&kind&&(equipmentError||!validEquipmentDestination(equipment,kind,l.equipment_id==="other"?"other":l.equipment_id?Number(l.equipment_id):null,l.equipment_other)))return false;
   const n=number(l.quantity);
   if(!Number.isFinite(n)||n<=0)return false;
@@ -222,7 +239,7 @@ export default function StockV2Workflow(){
   if(tab==="POs Outstanding"&&!directGrv&&(!ref||n>(ref as OrderLine).ordered_quantity-(ref as OrderLine).received_quantity))return false;
   if(tab==="Planned Issue"&&(!ref||n>(ref as SprayLine).planned_quantity-(ref as SprayLine).issued_quantity))return false;
   return true;
- })&&(tab!=="POs Outstanding"||directGrv||!!selectedPO)&&(tab!=="Planned Issue"||!!selectedJob)&&(tab!=="Direct Issue"||ownerReady)&&(tab!=="Direct Issue"||!!traceId);
+ })&&(tab!=="POs Outstanding"||directGrv||!!selectedPO)&&(tab!=="Planned Issue"||!!selectedJob)&&(!isIssue||ownerReady)&&(tab!=="Direct Issue"||!!traceId);
  const submit=async()=>{if(!valid||!confirmed||busy)return;setBusy(true);setStatus("");
   const req=request&&request.action===action&&JSON.stringify(request.payload)===JSON.stringify(payload)?request:{action,payload,id:uuid()};setRequest(req);
   try{
@@ -300,7 +317,7 @@ export default function StockV2Workflow(){
      ]}/>
 
   </View>:<View style={styles.sheet}>
-   {header(tab.toUpperCase(),[tab==="Direct Issue"?"Owner: "+(ownerCode||"JS"):"Owner: JS","Warehouse: Stores","Date: "+new Date().toLocaleDateString("en-GB")])}
+   {header(tab.toUpperCase(),[isIssue?"Owner: "+(issueCompany?.company_name??"Choose a company"):"Owner: JS","Warehouse: Stores","Date: "+new Date().toLocaleDateString("en-GB")])}
    {(tab==="Purchase Orders"||tab==="POs Outstanding")?<View style={{gap:10,paddingBottom:14}}>
      <ThemedText style={styles.label}>1. Stock Owner</ThemedText>
      {menu("owner",owner?owner.owner_name:"Choose Stock Owner",owners.filter(o=>o.active).map(o=>({label:o.owner_name,value:o.owner_code,onSelect:()=>selectOwner(o.owner_code)})))}
@@ -338,7 +355,7 @@ export default function StockV2Workflow(){
    </>:null}
    {tab==="Planned Issue"?<>{menu("jobs",selectedJob?"Spray job #"+selectedJob.id+" — "+selectedJob.trace:"Choose outstanding spray programme",jobs.map(j=>({label:"Job #"+j.id+" · "+j.trace+" · "+j.lines.length+" products",value:String(j.id),onSelect:()=>chooseJob(j)})),true)}</>:null}
    {tab==="Direct Issue"?<View style={styles.filters}>
-    <StockSelect label="Stock owner" value={ownerCode} onChange={v=>selectOwner(String(v??""))} options={owners.filter(o=>o.active).map(o=>({id:o.owner_code,label:o.owner_name}))}/>
+    <StockSelect label="Stock owner" value={issueCompany?.owner_code??null} onChange={v=>selectOwner(String(v??""))} options={issueCompanies.map(c=>({id:c.owner_code,label:c.company_name}))}/>
     {menu("crops",cropId===-1?"No Crop":crops.find(c=>c.crop_id===cropId)?.crop_name??"All crops",[{label:"All crops / No Crop",value:"all",onSelect:()=>{setCropId(null);setTraceId(null)}},{label:"No Crop",value:"no-crop",onSelect:()=>{setCropId(-1);setTraceId(null)}},...crops.map(c=>({label:c.crop_name,value:String(c.crop_id),onSelect:()=>{setCropId(c.crop_id);setTraceId(null)}}))])}
     {menu("traces",currentTrace?traceLabel(currentTrace):"Choose active tracecode",activeTraces.map(t=>({label:traceLabel(t),value:String(t.tracecode_id),onSelect:()=>{setTraceId(t.tracecode_id);setArea(String(t.tracecode_size??""));setPart("");}})),true)}
    </View>:null}
@@ -348,7 +365,7 @@ export default function StockV2Workflow(){
    <ScrollView horizontal nestedScrollEnabled contentContainerStyle={{minWidth:tab==="POs Outstanding"&&!directGrv?1130:tab==="Purchase Orders"?790:tab==="Planned Issue"?710:showEquipmentColumn?(showOtherColumn?1189:949):650}}>
     <View style={{flex:1}}>
      <View style={styles.lineHeader}>
-      {(tab==="POs Outstanding"&&!directGrv?["Select","Product","Ordered","Prev. rec.","PO price","Actual Qty","Actual Price","Line total"]:tab==="Planned Issue"?["Product","Outstanding","Qty issue"]:tab==="Purchase Orders"?["Product","Qty ordered","Unit price","Line total"]:directGrv?["Product","Qty received","Actual price","Line total"]:["Product","Qty issue",...(showEquipmentColumn?["Vehicle / Equipment"]:[]),...(showOtherColumn?["Other description"]:[]),"Mix Rate (optional)"]).map((x,i)=><View key={i} style={x==="Select"?{width:55}:x==="Product"?styles.productColumn:x==="Vehicle / Equipment"?styles.equipmentColumn:x==="Other description"?styles.otherColumn:x==="Mix Rate (optional)"?[styles.numberColumn,{width:210}]:styles.numberColumn}><ThemedText style={styles.gridHeading}>{x}</ThemedText></View>)}
+      {(tab==="POs Outstanding"&&!directGrv?["Select","Product","Ordered","Prev. rec.","PO price","Actual Qty","Actual Price","Line total"]:tab==="Planned Issue"?["Product","Outstanding","Qty issue"]:tab==="Purchase Orders"?["Product","Qty ordered","Unit price","Line total"]:directGrv?["Product","Qty received","Actual price","Line total"]:[...(tab==="Direct Issue"?["Input Type","Input Name"]:["Product"]),"Qty issue",...(showEquipmentColumn?["Vehicle / Equipment"]:[]),...(showOtherColumn?["Other description"]:[]),"Mix Rate (optional)"]).map((x,i)=><View key={i} style={x==="Select"?{width:55}:(x==="Product"||x==="Input Name")?styles.productColumn:x==="Vehicle / Equipment"?styles.equipmentColumn:x==="Other description"?styles.otherColumn:x==="Mix Rate (optional)"?[styles.numberColumn,{width:210}]:styles.numberColumn}><ThemedText style={styles.gridHeading}>{x}</ThemedText></View>)}
       {(directGrv||!["POs Outstanding","Planned Issue"].includes(tab ?? ""))?<View style={styles.removeColumn}/>:null}
      </View>
      {lines.map(l=>lineCells(l,(tab==="POs Outstanding"&&!directGrv)||tab==="Planned Issue"))}
@@ -357,7 +374,7 @@ export default function StockV2Workflow(){
    {pickerLine!==null?<View style={styles.pickerPanel}>
     <View style={styles.pickerTop}><ThemedText style={styles.section}>Choose product</ThemedText><Pressable onPress={()=>setPickerLine(null)}><ThemedText>Close</ThemedText></Pressable></View>
     <TextInput style={styles.input} placeholder="Find product" value={pickerSearch} onChangeText={setPickerSearch}/>
-    {products.filter(p=>p.active&&(tab!=="Direct Issue"||!requiresLubricantJobCard(p))&&p.item_name.toLowerCase().startsWith(pickerSearch.trim().toLowerCase())&&!lines.some(x=>x.id!==pickerLine&&x.item_code===p.item_code)).map(p=><Pressable key={p.item_code} disabled={tab==="Direct Issue"&&issueStock(p)<=0} style={[styles.choice,tab==="Direct Issue"&&issueStock(p)<=0?{opacity:.45}:null]} onPress={()=>{changeLine(pickerLine,"item_code",p.item_code);setPickerLine(null)}}><ThemedText>{p.item_name} ({p.base_unit}){tab==="Direct Issue"?" · Available: "+stockLabel(p):""}</ThemedText></Pressable>)}
+    {(tab==="Direct Issue"?directInputs:products).filter(p=>p.active&&(tab!=="Direct Issue"||!pickerType||issueType(p)===pickerType)&&p.item_name.toLowerCase().startsWith(pickerSearch.trim().toLowerCase())&&!lines.some(x=>x.id!==pickerLine&&x.item_code===p.item_code)).map(p=><Pressable key={p.item_code} disabled={tab==="Direct Issue"&&issueStock(p)<=0} style={[styles.choice,tab==="Direct Issue"&&issueStock(p)<=0?{opacity:.45}:null]} onPress={()=>{changeLine(pickerLine,"item_code",p.item_code);setPickerLine(null)}}><ThemedText>{p.item_name} ({p.base_unit}){tab==="Direct Issue"?" · Available: "+stockLabel(p):""}</ThemedText></Pressable>)}
    </View>:null}
    {(directGrv||!["POs Outstanding","Planned Issue"].includes(tab ?? ""))?<Pressable style={styles.add} onPress={addLine}><ThemedText>＋ Add product line</ThemedText></Pressable>:null}
    {(tab==="Purchase Orders"||(tab==="POs Outstanding"&&receiptMode==="invoice"))?<ThemedText style={styles.total}>Document total: {currency(lines.reduce((s,l)=>s+number(l.quantity)*number(l.unit_price||"0"),0))}</ThemedText>:null}

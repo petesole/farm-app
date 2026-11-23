@@ -11,7 +11,7 @@ import {jsplColors,jsplSpacing,jsplRadii,jsplSizes} from "@/constants/jspl-desig
 
 const endpoint=stockV2Endpoint;
 type Line={item_code:string;item_name:string;base_unit:string;quantity:number;rate_per_ha:number|null;mix_instruction:string|null};
-type Slip={can_reprint?:boolean;already_printed?:boolean;header:{document_id:number;document_number:string;document_date:string;tracecode_name:string|null;job_id:string|null;water_rate:number|null;sprayer:string|null;spray_type:string|null};lines:Line[]};
+type Slip={can_reprint?:boolean;already_printed?:boolean;header:{company_name:string;document_id:number;document_number:string;document_date:string;tracecode_name:string|null;job_id:string|null;water_rate:number|null;sprayer:string|null;spray_type:string|null};lines:Line[]};
 const fmt=(v:number,dp=2)=>Number.isFinite(v)?v.toLocaleString("en-GB",{maximumFractionDigits:dp,minimumFractionDigits:dp}):"—";
 export default function IssueSlip(){
  const router=useRouter(),params=useLocalSearchParams<{documentId?:string}>();
@@ -54,6 +54,7 @@ export default function IssueSlip(){
   </style></head><body><div class="toolbar"><button onclick="window.print()">Print Slip</button><button onclick="window.close()">Close</button></div><main>
   <div class="company">JOHN SOLE (PVT) LTD</div><div class="heading">STOCK ISSUE &amp; TANK MIX</div><div class="rule"></div>
   <div class="meta"><div><b>Issue No:</b> ${esc(h.document_number)}</div><div><b>Date:</b> ${esc(date)}</div></div>
+  <div>Stock owner: ${esc(h.company_name)}</div>
   <div class="trace">${esc(h.tracecode_name||"NO TRACECODE")}</div>
   <div class="areaWater">Area: ${ready?fmt(area,2)+" ha":"—"} &nbsp; Water: ${water?fmt(water,0)+" L/ha":"—"}</div><div class="rule"></div>
   <table><colgroup><col style="width:36%"><col style="width:16%"><col style="width:16%"><col style="width:16%"><col style="width:16%"></colgroup><thead><tr class="tankHeader"><th colspan="3"></th><th>Qty: ${ready?full:"—"}</th><th>${ready?(part>0?1:0):"—"}</th></tr><tr class="tankHeader"><th colspan="3"></th><th>${fmt(capacity,0)} L</th><th>${ready?fmt(part,0)+" L":"—"}</th></tr><tr><th>Product</th><th>Issue</th><th>Rate/ha</th><th>Full</th><th>Part</th></tr></thead><tbody>${rows}</tbody></table>
@@ -71,6 +72,7 @@ export default function IssueSlip(){
    <View style={styles.rule}/>
    <ThemedText style={styles.small}>Issue No: {issueNumber}</ThemedText>
    <ThemedText style={styles.small}>Date: {displayDate}</ThemedText>
+   <ThemedText style={styles.small}>Stock owner: {slip.header.company_name}</ThemedText>
    <ThemedText style={styles.trace}>{slip.header.tracecode_name||"NO TRACECODE"}</ThemedText>
    <ThemedText style={styles.areaWater}>Area: {ready?fmt(area)+" ha":"—"} · Water: {water?fmt(water,0)+" L/ha":"—"}</ThemedText>
    <View style={styles.rule}/>
