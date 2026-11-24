@@ -11,6 +11,9 @@ const client={from:name=>{assert.equal(name,'labour_v2_report_rows');let filters
  const q={select:(c,o)=>{options=o;return q},eq:(k,v)=>{filters.push(r=>String(r[k])===String(v));return q},gte:(k,v)=>{filters.push(r=>r[k]>=v);return q},lt:(k,v)=>{filters.push(r=>r[k]<v);return q},order:k=>{sort.push(k);return q},range:(a,b)=>{start=a;end=b;return q},then:(yes,no)=>{calls.push({start,end,sort});let selected=data.filter(r=>filters.every(f=>f(r))).sort((a,b)=>sort.reduce((n,k)=>n||String(a[k]).localeCompare(String(b[k]),'en',{numeric:true}),0));const result=denied||start===failOffset?{data:null,error:{message:'Report access failed'}}:{data:selected.slice(duplicatePage&&start?0:start,duplicatePage&&start?end-start+1:end+1),count:options?.count?selected.length:null,error:null};return Promise.resolve(result).then(yes,no)}};return q}};
 const selection={mode:'monthly',period:'2026-11',farm:'',crop:'',trace:''};
 (async()=>{
+ const dashboard=fs.readFileSync(path.join(root,'app','(tabs)','labour.tsx'),'utf8');
+ check(/title:\s*"Weekly Report"[^}]*path:\s*"\/labour-date-report\?mode=weekly"/.test(dashboard),'Labour dashboard links to the Weekly Report');
+ check(/title:\s*"AO Weekly"[^}]*path:\s*"\/labour-date-report\?mode=ao"/.test(dashboard),'Labour dashboard links to the Agri Orange Weekly Report');
  let r=api.buildLabourReport(data,selection);check(r.sourceRows===5&&r.totals.qty===14&&r.totals.value===61&&r.totals.missingValue===1,'Monthly totals match recorded amounts without treating absent costs as zero');
  const onlyAO={...selection,farm:'AgriOrange',crop:'Oranges',trace:'10'},ao=api.buildLabourReport(data,onlyAO);
  check(ao.rows.filter(r=>r._kind==='detail').length===2&&ao.rows.find(r=>r.activity_name==='Weeding').labour_qty===5,'Monthly report combines repeated allocation within the same farm, crop and trace');
