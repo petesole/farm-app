@@ -59,6 +59,8 @@ export default function LabourMain(){
  {title:"AO Weekly",description:"Agri Orange weekly Labour report.",path:"/labour-date-report?mode=ao"},
  {title:"Daily Report",description:"Select an individual date",path:"/labour-date-report"},
  {title:"Input History",description:"Look up historical Labour records",path:"/labour-history"},
+ {title:"Payment Requests",description:"Select outstanding Labour and send a request to Cashbook",path:"/labour-payments"},
+ {title:"Historical Payments",description:"Look up Labour payments and Cashbook references",path:"/labour-payment-history"},
 
  ];
  return <ScrollView contentContainerStyle={styles.page}>

@@ -1,5 +1,5 @@
 import {useCallback,useEffect,useState} from 'react';
-import {useFocusEffect,useLocalSearchParams} from 'expo-router';
+import {router,useFocusEffect,useLocalSearchParams} from 'expo-router';
 import {ScrollView,Text,View} from 'react-native';
 import {StockV2Header} from '@/components/jspl/StockV2Header';
 import {StockLineTable} from '@/components/jspl/StockLineTable';
@@ -129,6 +129,7 @@ export default function CashBook(){
       <StockButton title="Accounts" disabled={busy} onPress={()=>setTab('accounts')}/>
       <StockButton title="Trip advances" disabled={busy} onPress={()=>setTab('trips')}/>
       <StockButton title="Labour payments" disabled={busy} onPress={()=>setTab('labour')}/>
+      <StockButton title="Labour payment requests" disabled={busy} onPress={()=>router.push('/labour-payment-admin')}/>
       <StockButton title="Supplier invoices" disabled={busy} onPress={()=>setTab('suppliers')}/>
     </View></>:null}
     {tab==='accounts'&&accounts.map(record=><Text key={record.id} style={styles.text}>{record.name} · {record.currency} {record.balance}</Text>)}
