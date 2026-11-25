@@ -437,7 +437,8 @@ async function check(browser, role, width) {
       await click(page,'Buying');await click(page,'Job Cards');await click(page,'Outstanding Job Cards (2)');
       await click(page,'Job Card 11 · Screen test tractor');await page.reload();
       for(const action of ['← Job Card','Save Draft','Submit for Approval']){
-        await click(page,'Purchase parts · JS');
+        // Previously saved single-card POs and individual supplier quote links still open this editor.
+        await page.goto(site+'/stock-v2-purchase-orders?from=job-card&job=service-card&owner=JS&returnTo='+encodeURIComponent(JSON.stringify({path:'/job-cards',params:{view:'outstanding',card:'service-card',from:'buying'}})));
         await page.getByText('Job Card 11',{exact:true}).waitFor();
         if(action==='← Job Card'){
           await page.reload();
@@ -451,7 +452,7 @@ async function check(browser, role, width) {
           await supplier.click();await click(page,'Second supplier');assert.equal(await price.inputValue(),'');
           await supplier.click();await click(page,'Screen supplier');assert.equal(await price.inputValue(),'18.50');
         }
-        await click(page,action);await page.getByRole('button',{name:'Purchase parts · JS',exact:true}).waitFor();
+        await click(page,action);await page.getByRole('button',{name:'Review Job Card requirements',exact:true}).waitFor();
         assert.equal(new URL(page.url()).searchParams.get('card'),'service-card');
       }
       if(role==='admin'){

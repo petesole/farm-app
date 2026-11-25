@@ -23,6 +23,7 @@ export default function Buying() {
     <StockV2Header title="Buying" dashboard allowMain={access?.can_main}/>
     {error ? <Text style={stockStyles.error}>{error}</Text> : null}
     {access?.is_buyer || access?.is_admin || access?.can_main ? <>
+      <StockButton title="Job Card Requirements" onPress={()=>router.push('/job-requirements')}/>
       <StockButton title="Purchase Orders" onPress={() => router.push({pathname:'/stock-v2-purchase-orders',params:{from:'buying'}})}/>
       {access.is_admin?<StockButton title="Approve Purchase Orders" onPress={()=>router.push(purchaseOrderApproval('/buying'))}/>:null}
       <StockButton title="Receiving" onPress={() => router.push({pathname:'/stock-v2-po-receiving',params:{from:'buying'}})}/>

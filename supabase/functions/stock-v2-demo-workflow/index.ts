@@ -151,11 +151,11 @@ Deno.serve(async(req)=>{
    const trips=await db`select t.id,t.trip_number,t.trip_date::text,t.driver_id,t.finalised_at,(${access.is_driver} and t.driver_id=${user.id}::uuid) as can_report,driver.email as driver_name,
     coalesce((select jsonb_agg(jsonb_build_object('order_id',h.order_id,'order_number',h.order_number,
       'supplier',h.supplier_name,'owner',replace(o.owner_code,'TEST_',''),'outcome',entry.outcome,
-      'driver_note',entry.driver_note,'payment_terms',approval.payload->>'payment_terms',
+      'job_requirements',approval.payload->>'job_requirements'='true','driver_note',entry.driver_note,'payment_terms',approval.payload->>'payment_terms',
       'can_receive',entry.outcome='collected' and h.status='approved' and exists(
         select 1 from stock_v2.order_line pending where pending.order_id=h.order_id and pending.ordered_quantity>pending.received_quantity),
-      'items',(select jsonb_agg(jsonb_build_object('name',i.item_name,'quantity',l.ordered_quantity,'remaining',greatest(0,l.ordered_quantity-l.received_quantity),'unit',i.base_unit) order by l.order_line_id)
-        from stock_v2.order_line l join stock_v2.item i using(item_id) where l.order_id=h.order_id))
+      'items',(select jsonb_agg(jsonb_build_object('name',coalesce(i.item_name,s.ref||' · '||s.description),'quantity',l.ordered_quantity,'remaining',greatest(0,l.ordered_quantity-l.received_quantity),'unit',coalesce(i.base_unit,'each')) order by l.order_line_id)
+        from stock_v2.order_line l left join stock_v2.item i using(item_id) left join stock_v2.job_supplier_line s on s.id=l.supplier_line_id where l.order_id=h.order_id))
       order by h.order_id)
       from stock_v2.town_trip_order entry join stock_v2.order_header h using(order_id)
       join stock_v2.owner o using(owner_id)
@@ -175,6 +175,23 @@ Deno.serve(async(req)=>{
      order by h.order_id desc`,
    ]);
    return reply({trips,drivers,orders,can_create:true,can_main:access.can_main,can_report:access.is_driver,can_receive:canReceive});
+  }
+  if(req.method==="GET"&&new URL(req.url).searchParams.has("job_requirements")){
+   if(!access.is_buyer&&!access.is_stock&&!access.is_admin)return reply({error:"Buying or Stores access required"},403);
+   const rows=await db`select r.*,replace(r.owner_code,'TEST_','') as owner_code,s.declined_on from stock_v2.job_requirements r
+    left join stock_v2.job_supplier_line s on s.id=r.supplier_line_id where r.closed_at is null order by r.job_number,r.key`;
+   const suppliers=await db`select supplier_id::text as id,supplier_name as label from stock_v2.supplier where active order by supplier_name`;
+   const owners=await db`select owner_code as id,company_name as label from stock_v2.issue_company where enabled order by company_name`;
+   const orders=await db`select h.order_id::text,h.order_number,h.supplier_name,replace(o.owner_code,'TEST_','') as owner_code,
+     l.order_line_id::text,l.ordered_quantity-l.received_quantity-coalesce(waiting.qty,0) as outstanding,l.ordered_unit_price,
+     r.kind,r.ref,r.description,r.job_number,r.part_number from stock_v2.job_order_allocation a
+     join stock_v2.order_line l using(order_line_id) join stock_v2.order_header h using(order_id) join stock_v2.owner o using(owner_id)
+     join stock_v2.job_requirements r on r.key=coalesce('S'||a.supplier_line_id,'P'||a.part_id)
+     left join lateral(select sum((x->>'quantity')::numeric) qty from stock_v2.receipt_verification v,jsonb_array_elements(v.payload->'lines') x
+       where v.receipt_action='job_delivery' and v.status='pending' and x->>'order_line_id'=l.order_line_id::text) waiting on true
+     where h.status='approved' and l.ordered_quantity-l.received_quantity>coalesce(waiting.qty,0) order by h.order_id desc,a.position`;
+   const returned=await db`select v.id,v.town_trip_id,v.request_number,v.decision_reason,v.payload from stock_v2.receipt_verification v where v.receipt_action='job_delivery' and v.status='returned' and not exists(select from stock_v2.receipt_verification next where next.replaces_id=v.id) order by v.request_number desc`;
+   return reply({rows,suppliers,owners,orders,returned,access});
   }
   if(req.method==="GET"&&new URL(req.url).searchParams.has("job_part_quotes")){
    if(!access.is_buyer&&!access.is_admin)return reply({error:"Buying access required"},403);
@@ -210,10 +227,19 @@ Deno.serve(async(req)=>{
    if(!access.is_buyer&&!access.is_admin)return reply({error:"Buying access required"},403);
    const vehicle=Number(new URL(req.url).searchParams.get("job_asset_purchase_history"));
    if(!Number.isSafeInteger(vehicle)||vehicle<=0)return reply({error:"Select an asset."},400);
-   const rows=await db`select h.line_id::text as id,h.item_code,h.item_name,h.buying_part_number as part_number,i.active,h.document_date::text,h.supplier_name,stock_v2.business_number(h.document_id) as receipt,h.unit_price::text from stock_v2.job_asset_purchase_history h join stock_v2.item i using(item_id) where h.vehicle_id=${vehicle} order by h.document_date desc,h.document_id desc,h.line_id desc`;
+   const rows=await db`select h.line_id::text as id,h.item_code,h.item_name,h.buying_part_number as part_number,i.active,h.document_date::text,h.supplier_name,stock_v2.business_number(h.document_id) as receipt,h.unit_price::text from stock_v2.job_asset_purchase_history h join stock_v2.item i using(item_id) where h.vehicle_id=${vehicle}
+    union all select 'job-'||dl.receipt_id||'-'||dl.order_line_id,i.item_code,s.description,i.buying_part_number,i.active,
+      rv.payload->>'receipt_date',rv.payload->>'supplier',rv.payload->>'invoice_number',dl.unit_price::text
+      from stock_v2.job_delivery_line dl join stock_v2.receipt_verification rv on rv.id=dl.receipt_id
+      join stock_v2.order_line ol using(order_line_id) join stock_v2.job_supplier_line s on s.id=ol.supplier_line_id
+      join stock_v2.job_card j on j.id=s.job_id join stock_v2.item i on i.item_id=dl.item_id
+      where j.vehicle_id=${vehicle} and s.kind='sample' and rv.status='posted'
+    order by document_date desc,id desc`;
    return reply({rows});
   }
   const jobClearanceReason=()=>db`case
+    when exists(select from stock_v2.job_requirements r left join stock_v2.job_supplier_line s on s.id=r.supplier_line_id where r.job_id=j.id and r.kind in ('repair','sample') and r.verified_quantity<r.quantity and not (s.declined_on is not null and (s.sent_on is null or s.returned_on is not null))) then 'Complete the sample or repair, or record its return.'
+    when exists(select from stock_v2.job_order_allocation a join stock_v2.approval_document d on d.id=a.document_id join stock_v2.job_card_part p on p.id=a.part_id where p.job_id=j.id and d.status in ('pending','approved','draft')) then 'Complete the outstanding Job Card order.'
     when exists(select from stock_v2.approval_document d where d.kind='po' and d.payload->>'source_job_card_id'=j.id::text
       and (d.status in ('draft','pending','approved') or (d.status='applied' and exists(
         select from stock_v2.order_line l join stock_v2.order_header h using(order_id) where h.order_id=d.target_order_id
@@ -224,7 +250,7 @@ Deno.serve(async(req)=>{
       left join stock_v2.job_part_usage u on u.part_id=p.id where p.job_id=j.id and not i.buying_direct_expense
       and p.requested_quantity>coalesce(u.issued_quantity,0)+coalesce((select c.quantity from stock_v2.job_part_cancellation c where c.part_id=p.id),0)) then 'Issue the outstanding Job Card items.'
     when exists(select from stock_v2.job_card_part p join stock_v2.item i using(item_id)
-      where p.job_id=j.id and i.buying_direct_expense and (not exists(
+      where p.job_id=j.id and i.buying_direct_expense and not exists(select from stock_v2.job_requirements r where r.part_id=p.id and r.verified_quantity>=r.quantity) and (not exists(
         select from cash_book.job_expense x join cash_book.entry e on e.id=x.entry_id where x.part_id=p.id and e.status='confirmed'
         and not exists(select from cash_book.entry v where v.reversal_of=e.id and v.status='confirmed'))
       or exists(select from cash_book.job_expense x join cash_book.entry e on e.id=x.entry_id where x.part_id=p.id and e.status='draft')))
@@ -234,10 +260,12 @@ Deno.serve(async(req)=>{
    if(!access.is_stock&&!access.is_buyer&&!access.is_workshop)return reply({error:"Job Card access required"},403);
    const cards=await db`select case when j.closed_at is null then ${jobClearanceReason()} end as clearance_reason,j.id,j.job_number,j.work_description,j.requested_at,j.xmin::text as revision,j.vehicle_id::float8,j.tracecode_id::float8,j.transaction_date::text,j.closed_at,j.card_type,
     coalesce(v.vehicle_name,t.tracecode_name) as vehicle_name,
+    coalesce((select jsonb_agg(to_jsonb(r)||jsonb_build_object('declined_on',s.declined_on) order by s.id)
+      from stock_v2.job_requirements r join stock_v2.job_supplier_line s on s.id=r.supplier_line_id where r.job_id=j.id),'[]'::jsonb) as supplier_lines,
     coalesce((select jsonb_agg(jsonb_build_object('owner_code',d.payload->>'owner_code','status',d.status,
       'order_number',h.order_number,'request_number',d.request_number) order by d.request_number desc)
       from stock_v2.approval_document d left join stock_v2.order_header h on h.order_id=d.target_order_id
-      where d.kind='po' and d.payload->>'source_job_card_id'=j.id::text),'[]'::jsonb) as purchase_orders,
+      where d.kind='po' and (d.payload->>'source_job_card_id'=j.id::text or exists(select from jsonb_array_elements(d.payload->'lines') z where z->>'job_id'=j.id::text))),'[]'::jsonb) as purchase_orders,
     coalesce((select jsonb_agg(jsonb_build_object(
      'item_code',i.item_code,'item_name',i.item_name,'quantity',p.requested_quantity,'unit',i.base_unit,
      'owner_code',replace(o.owner_code,'TEST_',''),'owner_name',ic.company_name,'issue_enabled',coalesce(ic.enabled,false),'sample_details',p.sample_details,'line_purpose',p.line_purpose,'part_id',p.id,
@@ -351,7 +379,7 @@ Deno.serve(async(req)=>{
     try{body=await req.json();}catch{return reply({error:"Invalid JSON"},400);}
     const poEdit=body?.action==="workflow_command"&&["save","submit"].includes(body.command)&&body.data?.kind==="po";
     const driverReport=access.is_driver&&body?.action==="report_town_trip_order";
-    if(!driverReport&&(workshopOnly||(!poEdit&&!["unplanned_dnote","multi_po_dnote","combined_grv","reserve_job_part","issue_job_part","record_job_quote","create_job_card","create_job_category","save_job_catalogue_part","set_job_part_price","edit_job_card","finalise_job_card","cancel_job_part_balance"].includes(body?.action))))
+    if(!driverReport&&(workshopOnly||(!poEdit&&!["unplanned_dnote","multi_po_dnote","combined_grv","reserve_job_part","issue_job_part","record_job_quote","create_job_card","create_job_category","save_job_catalogue_part","set_job_part_price","edit_job_card","finalise_job_card","cancel_job_part_balance","job_requirement"].includes(body?.action))))
      return reply({error:"Module access required"},403);
    }
   }else await db`select stock_v2.workflow_require(${user.id}::uuid)`;
@@ -770,9 +798,9 @@ Deno.serve(async(req)=>{
     ol.ordered_unit_price::float8 as ordered_unit_price
     from stock_v2.order_header h join stock_v2.owner o using(owner_id)
     join stock_v2.order_line ol using(order_id) join stock_v2.item i using(item_id)
-    where o.owner_code in ('TEST_JS','TEST_AO') and h.status='approved'
+    where o.owner_code in ('TEST_JS','TEST_AO') and h.status='approved' and not exists(select from stock_v2.job_order_allocation a where a.order_line_id=ol.order_line_id)
     order by h.order_id desc,ol.order_line_id`;
-   return reply({items,orders});
+   return reply({items,orders,can_receive_job_orders:access.is_stock||access.is_admin});
   }
   if(req.method==="GET"){
    const items=await db`select i.item_code,i.item_name,i.base_unit,i.active,st.heyshott_quantity::float8 as opening_heyshott_quantity,st.ao_quantity::float8 as opening_ao_quantity,st.historical_unit_cost::float8 as historical_unit_cost,i.input_type,coalesce(i.input_category,i.category) input_category,i.active_ingredient,i.formulation_type,coalesce(b.quantity,0)::float8 quantity,coalesce(abo.quantity,0)::float8 ao_quantity,coalesce(ib.owner_quantities,'{}'::jsonb) as owner_quantities,p.last_purchase_price::float8 last_purchase_price,s.last_purchase_supplier,wa.unit_cost::float8 weighted_average_price from stock_v2.item i left join stock_v2.issue_item_balances ib using(item_id) cross join (select owner_id from stock_v2.owner where owner_code='TEST_JS') ow cross join (select location_id from stock_v2.location where location_code='TEST_WH') loc left join stock_v2.quantity_balance b on b.item_id=i.item_id and b.owner_id=ow.owner_id and b.location_id=loc.location_id left join stock_v2.quantity_balance abo on abo.item_id=i.item_id and abo.owner_id=(select owner_id from stock_v2.owner where owner_code='TEST_AO') and abo.location_id=loc.location_id left join lateral (
@@ -859,6 +887,13 @@ left join lateral (
    if(body.operation_id)await tx`insert into stock_v2.approval_operation(id,actor,request,result) values(${body.operation_id}::uuid,${user.id}::uuid,${tx.json(body)}::jsonb,${tx.json(result)}::jsonb)`;
    return result;
   });
+  if(body?.action==="job_requirement"||body?.action==="job_delivery"){
+   if(!/^[a-f0-9-]{36}$/i.test(String(body.operation_id??'')))return reply({error:"Operation reference required"},400);
+   const result=await transaction(async tx=>body.action==="job_requirement"
+    ?(await tx`select stock_v2.job_requirements_command(${user.id}::uuid,${body.command}::text,${tx.json(body.payload??{})}::jsonb) as result`)[0].result
+    :(await tx`select stock_v2.job_delivery_command(${user.id}::uuid,${body.command}::text,${tx.json(body.payload??{})}::jsonb) as result`)[0].result);
+   return reply({success:true,result});
+  }
   if(body?.action==="cash_book_quick_cash_out")return reply({error:"Refresh Cash Book to enter a Quick Cash note."},409);
   if(["cash_book_account","cash_book_draft","cash_book_decision","cash_book_trip_advance","cash_book_trip_settle","cash_book_labour_draft","cash_book_quick_note","cash_book_match_note","cash_book_supplier_draft","cash_book_apply_supplier_credit","cash_book_add_counterparty"].includes(body?.action)){
    if(!access.can_main)return reply({error:"Cash Book access required"},403);
@@ -1312,6 +1347,7 @@ left join lateral (
     if(editing){
       const old=await tx`select p.id::text,i.item_code,p.category_id::text,p.requested_quantity::float8,
         exists(select from stock_v2.job_purchase_line l where l.part_id=p.id)
+        or exists(select from stock_v2.job_order_allocation a join stock_v2.approval_document d on d.id=a.document_id where a.part_id=p.id and d.status not in ('rejected','cancelled'))
         or exists(select from stock_v2.job_part_quote q where q.part_id=p.id)
         or exists(select from stock_v2.job_part_reservation_event r where r.part_id=p.id)
         or exists(select from cash_book.job_expense e where e.part_id=p.id)
@@ -1325,6 +1361,10 @@ left join lateral (
       }
     }
     for(const part of parts){
+      if(part.kind==="sample"||part.kind==="repair"){
+       await tx`select stock_v2.save_supplier_line(${user.id}::uuid,${job.id}::uuid,${tx.json(part)}::jsonb)`;
+       continue;
+      }
       if(editing&&part.part_id){
         const [saved]=await tx`update stock_v2.job_card_part p set item_id=i.item_id,category_id=${part.category_id},requested_quantity=${part.quantity},unit_price=${part.unit_price??null},price_supplier_id=${part.price_supplier_id??null}::bigint,sample_details=${part.sample_details?.trim()||null},line_purpose=${part.line_purpose?.trim()||description}
           from stock_v2.item i where p.id=${part.part_id}::bigint and p.job_id=${job.id}::uuid and i.item_code=${part.item_code} and i.active returning p.id`;
@@ -1463,7 +1503,16 @@ left join lateral (
    });return reply({success:true,result});
   }
   if(body?.action==="workflow_command"){
+   if(body.command==="cancel"){
+    const [grouped]=await db`select id from stock_v2.approval_document where id=${body.data?.id}::uuid and payload->>'job_requirements'='true' and status='applied'`;
+    if(grouped){const result=await transaction(async tx=>(await tx`select stock_v2.job_requirements_command(${user.id}::uuid,'cancel_order',${tx.json(body.data)}::jsonb) as result`)[0].result);return reply({success:true,result});}
+   }
    if(body.command==="authorise_po"){
+    const [grouped]=await db`select id from stock_v2.approval_document where id=${body.data?.id}::uuid and payload->>'job_requirements'='true'`;
+    if(grouped){
+     const result=await transaction(async tx=>(await tx`select stock_v2.job_requirements_command(${user.id}::uuid,'authorise',${tx.json(body.data)}::jsonb) as result`)[0].result);
+     return reply({success:true,result});
+    }
     const paymentTerms=typeof body.data?.payment_terms==="string"?body.data.payment_terms.trim():"";
     if(!paymentTerms||paymentTerms.length>200)return reply({error:"Enter payment terms (up to 200 characters)."},400);
     const [order]=await db`select stock_v2.buying_authorise_po(${user.id}::uuid,${body.operation_id}::uuid,${db.json(body.data)}::jsonb) as result`;

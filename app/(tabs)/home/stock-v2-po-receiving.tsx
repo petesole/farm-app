@@ -1,4 +1,4 @@
-import {useLocalSearchParams} from "expo-router";
+import {router,useLocalSearchParams} from "expo-router";
 import {stockMutation,stockRequest} from "@/utils/stock-workflow";
 import {StockSelect} from "@/components/jspl/StockWorkflowControls";
 import {StockRecovery} from "@/components/jspl/StockWorkflowControls";
@@ -49,9 +49,10 @@ export default function GRVOutstanding(){
  const [correction,setCorrection]=useState<MyReceipt|null>(null);
  const setRowField=(row:Chosen,field:"quantity"|"price",value:string)=>setChosen(prev=>prev[row.key]?{...prev,[row.key]:{...prev[row.key],[field]:value}}:prev);
  const [busy,setBusy]=useState(false),[error,setError]=useState(""),[success,setSuccess]=useState("");
+ const [canReceiveJobs,setCanReceiveJobs]=useState(false);
  const load=async()=>{setBusy(true);setError("");try{
   const [x,y,history,master]=await Promise.all([stockRequest("?outstanding_dnotes=1"),stockRequest("?purchasing_feed=1"),stockRequest("?my_receipts=1"),stockRequest("?supplier_list=1")]);
-  setDn(x.rows??[]);setPo(y.orders??[]);setProducts((y.items??[]).map((i:Product)=>({item_code:i.item_code,item_name:i.item_name,base_unit:i.base_unit})));
+  setCanReceiveJobs(!!y.can_receive_job_orders);setDn(x.rows??[]);setPo(y.orders??[]);setProducts((y.items??[]).map((i:Product)=>({item_code:i.item_code,item_name:i.item_name,base_unit:i.base_unit})));
   setMyReceipts(history.receipts??[]);
   setSupplierMaster(master.suppliers??[]);
 
@@ -145,6 +146,7 @@ export default function GRVOutstanding(){
  const selection=(id:string,text:string,selected:boolean,onPress:()=>void)=><Pressable key={id} onPress={onPress} style={[s.option,selected&&s.active]}><ThemedText style={selected?s.activeText:undefined}>{text}</ThemedText></Pressable>;
  return <ThemedView style={s.root}><ScrollView contentContainerStyle={s.page}>
    <StockV2Header title="POs Outstanding — Receiving" onRefresh={()=>void load()}/>
+   {canReceiveJobs?<Pressable accessibilityRole="button" style={s.submit} onPress={()=>router.push('/job-order-receiving')}><ThemedText style={s.submitText}>Receive Job Card orders</ThemedText></Pressable>:null}
 
   {busy?<ActivityIndicator/>:null}{error?<><ThemedText style={s.warning}>{error}</ThemedText><StockRecovery scope="receiving" onRecovered={()=>void load()}/></>:null}{success?<ThemedText>{success}</ThemedText>:null}
   {correction?<View style={s.panel}><ThemedText>Correcting receipt {correction.request_number} · {correction.decision_reason}</ThemedText>

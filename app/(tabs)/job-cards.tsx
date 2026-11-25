@@ -15,12 +15,13 @@ const partColumns = [
   {label:'',width:80}, {label:'',width:92},
 ];
 
-type Part = {part_id?:number;category_id:number|null;item_code:string;quantity:string;unit_price:string;price_supplier_id:string|null;sample_details:string;line_purpose:string};
+type SupplierLine={key:string;ref:string;kind:'sample'|'repair';supplier_line_id:number;category_id:number;description:string;quantity:number;supplier_id:string|null;supplier_name:string|null;unit_price:number|null;part_number:string|null;sent_on:string|null;returned_on:string|null;declined_on:string|null;verified_quantity:number;verified_cost:number};
+type Part = {kind?:'sample'|'repair';supplier_line_id?:number;supplier_id?:string|null;part_id?:number;category_id:number|null;item_code:string;quantity:string;unit_price:string;price_supplier_id:string|null;sample_details:string;line_purpose:string};
 type CardType='general'|'asset'|'irrigation';
 type Category={category_id:number;catalogue_group:string;category_name:string;stock_only:boolean};
 type AssetPurchase = {id:string;part_number?:string;item_code:string;item_name:string;active:boolean;document_date:string;supplier_name:string;receipt:string;unit_price:string|null};
 type JobCard = {
-  clearance_reason?:string|null;
+  supplier_lines?:SupplierLine[];clearance_reason?:string|null;
   id: string; job_number: number; vehicle_name: string; work_description: string; transaction_date:string; closed_at:string|null; revision:string;card_type:CardType;vehicle_id:number|null;tracecode_id:number|null;
   parts: {category_id:number;line_purpose?:string;part_id: number; cancelled_quantity?:number; cancellation_reason?:string; cancelled_at?:string; remaining_quantity?:number; owner_code: string; owner_name?:string; issue_enabled?:boolean; item_code: string; item_name: string; quantity: number; reserved: number; issued: number; repair_cost: number|null; pending_cost: boolean; unit_price:number|null; price_supplier_id:string|null; price_supplier_name:string|null; direct_expense:boolean; part_number?:string; available?: number;stock_sources?:{code:string;name:string;available:number}[]; unit: string; sample_details?: string}[];
   purchase_orders: {owner_code: string; status: string; order_number?: string; request_number: number}[];
@@ -111,7 +112,8 @@ export default function JobCards() {
     setEditingCard(card);setCardType(card.card_type);setIrrigationTarget(card.vehicle_id?'asset':'trace');
     setVehicle(card.vehicle_id);setVehicleType(String(data?.vehicles?.find(v=>v.vehicle_id===card.vehicle_id)?.vehicle_type_id??''));setTrace(card.tracecode_id);
     setDate(displayJsplDate(card.transaction_date));setDescription(card.work_description);
-    setParts(card.parts.map(p=>({part_id:p.part_id,category_id:p.category_id,item_code:p.item_code,quantity:String(p.quantity),unit_price:String(p.unit_price??''),price_supplier_id:p.price_supplier_id??null,sample_details:p.sample_details??'',line_purpose:p.line_purpose??''})));
+    const ordinary:Part[]=card.parts.map(p=>({part_id:p.part_id,category_id:p.category_id,item_code:p.item_code,quantity:String(p.quantity),unit_price:String(p.unit_price??''),price_supplier_id:p.price_supplier_id??null,sample_details:p.sample_details??'',line_purpose:p.line_purpose??''}));
+    setParts([...ordinary,...(card.supplier_lines??[]).map(p=>({...newPart(),kind:p.kind,supplier_line_id:p.supplier_line_id,supplier_id:p.supplier_id==null?null:String(p.supplier_id),category_id:Number(p.category_id),sample_details:p.description,quantity:String(p.quantity)}))]);
     setEditing(true);setError('');setConfirmClose(false);
   }
   async function finalise(card:JobCard){
@@ -203,9 +205,9 @@ export default function JobCards() {
   }
   const priorLine=(part:Part)=>editingCard?.parts.find(p=>p.part_id===part.part_id&&p.item_code===part.item_code);
   const valid=!!parseJsplDateInput(date)&&(usingAsset?!!asset:!!trace)&&description.trim().length>0&&description.trim().length<=1000
-    && parts.length>0&&parts.every(part=>part.category_id&&part.item_code&&Number(part.quantity)>=0.000001
+    && parts.length>0&&parts.every(part=>part.category_id&&(part.kind?part.sample_details.trim().length>0:!!part.item_code)&&Number(part.quantity)>=0.000001
       &&Number(part.quantity)<=100000&&priceReady(part.unit_price,part.price_supplier_id,priorLine(part),true))
-    && new Set(parts.map(part=>part.item_code)).size===parts.length;
+    && new Set(parts.filter(p=>!p.kind).map(p=>p.item_code)).size===parts.filter(p=>!p.kind).length;
 
   function resetDestination(){
     setVehicleType('');setVehicle(null);setTrace(null);setParts([newPart()]);setCatalogueEdit(null);
@@ -315,25 +317,30 @@ export default function JobCards() {
       <StockField label={usingAsset?'Problem description':'Purpose'} value={description} onChange={setDescription}/>
       <StockLineTable columns={partColumns} rows={parts.map((part,index)=>{
         const stockOnly=categoryFor(part.category_id)?.stock_only===true;
-        const items=stockItems.filter(i=>stockOnly?i.stock_lubricant:
-          i.item_code===part.item_code||(!i.stock_lubricant&&part.category_id!==null&&i.category_ids.includes(part.category_id)));
+        const saved=!!part.supplier_line_id;
+        const partChoices=[...(!stockOnly?[{id:'@sample',label:'Match from sample'},{id:'@repair',label:'Send for repair'}]:[]),
+          ...itemsForLine()];
+        function itemsForLine(){return stockItems.filter(i=>stockOnly?i.stock_lubricant:i.item_code===part.item_code||(!i.stock_lubricant&&part.category_id!==null&&i.category_ids.includes(part.category_id)))
+          .map(i=>({id:i.item_code,label:stockOnly?i.item_name+' · '+i.item_code:[i.part_number,i.item_name].filter(Boolean).join(' · ')}));}
+
         return {key:index,cells:[
-          <StockSelect hideLabel label={'Category '+(index+1)} value={part.category_id}
+          <StockSelect hideLabel label={'Category '+(index+1)} value={part.category_id} disabled={saved}
             options={categories.filter(c=>!c.stock_only||c.category_name==='Lubricants'||c.category_id===part.category_id).map(c=>({id:c.category_id,label:c.category_name}))}
-            onChange={value=>void selectCategory(index,value)}
+            onChange={value=>{if(part.kind)editPart(index,{kind:undefined,item_code:'',category_id:value===null?null:Number(value)});else void selectCategory(index,value)}}
             createLabel="+ Add category" onCreate={name=>setCatalogueEdit({mode:'category',index,name,number:'',unit:''})}/>,
-          <View><StockSelect hideLabel label={(stockOnly?'Stock Input ':'Part ')+(index+1)} value={part.item_code} disabled={!part.category_id}
-            options={items.map(item=>({id:item.item_code,label:stockOnly?item.item_name+' · '+item.item_code:[item.part_number,item.item_name].filter(Boolean).join(' · ')}))}
-            onChange={value=>editPart(index,{item_code:String(value??'')})}
+          <View><StockSelect hideLabel label={(stockOnly?'Stock Input ':'Part ')+(index+1)} value={part.kind?'@'+part.kind:part.item_code} disabled={saved||!part.category_id}
+            options={partChoices}
+            onChange={value=>editPart(index,value==='@sample'||value==='@repair'?{kind:value==='@sample'?'sample':'repair',item_code:'',unit_price:'',price_supplier_id:null}:{kind:undefined,item_code:String(value??'')})}
             createLabel="+ Add part" onCreate={stockOnly?undefined:name=>setCatalogueEdit({mode:'part',index,name,number:'',unit:'each'})}/>
+            {part.kind?<StockField label={part.kind==='sample'?'Sample description':'Item and fault'} value={part.sample_details} onChange={sample_details=>editPart(index,{sample_details})}/>:null}
             {stockOnly?<Text style={styles.muted}>Add missing lubricants in Stock Balances → New Product.</Text>:null}</View>,
           <StockField hideLabel numeric label={'Qty '+(index+1)} value={part.quantity} onChange={quantity=>editPart(index,{quantity})}/>,
-          <StockField hideLabel numeric label={'Unit price '+(index+1)} value={part.unit_price} placeholder="Optional"
+          part.kind?null:<StockField hideLabel numeric label={'Unit price '+(index+1)} value={part.unit_price} placeholder="Optional"
             onChange={unit_price=>editPart(index,{unit_price,...(!unit_price.trim()?{price_supplier_id:null}:{})})}/>,
-          part.unit_price.trim()?<StockSelect hideLabel label={'Supplier for price '+(index+1)} value={part.price_supplier_id}
+          part.kind?<StockSelect hideLabel label={'Supplier '+(index+1)} value={part.supplier_id??null} options={suppliers} onChange={value=>editPart(index,{supplier_id:value===null?null:String(value)})}/>:part.unit_price.trim()?<StockSelect hideLabel label={'Supplier for price '+(index+1)} value={part.price_supplier_id}
             options={supplierOptions(priorLine(part))} onChange={value=>editPart(index,{price_supplier_id:value==null?null:String(value)})}/>:null,
           <StockButton title="Details" onPress={()=>setLineDetails(lineDetails===index?null:index)}/>,
-          <StockButton title="Remove" disabled={busy} onPress={()=>{setCatalogueEdit(null);setParts(lines=>lines.filter((_,offset)=>offset!==index));}}/>,
+          <StockButton title="Remove" disabled={busy||saved} onPress={()=>{setCatalogueEdit(null);setParts(lines=>lines.filter((_,offset)=>offset!==index));}}/>,
         ]};
       })}/>
       {lineDetails!==null&&parts[lineDetails]?<View style={styles.card}>
@@ -385,6 +392,13 @@ export default function JobCards() {
       {data.can_buy&&card.parts.length>0?<StockSelect label="Item for purchase history and quotes" value={quotePart}
         options={card.parts.filter(part=>!part.direct_expense).map(part=>({id:part.part_id,label:part.item_name}))}
         onChange={value=>setQuotePart(value==null?null:Number(value))}/>:null}
+      {(card.supplier_lines??[]).map(line=><View key={line.ref} style={styles.card}>
+        <Text style={styles.title}>{line.ref} · {line.description}</Text>
+        <Text>{line.quantity} requested · {line.supplier_name??'Choose supplier'} · {line.returned_on?'Returned '+displayJsplDate(line.returned_on):Number(line.verified_quantity)>=Number(line.quantity)?'Received':line.declined_on?'Declined':line.sent_on?'At supplier since '+displayJsplDate(line.sent_on):'Awaiting dispatch'}</Text>
+        {line.part_number?<Text>Part number · {line.part_number}</Text>:null}
+        {Number(line.verified_quantity)>0?<Text>Verified cost · {Number(line.verified_cost).toFixed(2)}</Text>:null}
+      </View>)}
+      {data.can_buy&&!card.closed_at?<StockButton title="Review Job Card requirements" onPress={()=>router.push({pathname:'/job-requirements',params:{job:card.id,returnTo}})}/>:null}
       {card.parts.map(part => {
         const outstanding=part.remaining_quantity??part.quantity-part.issued-(part.cancelled_quantity??0);
         const available=part.owner_code?(part.available??0):(part.stock_sources?.find(s=>s.code===reservationOwner)?.available??0);
@@ -436,11 +450,7 @@ export default function JobCards() {
         <Text style={[styles.muted,{flex:1}]}>{order.order_number ?? 'PO Request ' + order.request_number} · {order.owner_code} · {order.status==='applied'?'Approved':order.status==='pending'?'Awaiting Admin approval':order.status}</Text>
         {canApprove&&order.status==='pending'?<StockButton title={'Review & Approve PO '+order.request_number} onPress={()=>router.push(purchaseOrderApproval(returnTo,String(order.request_number)))}/>:null}
       </View>)}
-      {data.can_buy&&!card.closed_at ? [...new Set(card.parts.filter(part=>!part.direct_expense&&(part.remaining_quantity??part.quantity-part.issued-(part.cancelled_quantity??0))>part.reserved).map(part => part.owner_code))].map(owner => (
-        <StockButton key={owner} title={owner?'Purchase parts · '+owner:'Purchase parts · choose owner'} onPress={() => router.push({
-          pathname:'/stock-v2-purchase-orders', params:{from:'job-card', returnTo, job:card.id, owner},
-        })}/>
-      )) : null}
+
     </View>:null}
   </ScrollView>;
 }

@@ -81,7 +81,7 @@ export default function Approvals(){
        {selected.kind==='po'?<Field label="Payment terms (required)" value={paymentTerms} onChange={setPaymentTerms}/>:null}
        {selected.kind==='po'&&terms.length>200?<Text style={S.error}>Use up to 200 characters for payment terms.</Text>:null}
        <Button title={selected.kind==='po'?'Approve Purchase Order':'Approve and Apply Credit'} disabled={busy||(selected.kind==='po'&&!validTerms)} onPress={()=>void decide('approve')}/>
-       {selected.kind==='po'?<Button title="Edit PO" disabled={busy} onPress={()=>editPO(selected)}/>:null}
+       {selected.kind==='po'&&!selected.payload.job_requirements?<Button title="Edit PO" disabled={busy} onPress={()=>editPO(selected)}/>:null}
        <Field label="Reason for returning" value={reason} onChange={setReason}/>
        <View style={S.row}>
          <Button title="Return for Correction" disabled={busy} onPress={()=>void decide('reject')}/>

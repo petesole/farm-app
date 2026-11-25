@@ -8,7 +8,7 @@ import {jsplColors} from '@/constants/jspl-design';
 import {displayJsplDate,parseJsplDateInput} from '@/utils/jspl-input';
 import {stockMutation,stockRequest} from '@/utils/stock-workflow';
 
-type Order = {order_id:number;order_number:string;supplier:string|null;owner:string;outcome:'pending'|'collected'|'unavailable';can_receive?:boolean;driver_note?:string;payment_terms?:string|null;items:{name:string;quantity:number;remaining:number;unit:string}[]};
+type Order = {job_requirements?:boolean;order_id:number;order_number:string;supplier:string|null;owner:string;outcome:'pending'|'collected'|'unavailable';can_receive?:boolean;driver_note?:string;payment_terms?:string|null;items:{name:string;quantity:number;remaining:number;unit:string}[]};
 type Trip = {can_report?:boolean;id:string;trip_number:number;trip_date:string;driver_id:string;driver_name:string;finalised_at:string|null;orders:Order[]};
 type TripData = {
   trips:Trip[];can_create?:boolean;can_main?:boolean;can_report?:boolean;can_receive?:boolean;
@@ -123,7 +123,7 @@ export default function TownTrips(){
           <Text style={styles.text}>{order.outcome==='pending'?'Awaiting collection':order.outcome==='collected'?'Collected':'Could not collect'}</Text>
           {order.driver_note?<Text style={styles.muted}>{order.driver_note}</Text>:null}
           {data.can_receive&&order.can_receive?<StockButton title="Receive order" onPress={()=>router.push({
-            pathname:'/stock-v2-po-receiving',params:{from:'town-trip',returnTo:stockLocation('/town-trips',{from,view:'history',trip:trip.id}),trip:trip.id,order:String(order.order_id),owner:order.owner,supplier:order.supplier??''},
+            pathname:order.job_requirements?'/job-order-receiving':'/stock-v2-po-receiving',params:{from:'town-trip',returnTo:stockLocation('/town-trips',{from,view:'history',trip:trip.id}),trip:trip.id,order:String(order.order_id),owner:order.owner,supplier:order.supplier??''},
           })}/>:null}
           {(trip.can_report??data.can_report)&&!trip.finalised_at&&order.outcome==='pending'?(selected===key?<>
             <StockField label="Collection note" value={note} onChange={setNote}/>
