@@ -18,7 +18,7 @@ const issues=[
   {key:'unreconciled_advances',button:'Reconcile trip advances',title:'Trip advances awaiting reconciliation',route:'/cashbook',view:'trips'},
 ] as const;
 type Counts=Record<(typeof issues)[number]['key'],number>;
-type Returned={id:string;request_number:number;reference:string|null;assigned_to:string;can_correct:boolean;decision_reason:string};
+type Returned={planned_trip?:string|null;id:string;request_number:number;reference:string|null;assigned_to:string;can_correct:boolean;decision_reason:string};
 
 export default function OutstandingIssues(){
   const router=useRouter();
@@ -46,7 +46,7 @@ export default function OutstandingIssues(){
       <Text style={styles.title}>{counts[issue.key]} · {issue.title}</Text>
       {issue.key==='returned_receipts'?returned.map(receipt=><View key={receipt.id} style={styles.card}><Text style={styles.text}>
         {receipt.reference??'Receipt '+receipt.request_number} · {receipt.assigned_to} · {receipt.decision_reason}
-      </Text>{receipt.can_correct?<StockButton title={'Correct receipt '+receipt.request_number} onPress={()=>router.push({pathname:'/stock-v2-po-receiving',params:{from:'outstanding-issues',receipt:receipt.id}})}/>:null}</View>):null}
+      </Text>{receipt.can_correct?<StockButton title={'Correct receipt '+receipt.request_number} onPress={()=>router.push(receipt.planned_trip?{pathname:'/town-trips',params:{from:'outstanding-issues',view:'history',trip:receipt.planned_trip}}:{pathname:'/stock-v2-po-receiving',params:{from:'outstanding-issues',receipt:receipt.id}})}/>:null}</View>):null}
       {counts[issue.key]>0&&issue.route?<StockButton title={issue.button} onPress={()=>{
         if(issue.route)router.push({pathname:issue.route,params:{
           from:'outstanding-issues',...('view' in issue?{view:issue.view}:{}),

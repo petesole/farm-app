@@ -11,9 +11,10 @@ import {ThemedView} from "@/components/themed-view";
 import {JsplModuleHeader} from "@/components/jspl/JsplModuleHeader";
 import {jsplColors,jsplSpacing,jsplRadii} from "@/constants/jspl-design";
 type DLine={document_id:number;document_date:string;delivery_note:string;delivery_note_date:string|null;supplier_name:string;owner_code:string;item_code:string;item_name:string;base_unit:string;line_id:number;quantity:number;order_id?:number|null;po_price?:number|null;original_price?:number|null};
-type POLine={order_date:string;owner_code:string;order_id:number;order_number:string;supplier_name:string|null;item_code:string;item_name:string;base_unit:string;ordered_quantity:number;received_quantity:number;ordered_unit_price:number|null;status:string;order_line_id:number};
+type POLine={free_quantity?:number;order_date:string;owner_code:string;order_id:number;order_number:string;supplier_name:string|null;item_code:string;item_name:string;base_unit:string;ordered_quantity:number;received_quantity:number;ordered_unit_price:number|null;status:string;order_line_id:number};
 type Supplier={supplier_name:string;active:boolean};
 type Product={item_code:string;item_name:string;base_unit:string};
+const freePO=(line:POLine)=>Number(line.free_quantity??(Number(line.ordered_quantity)-Number(line.received_quantity)));
 type Chosen={kind:"DN"|"PO"|"DIRECT";key:string;item_code:string;quantity:string;price:string;source:number;max:number;orderLineId?:number};
 type ReceiptEntry={item_code?:string;order_line_id?:number;line_id?:number;quantity:number;unit_price?:number};
 type MyReceipt={
@@ -58,10 +59,10 @@ export default function GRVOutstanding(){
 
  }catch(e){setError(e instanceof Error?e.message:String(e))}finally{setBusy(false)}};
  useEffect(()=>{void load()},[]);
- const owners=[...new Set([...po.filter(line=>line.status==="approved"&&Number(line.ordered_quantity)>Number(line.received_quantity)).map(line=>line.owner_code),...dn.filter(line=>line.quantity>0).map(line=>line.owner_code),...(owner?[owner]:[])])].sort();
- const ownerCount=(code:string)=>new Set(po.filter(x=>x.owner_code===code&&x.status==="approved"&&Number(x.ordered_quantity)>Number(x.received_quantity)).map(x=>x.order_id)).size;
+ const owners=[...new Set([...po.filter(line=>line.status==="approved"&&freePO(line)>0).map(line=>line.owner_code),...dn.filter(line=>line.quantity>0).map(line=>line.owner_code),...(owner?[owner]:[])])].sort();
+ const ownerCount=(code:string)=>new Set(po.filter(x=>x.owner_code===code&&x.status==="approved"&&freePO(x)>0).map(x=>x.order_id)).size;
  const suppliers=useMemo(()=>{
-  const matchingOrders=po.filter(x=>x.owner_code===owner&&x.status==="approved"&&Number(x.ordered_quantity)>Number(x.received_quantity)
+  const matchingOrders=po.filter(x=>x.owner_code===owner&&x.status==="approved"&&freePO(x)>0
    &&(!tripOrder||Number(x.order_id)===tripOrder));
   const names=matchingOrders.flatMap(x=>x.supplier_name?.trim()?[x.supplier_name.trim()]:[]);
   if(!tripOrder)names.push(...dn.filter(line=>line.owner_code===owner&&line.quantity>0).map(line=>line.supplier_name));
@@ -91,8 +92,8 @@ export default function GRVOutstanding(){
     if(products.some(product=>product.item_code===entry.item_code))restored.push({kind:"DIRECT",key:"DIRECT:"+entry.item_code,item_code:entry.item_code,quantity:String(entry.quantity),price:"",source:0,max:100000});
     continue;
    }
-   const row=po.find(line=>Number(line.order_line_id)===Number(entry.order_line_id)&&line.status==="approved"&&line.owner_code===p.owner_code&&matchesSupplier(line,p.supplier)&&Number(line.ordered_quantity)>Number(line.received_quantity));
-   if(row)restored.push({kind:"PO",key:"PO:"+row.order_line_id,item_code:row.item_code,quantity:String(entry.quantity),price:priceFor(row.item_code,entry),source:row.order_id,max:Number(row.ordered_quantity)-Number(row.received_quantity),orderLineId:row.order_line_id});
+   const row=po.find(line=>Number(line.order_line_id)===Number(entry.order_line_id)&&line.status==="approved"&&line.owner_code===p.owner_code&&matchesSupplier(line,p.supplier)&&freePO(line)>0);
+   if(row)restored.push({kind:"PO",key:"PO:"+row.order_line_id,item_code:row.item_code,quantity:String(entry.quantity),price:priceFor(row.item_code,entry),source:row.order_id,max:freePO(row),orderLineId:row.order_line_id});
   }
   for(const entry of p.allocations??[]){
    const row=dn.find(line=>Number(line.line_id)===Number(entry.line_id)&&line.owner_code===p.owner_code&&supplierKey(line.supplier_name)===supplierKey(p.supplier));
@@ -158,7 +159,7 @@ export default function GRVOutstanding(){
   </View>)}
   {tripOrder?<ThemedText style={s.label}>Town Trip · {shortPO(tripOrder)}</ThemedText>:null}
   <StockSelect label="Stock owner" value={owner} options={owners.map(x=>({id:x,label:x+" ("+ownerCount(x)+")"}))} onChange={v=>{setOwner(String(v??''));setSupplier('');setType('');setChosen({});setNoPO(false)}}/>
-  {!!owner?<StockSelect label="Supplier" value={supplier} options={suppliers.map(x=>({id:x,label:x}))} onChange={v=>{setSupplier(String(v??''));setType(!v?'':po.some(line=>line.owner_code===owner&&matchesSupplier(line,String(v))&&line.status==='approved'&&Number(line.ordered_quantity)>Number(line.received_quantity)&&(!tripOrder||Number(line.order_id)===tripOrder))?'dnote':'grv');setChosen({});setNoPO(false)}}/>:null}
+  {!!owner?<StockSelect label="Supplier" value={supplier} options={suppliers.map(x=>({id:x,label:x}))} onChange={v=>{setSupplier(String(v??''));setType(!v?'':po.some(line=>line.owner_code===owner&&matchesSupplier(line,String(v))&&line.status==='approved'&&freePO(line)>0&&(!tripOrder||Number(line.order_id)===tripOrder))?'dnote':'grv');setChosen({});setNoPO(false)}}/>:null}
   {!!supplier?<StockSelect label="Document type" value={type} options={[{id:'dnote',label:'Delivery Note'},{id:'grv',label:'Invoice GRV'}]} onChange={v=>{setType(v as 'dnote'|'grv');setChosen({});setNoPO(false)}}/>:null}
 
   {!!type?<View style={s.panel}><ThemedText style={s.label}>Date</ThemedText><TextInput style={[s.input,s.required]} value={date} onChangeText={setDate} onBlur={()=>{const parsed=parseJsplDateInput(date);if(parsed)setDate(displayJsplDate(parsed));}} placeholder="d/m (year optional)"/></View>:null}
@@ -174,7 +175,7 @@ export default function GRVOutstanding(){
      <ThemedText style={s.tcell}>{x.po_price==null?"—":money(Number(x.po_price))}</ThemedText><TextInput style={s.tcell} keyboardType="decimal-pad" editable={!!e} value={e?.quantity??String(x.quantity)} onChangeText={v=>setRowField(r,"quantity",v)}/>
      <TextInput style={[s.tcell,e?s.required:null]} editable={!!e} keyboardType="decimal-pad" placeholder={e?"Required":"Select first"} value={e?.price??""} onChangeText={v=>setRowField(r,"price",v)}/>
     </View>}):null}
-   {!noPO&&outstandingPO.map(x=>{const key="PO:"+x.order_line_id,e=chosen[key],max=Math.max(0,x.ordered_quantity-x.received_quantity),r:Chosen={kind:"PO",key,item_code:x.item_code,quantity:"",price:"",source:x.order_id,max,orderLineId:x.order_line_id};return <View key={key} style={s.trow}>
+   {!noPO&&outstandingPO.map(x=>{const key="PO:"+x.order_line_id,e=chosen[key],max=Math.max(0,freePO(x)),r:Chosen={kind:"PO",key,item_code:x.item_code,quantity:"",price:"",source:x.order_id,max,orderLineId:x.order_line_id};return <View key={key} style={s.trow}>
      <Pressable style={s.tcell} onPress={()=>pick(r)}><ThemedText style={{fontSize:22,color:jsplColors.primary}}>{e?"☑":"☐"}</ThemedText></Pressable>
      <ThemedText style={s.tcell}>{shortPO(x.order_id)}</ThemedText><ThemedText style={s.tcell}>{shortDate(x.order_date)}</ThemedText>
      <ThemedText style={[s.tcell,s.wide]}>{x.item_name}</ThemedText><ThemedText style={s.tcell}>{x.ordered_quantity} / {x.received_quantity}</ThemedText>

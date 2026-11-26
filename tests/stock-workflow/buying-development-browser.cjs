@@ -120,7 +120,7 @@ async function displayFixture(context,role,configure){
       const {command,data}=req.postDataJSON();
       if(command==='authorise_po'){
         assert(admin);const doc=lookups.workflow_context.documents.find(d=>d.id===data.id);
-        assert.equal(doc.status,'pending');assert(data.payment_terms.trim());assert.equal(data.version,doc.version);
+        assert.equal(doc.status,'pending');assert(data.payment_terms.trim());assert.equal(data.payment_basis,'Account');assert.equal(data.version,doc.version);
         doc.status='applied';doc.payload.payment_terms=data.payment_terms;doc.target_order_id=500+doc.request_number;
         lookups.outstanding_issues.counts.po_approvals--;
         for(const [i,line] of doc.payload.lines.entries())lookups.purchasing_feed.orders.push({order_id:doc.target_order_id,order_line_id:doc.target_order_id*10+i,owner_code:doc.payload.owner_code,supplier_name:doc.payload.supplier,status:'approved',order_date:doc.payload.order_date,item_code:line.item_code,item_name:'Screen item',ordered_quantity:line.quantity,received_quantity:0,ordered_unit_price:line.unit_price});
@@ -217,7 +217,7 @@ async function check(browser, role, width) {
         await click(page,'← Stock');await click(page,'Buying');await click(page,'Approve Purchase Orders');
         await page.getByText('1 purchase order awaiting approval',{exact:true}).filter({visible:true}).waitFor();
         await click(page,'← Buying');await click(page,'Purchase Orders');await click(page,'Review & Approve');
-        await page.getByRole('textbox',{name:'Payment terms (required)',exact:true}).waitFor();
+        await page.getByRole('textbox',{name:'Payment terms / due date details',exact:true}).waitFor();
         await click(page,'← Purchase Orders');await click(page,'← Buying');await click(page,'← Stock');
       }else{
         await page.getByRole('button',{name:/Town Trips/}).waitFor();assert.equal(await approvals.count(),0);
@@ -300,7 +300,8 @@ async function check(browser, role, width) {
         await click(page,'Review & Approve');await click(page,'Edit PO');
         await page.getByRole('textbox',{name:'Reason for correction / cancellation',exact:true}).waitFor();
         await click(page,'← Approvals');
-        await page.getByRole('textbox',{name:'Payment terms (required)',exact:true}).fill('30 days');
+        await page.getByRole('textbox',{name:'Payment method',exact:true}).click();await click(page,'Account');
+        await page.getByRole('textbox',{name:'Payment terms / due date details',exact:true}).fill('30 days');
         await click(page,'Approve Purchase Order');await page.getByText('PO-521 approved and available for receiving.',{exact:true}).waitFor();await click(page,'View Authorised POs');
         await click(page,'Open PO Receiving');await page.reload();
         await page.getByRole('textbox',{name:'Stock owner',exact:true}).click();await click(page,'JS (1)');
@@ -456,7 +457,7 @@ async function check(browser, role, width) {
         assert.equal(new URL(page.url()).searchParams.get('card'),'service-card');
       }
       if(role==='admin'){
-        await click(page,'Review & Approve PO 30');await page.getByRole('textbox',{name:'Payment terms (required)',exact:true}).waitFor();
+        await click(page,'Review & Approve PO 30');await page.getByRole('textbox',{name:'Payment terms / due date details',exact:true}).waitFor();
         await click(page,'← Job Card');await page.getByRole('button',{name:'Review & Approve PO 30',exact:true}).waitFor();
       }else assert.equal(await page.getByRole('button',{name:'Review & Approve PO 30',exact:true}).count(),0);
       await click(page,'← Outstanding Job Cards');await click(page,'← Job Cards');await click(page,'← Buying');

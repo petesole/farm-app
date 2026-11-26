@@ -16,6 +16,7 @@ export default function Approvals(){
  const [kind,setKind]=useState('all'),[selected,setSelected]=useState<ApprovalDocument|null>(null);
  const [reason,setReason]=useState(''),[paymentTerms,setPaymentTerms]=useState('');
  const [approvedPO,setApprovedPO]=useState(false);
+ const [basis,setBasis]=useState('');
  const scroll=useRef<ScrollView>(null);
  const restored=useRef('');
  const load=useCallback(async()=>{
@@ -26,7 +27,9 @@ export default function Approvals(){
  useFocusEffect(useCallback(()=>{void load();},[load]));
  useEffect(()=>setKind(view||'all'),[from,view]);
  const openReview=useCallback((doc:ApprovalDocument)=>{
-   setSelected(doc);setReason('');setPaymentTerms(doc.payload.payment_terms??'');
+   setSelected(doc);setReason('');const previous=String(doc.payload.payment_terms??'');
+   const method=['Cash','Transfer','Account'].find(m=>previous===m||previous.startsWith(m+' · '))??'';
+   setBasis(method);setPaymentTerms(method?previous.slice(method.length).replace(/^ · /,''):previous);
    setError('');setNotice('');setApprovedPO(false);
    scroll.current?.scrollTo({y:0,animated:false});
  },[]);
@@ -44,8 +47,8 @@ export default function Approvals(){
 
  const approvalLocation=stockLocation('/stock-v2-approvals',{from,view:kind,returnTo,review:selected?.id});
  const editPO=(d:ApprovalDocument)=>router.push({pathname:'/stock-v2-purchase-orders',params:{edit:d.id,from:'approval',returnTo:approvalLocation}});
- const terms=paymentTerms.trim();
- const validTerms=terms.length>0&&terms.length<=200;
+ const terms=[basis,paymentTerms.trim()].filter(Boolean).join(' · ');
+ const validTerms=!!basis&&terms.length<=200;
  async function decide(command:'approve'|'reject'){
    if(!selected||busy||!context?.access.is_admin)return;
    const approvingPO=selected.kind==='po'&&command==='approve';
@@ -53,7 +56,7 @@ export default function Approvals(){
    setBusy(true);setError('');
    try{
      const {result}=await stockMutation('approval',{action:'workflow_command',command:approvingPO?'authorise_po':command,
-       data:{id:selected.id,version:selected.version,reason,...(approvingPO?{payment_terms:terms}:{})}});
+       data:{id:selected.id,version:selected.version,reason,...(approvingPO?{payment_basis:basis,payment_terms:terms}:{})}});
      setSelected(null);setReason('');setPaymentTerms('');setApprovedPO(approvingPO);
      setNotice(approvingPO?(result?.target_order_id?'PO-'+result.target_order_id:documentLabel(selected))+' approved and available for receiving.'
        :command==='reject'?'Returned for correction.':'Credit approved, applied and locked.');
@@ -78,7 +81,7 @@ export default function Approvals(){
      {view!=='po'&&!selected?<Select label="Document type" value={kind} onChange={v=>setKind(String(v??'all'))} options={[{id:'all',label:'All documents'},{id:'po',label:'Purchase orders'},{id:'credit',label:'Credit notes'},{id:'count',label:'Stocktakes'},{id:'receipt',label:'Receipts'}]}/>:null}
      {selected?<View style={S.card}>
        <StockDocumentSummary document={selected}/>
-       {selected.kind==='po'?<Field label="Payment terms (required)" value={paymentTerms} onChange={setPaymentTerms}/>:null}
+       {selected.kind==='po'?<><Select label="Payment method" value={basis||null} options={['Cash','Transfer','Account'].map(id=>({id,label:id}))} onChange={v=>setBasis(String(v??''))}/><Field label="Payment terms / due date details" value={paymentTerms} onChange={setPaymentTerms}/></>:null}
        {selected.kind==='po'&&terms.length>200?<Text style={S.error}>Use up to 200 characters for payment terms.</Text>:null}
        <Button title={selected.kind==='po'?'Approve Purchase Order':'Approve and Apply Credit'} disabled={busy||(selected.kind==='po'&&!validTerms)} onPress={()=>void decide('approve')}/>
        {selected.kind==='po'&&!selected.payload.job_requirements?<Button title="Edit PO" disabled={busy} onPress={()=>editPO(selected)}/>:null}

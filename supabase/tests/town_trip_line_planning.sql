@@ -1,0 +1,65 @@
+begin;
+do $test$
+declare admin_id uuid; buyer uuid; driver uuid; stores uuid; job uuid:=gen_random_uuid(); iid bigint; cat bigint; veh bigint; owner_code text;supp bigint;part bigint; d stock_v2.approval_document; ord bigint; line bigint;trip uuid;args jsonb;r jsonb;blocked boolean;original jsonb;label text;
+begin
+ select user_id into strict admin_id from public.app_user_role where role_name='admin' limit 1;
+ select user_id into strict buyer from public.app_user_role where role_name='buyer' limit 1;
+ select user_id into strict stores from public.app_user_role where role_name='stock' limit 1;
+ select user_id into strict driver from public.app_user_role where role_name='driver' limit 1;
+ select v.vehicle_id,c.stock_owner_code into strict veh,owner_code from public.vehicle v join public.company c on c.company_id=v.owner_company_id
+ join stock_v2.issue_company ic on ic.owner_code=c.stock_owner_code and ic.enabled where v.ownership_status='owned' and not v.vehicle_discontinued and stock_v2.job_asset_group(v.vehicle_id)='vehicle' limit 1;
+ select category_id into strict cat from stock_v2.buying_category where catalogue_group='vehicle' and not stock_v2.is_job_lubricant_category(category_name) limit 1;
+ select supplier_id,supplier_name into strict supp,label from stock_v2.supplier where active limit 1;
+ insert into stock_v2.job_card(id,vehicle_id,card_type,work_description,transaction_date,requested_by) values(job,veh,'asset','Town list transaction check',current_date,buyer);
+ insert into stock_v2.item(item_code,item_name,base_unit,input_type,input_category) values('TEST-'||job,'Test bearing','each','Parts','Bearings') returning item_id into iid;
+ insert into stock_v2.buying_item_category(item_id,category_id) values(iid,cat);
+ insert into stock_v2.job_card_part(job_id,item_id,requested_quantity,category_id,line_purpose,unit_price,price_supplier_id) values(job,iid,7,cat,'Repair',12.50,supp) returning id into part;
+ perform stock_v2.job_requirements_command(buyer,'submit',jsonb_build_object('date',current_date,'lines',jsonb_build_array(jsonb_build_object('key','P'||part,'quantity',5,'owner',owner_code,'unit_price',12.50,'supplier_id',supp))));
+ if (select qty from stock_v2.trip_job_progress where job_id=job and stage='Awaiting PO Approval')<>5 or (select qty from stock_v2.trip_job_progress where job_id=job and stage='Ready for PO')<>2 then raise exception 'Wrong booking split';end if;
+ select * into strict d from stock_v2.approval_document where id=(select document_id from stock_v2.job_order_allocation where part_id=part);
+ r:=stock_v2.job_requirements_command(admin_id,'authorise',jsonb_build_object('id',d.id,'version',d.version,'payment_terms','Account · Net 30'));
+ ord:=(r->>'target_order_id')::bigint;original:=r->'payload';
+ select order_line_id into strict line from stock_v2.order_line where order_id=ord;
+ args:=jsonb_build_object('date',current_date,'driver_id',driver,'lines',jsonb_build_array(jsonb_build_object('id',line,'quantity',2,'basis','Cash','reason','Supplier requested cash today')));
+ r:=stock_v2.trip_plan_command(admin_id,'create',args);trip:=(r->>'id')::uuid;
+ if (select available from stock_v2.trip_order_availability where order_line_id=line) is distinct from 3::numeric or (select sum(quantity*ordered_unit_price) from stock_v2.trip_plan_detail where trip_id=trip and payment_basis='Cash') is distinct from 25::numeric then raise exception 'Wrong availability or trip cash';end if;
+ blocked:=false;begin perform stock_v2.trip_plan_command(admin_id,'create',jsonb_set(args,'{lines,0,quantity}','4'));exception when others then blocked:=true;end;if not blocked then raise exception 'Trip overbooked';end if;
+ blocked:=false;begin perform stock_v2.trip_plan_command(driver,'edit',args||jsonb_build_object('trip_id',trip,'version',1));exception when others then blocked:=true;end;if not blocked then raise exception 'Driver edited quantities';end if;
+ perform stock_v2.trip_plan_command(driver,'visit',jsonb_build_object('trip_id',trip,'supplier',label));
+ if (select qty from stock_v2.trip_job_progress where job_id=job and stage='Awaiting Receipt') is distinct from 2::numeric or (select received_quantity from stock_v2.order_line where order_line_id=line)<>0 then raise exception 'Visit changed stock or lost reference';end if;
+ args:=jsonb_build_object('trip_id',trip,'order_id',ord,'invoice_number','TRIP-'||job,'date',current_date,'invoice_date',current_date,'lines',jsonb_build_array(jsonb_build_object('order_line_id',line,'quantity',1,'unit_price',12.50)));
+ blocked:=false;begin perform stock_v2.trip_receive(driver,args,true);exception when others then blocked:=true;end;if not blocked then raise exception 'Driver confirmed receipt';end if;
+ r:=stock_v2.trip_receive(admin_id,args,true);
+ if (select received_quantity from stock_v2.order_line where order_line_id=line)<>1 or (select qty from stock_v2.trip_job_progress where job_id=job and stage='Received') is distinct from 1::numeric then raise exception 'Receipt history incorrect';end if;
+ if (select available from cash_book.verified_invoice_balance where invoice_number='TRIP-'||job and town_trip_id=trip) is distinct from 12.50::numeric then raise exception 'Trip invoice balance incorrect';end if;
+ perform stock_v2.trip_plan_command(admin_id,'close',jsonb_build_object('trip_id',trip,'version',1));
+ if (select available from stock_v2.trip_order_availability where order_line_id=line) is distinct from 4::numeric then raise exception 'Unused balance missing';end if;
+ if (select payload from stock_v2.approval_document where id=d.id)<>original then raise exception 'Approval overwritten';end if;
+end $test$;
+do $native$
+declare a uuid;w uuid;drv uuid;h bigint;l bigint;itm bigint;trip uuid;first_trip uuid;input jsonb;r jsonb;rec uuid;item_code text; sup text; own bigint; blocked boolean;
+begin
+ select user_id into strict a from public.app_user_role where role_name='admin' limit 1;
+ select user_id into strict w from public.app_user_role where role_name='stock' limit 1;
+ select user_id into strict drv from public.app_user_role where role_name='driver' limit 1;
+ select owner_id into strict own from stock_v2.owner where owner_code='TEST_JS';
+ select supplier_name into strict sup from stock_v2.supplier where active limit 1;
+ select i.item_id,i.item_code into strict itm,item_code from stock_v2.item i where i.active and stock_v2.po_without_job_card(i) limit 1;
+ insert into stock_v2.order_header(order_number,owner_id,supplier_name,status,order_date,payment_terms) values('TEST-'||gen_random_uuid(),own,sup,'approved',current_date,'Cash') returning order_id into h;
+ insert into stock_v2.order_line(order_id,item_id,ordered_quantity,ordered_unit_price) values(h,itm,5,10) returning order_line_id into l;
+ input:=jsonb_build_object('date',current_date,'driver_id',drv,'lines',jsonb_build_array(jsonb_build_object('id',l,'quantity',2,'basis','Cash')));
+ first_trip:=(stock_v2.trip_plan_command(a,'create',input)->>'id')::uuid;
+ trip:=(stock_v2.trip_plan_command(a,'create',jsonb_set(input,'{lines,0,quantity}','3'))->>'id')::uuid;
+ input:=jsonb_build_object('trip_id',trip,'order_id',h,'invoice_number','NATIVE-'||trip,'date',current_date,'invoice_date',current_date,'lines',jsonb_build_array(jsonb_build_object('order_line_id',l,'quantity',2,'unit_price',10)));
+ r:=stock_v2.trip_receive(w,input,false); rec:=(r->>'id')::uuid;
+ if (select pending from stock_v2.trip_plan_detail where trip_id=trip) is distinct from 2::numeric then raise exception 'Pending quantities wrong';end if;
+ blocked:=false;begin perform stock_v2.trip_plan_command(a,'close',jsonb_build_object('trip_id',trip,'version',1));exception when others then blocked:=true;end;if not blocked then raise exception 'Closed before verification';end if;
+ perform stock_v2.buying_decide_receipt(a,rec,'return','Check invoice');
+ perform stock_v2.trip_receive(a,input||jsonb_build_object('replaces_id',rec),true);
+ if (select received_quantity from stock_v2.order_line where order_line_id=l) is distinct from 2::numeric then raise exception 'Ordinary PO posting failed';end if;
+ if not exists(select from cash_book.verified_invoice_balance where invoice_number='NATIVE-'||trip and town_trip_id=trip and available=20) then raise exception 'Ordinary invoice missing';end if;
+ if (select to_receive from stock_v2.trip_plan_detail where trip_id=first_trip)<>2 then raise exception 'Other trip consumed';end if;
+ perform stock_v2.trip_plan_command(a,'edit',jsonb_build_object('trip_id',trip,'version',1,'date',current_date,'driver_id',drv,'lines',jsonb_build_array(jsonb_build_object('id',l,'quantity',3,'basis','Transfer','reason','Supplier requested transfer for the last unit'))));
+ if not exists(select from stock_v2.trip_receipt_quantities where town_trip_id=trip and status='posted' and basis='Cash' and qty=2) or not exists(select from stock_v2.trip_terms_change where trip_id=trip and quantity=1 and new_terms='Transfer') then raise exception 'Received payment terms changed';end if;
+end $native$;
+rollback;

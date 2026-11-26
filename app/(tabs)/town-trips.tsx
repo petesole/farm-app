@@ -4,14 +4,15 @@ import {Modal,ScrollView,Text,View} from 'react-native';
 import {stockLocation} from '@/utils/stock-navigation';
 import {StockV2Header} from '@/components/jspl/StockV2Header';
 import {StockButton,StockDateField,StockField,StockRecovery,StockSelect,stockStyles as styles} from '@/components/jspl/StockWorkflowControls';
+import {TownPlanEditor,TownPlanDetail,type PlanLine,type PlannedTrip,type PlanSave} from '@/components/jspl/TownPlan';
 import {jsplColors} from '@/constants/jspl-design';
 import {displayJsplDate,parseJsplDateInput} from '@/utils/jspl-input';
 import {stockMutation,stockRequest} from '@/utils/stock-workflow';
 
 type Order = {job_requirements?:boolean;order_id:number;order_number:string;supplier:string|null;owner:string;outcome:'pending'|'collected'|'unavailable';can_receive?:boolean;driver_note?:string;payment_terms?:string|null;items:{name:string;quantity:number;remaining:number;unit:string}[]};
-type Trip = {can_report?:boolean;id:string;trip_number:number;trip_date:string;driver_id:string;driver_name:string;finalised_at:string|null;orders:Order[]};
+type Trip = PlannedTrip & {can_report?:boolean;id:string;trip_number:number;trip_date:string;driver_id:string;driver_name:string;finalised_at:string|null;orders:Order[]};
 type TripData = {
-  trips:Trip[];can_create?:boolean;can_main?:boolean;can_report?:boolean;can_receive?:boolean;
+  trips:Trip[];line_planning?:boolean;available_lines?:PlanLine[];can_receive_plan?:boolean;can_create?:boolean;can_main?:boolean;can_report?:boolean;can_receive?:boolean;
   drivers?:{id:string;email:string}[];
   orders?:{order_id:number;order_number:string;supplier_name:string|null;payment_terms?:string|null}[];
 };
@@ -63,6 +64,17 @@ export default function TownTrips(){
     finally{setBusy(false);}
   }
 
+  const planSave:PlanSave=async(command,payload)=>{
+    if(busy)return false;
+    setBusy(true);setError('');setNotice('');
+    try{
+      const {result}=await stockMutation('town-trip',{action:'trip_plan',command,payload});
+      if(command==='edit'||command==='create'){setEditor(null);showHistory(result.id);}
+      setConfirmFinalise(false);
+      const message=command==='visit'?'Supplier visit recorded.':command==='confirm'?'Receipt verified and posted.':command==='receive'?'Receipt sent for verification.':command==='close'?'Town list closed. Unreceived quantities are available for another trip.':'Town list TL-'+result.trip_number+' saved.';
+      setNotice(message);await load();return true;
+    }catch(e){setError((e as Error).message);return false;}finally{setBusy(false);}
+  };
   const eligible=data?.orders??[];
   const selectedTrip=data?.trips.find(trip=>trip.id===tripId);
   const detail=history?selectedTrip:undefined;
@@ -94,6 +106,7 @@ export default function TownTrips(){
       <StockDateField label="Trip date (dd/mm/yyyy)" value={date} onChange={setDate}/>
       <StockSelect label="Driver" value={driver} options={(data?.drivers??[]).map(entry=>({id:entry.id,label:entry.email}))}
         onChange={value=>setDriver(String(value??''))}/>
+      {editor&&data?.line_planning&&(editor==='new'||selectedTrip?.line_plan)?<TownPlanEditor key={editor==='new'?'new':tripId} available={data.available_lines??[]} trip={editor==='edit'?selectedTrip:undefined} driver={driver} date={tripDate} busy={busy} save={planSave}/>:<>
       <StockSelect label="Add purchase order" value={null}
         options={eligible.filter(order=>!orders.includes(order.order_id)).map(order=>({id:order.order_id,label:[order.order_number,order.supplier_name??'Supplier to be confirmed',order.payment_terms].filter(Boolean).join(' · ')}))}
         onChange={value=>{if(value!==null)setOrders(current=>[...current,Number(value)]);}} disabled={busy||orders.length>=30}/>
@@ -102,17 +115,18 @@ export default function TownTrips(){
         <StockButton title="Remove" disabled={busy||!!selectedTrip?.orders.some(order=>Number(order.order_id)===id&&order.outcome!=='pending')} onPress={()=>setOrders(current=>current.filter(order=>order!==id))}/>
       </View>)}
       <StockButton title={editor==='edit'?'Save changes':'Assign trip'} disabled={busy||!driver||!tripDate||!orders.length}
-        onPress={()=>void save({action:editor==='edit'?'edit_town_trip':'create_town_trip',trip_id:editor==='edit'?tripId:undefined,driver_id:driver,trip_date:tripDate,order_ids:orders})}/>
+        onPress={()=>void save({action:editor==='edit'?'edit_town_trip':'create_town_trip',trip_id:editor==='edit'?tripId:undefined,driver_id:driver,trip_date:tripDate,order_ids:orders})}/></>}
       <StockButton title="Cancel" disabled={busy} onPress={()=>setEditor(null)}/>
     </ScrollView></Modal>
     {detail&&data?[detail].map(trip=><View key={trip.id} style={styles.card}>
-      <Text style={styles.title}>Trip {trip.trip_number} · {displayJsplDate(trip.trip_date)}</Text>
+      <Text style={styles.title}>{trip.line_plan?'Town List – TL-':'Trip '}{trip.trip_number} · {displayJsplDate(trip.trip_date)}</Text>
       {data.can_create?<Text style={styles.text}>{trip.driver_name}</Text>:null}
       {data.can_create&&!trip.finalised_at?<View style={styles.row}>
         <StockButton title="Edit trip" disabled={busy} onPress={()=>openEditor(trip)}/>
-        <StockButton title={confirmFinalise?'Confirm finalisation':'Finalise trip'} disabled={busy||trip.orders.some(order=>order.outcome==='pending')}
-          onPress={()=>confirmFinalise?void save({action:'finalise_town_trip',trip_id:trip.id}):setConfirmFinalise(true)}/>
+        <StockButton title={confirmFinalise?'Confirm finalisation':'Finalise trip'} disabled={busy||(trip.line_plan?trip.plan_lines.some(l=>Number(l.pending)>0):trip.orders.some(order=>order.outcome==='pending'))}
+          onPress={()=>confirmFinalise?(trip.line_plan?void planSave('close',{trip_id:trip.id,version:trip.plan_version}):void save({action:'finalise_town_trip',trip_id:trip.id})):setConfirmFinalise(true)}/>
       </View>:null}
+      {trip.line_plan?<TownPlanDetail trip={trip} admin={!!data.can_create} canReceive={!!data.can_receive_plan} busy={busy} save={planSave}/>:null}
       {trip.orders.map(order=>{
         const key=trip.id+':'+order.order_id;
         const report=(outcome:Order['outcome'])=>void save({action:'report_town_trip_order',trip_id:trip.id,order_id:order.order_id,outcome,note:note.trim()});
