@@ -13,6 +13,7 @@ export default function TabsLayout() {
   const [canLabour, setCanLabour] = useState(false);
   const [canStock, setCanStock] = useState(false);
   const [canIrrigation, setCanIrrigation] = useState(false);
+  const [canPastel, setCanPastel] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -33,6 +34,7 @@ export default function TabsLayout() {
         const fuelAccess = admin || assigned.includes('manager') || assigned.includes('fuel');
         const labourAccess = admin || assigned.includes('manager') || assigned.includes('labour');
         const irrigationAccess = admin || assigned.includes('irrigation');
+        const pastelAccess = assigned.includes('pastel');
         let stockAccess=false;
         try { stockAccess=!!(await stockRequest("?stock_access=1")).access?.is_stock; } catch { /* Fail closed for Stock only. */ }
         if(!alive)return;
@@ -41,7 +43,8 @@ export default function TabsLayout() {
         setCanFuel(fuelAccess);
         setCanLabour(labourAccess);
         setCanIrrigation(irrigationAccess);
-        setLoggedIn(admin || fuelAccess || labourAccess || irrigationAccess || stockAccess);
+        setCanPastel(pastelAccess);
+        setLoggedIn(admin || fuelAccess || labourAccess || irrigationAccess || stockAccess || pastelAccess);
       } catch {
         if (!alive) return;
         setLoggedIn(false);
@@ -77,8 +80,19 @@ export default function TabsLayout() {
     return <Redirect href="/labour" />;
   }
 
+  const pastelOnly = canPastel && !isAdmin && !canFuel && !canLabour && !canStock && !canIrrigation;
+  const pastelAllowedPath = [
+    "/pastel-dashboard",
+    "/home/fuel_report",
+    "/home/fuel_report_day",
+    "/home/fuel_monthly_allocations",
+  ].includes(pathname);
+  if (pastelOnly && !pastelAllowedPath) {
+    return <Redirect href="/pastel-dashboard" />;
+  }
+
   return (
-    <Tabs initialRouteName={isAdmin ? "main-dashboard" : canFuel ? "fuel" : canLabour ? "labour" : canIrrigation ? "irrigation_main_dashboard" : "stock-test"} screenOptions={{ headerShown: false, tabBarStyle: { display: "none" } }}>
+    <Tabs initialRouteName={isAdmin ? "main-dashboard" : canPastel && !canFuel && !canLabour && !canStock && !canIrrigation ? "pastel-dashboard" : canFuel ? "fuel" : canLabour ? "labour" : canIrrigation ? "irrigation_main_dashboard" : "stock-test"} screenOptions={{ headerShown: false, tabBarStyle: { display: "none" } }}>
       <Tabs.Screen name="home" options={{ href: null }} />
       <Tabs.Screen name="control-panel" options={{ href: null }} />
       <Tabs.Screen name="companies" options={{ href: null }} />
@@ -90,6 +104,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="field-control-list" options={{ href: null }} />
       <Tabs.Screen name="field-control-detail" options={{ href: null }} />
       <Tabs.Screen name="main-dashboard" options={{ title: "Main", href: isAdmin ? "/main-dashboard" : null }} />
+      <Tabs.Screen name="pastel-dashboard" options={{ title: "Pastel", href: null }} />
       <Tabs.Screen name="field-dashboard" options={{ title: "Trace", href: isAdmin ? "/field-dashboard" : null }} />
       <Tabs.Screen name="potato-market" options={{ title: "Potato Market", href: isAdmin ? "/potato-market" : null }} />
       <Tabs.Screen name="wb-admin" options={{ title: "Weighbridge", href: isAdmin && Platform.OS === "web" ? "/wb-admin" : null }} />
