@@ -28,6 +28,7 @@ function landingForRole(roleName: string) {
   if (r === "irrigation") return "/(tabs)/irrigation_main_dashboard";
   if (r === "labour") return "/(tabs)/labour";
   if (r === "fuel") return "/(tabs)/fuel";
+  if (r === "pastel") return "/(tabs)/pastel-dashboard";
 
   return "/login";
 }
@@ -68,13 +69,13 @@ export default function LoginScreen() {
       }
       const roles = (access || []).map((r: string) => norm(r));
       try { if((await stockRequest("?stock_access=1")).access?.is_stock)roles.push("stock"); } catch { /* Existing assigned modules keep their access when Stock is unavailable. */ }
-      if (!roles.some((r: string) => ["admin", "manager", "fuel", "labour", "rainfall", "irrigation", "stock"].includes(r))) {
+      if (!roles.some((r: string) => ["admin", "manager", "fuel", "labour", "rainfall", "irrigation", "stock", "pastel"].includes(r))) {
         await supabase.auth.signOut();
         setStatus("Your account has no assigned FarmingMainLive role.");
         return;
       }
       const role =
-        ["admin", "manager", "fuel", "labour", "rainfall", "irrigation", "scouting", "scout", "scouter", "viewer", "stock"]
+        ["admin", "manager", "fuel", "labour", "rainfall", "irrigation", "scouting", "scout", "scouter", "viewer", "stock", "pastel"]
           .find((r) => roles.includes(r)) || roles[0];
       await AsyncStorage.setItem(
         "app_user",
