@@ -37,8 +37,6 @@ export default function FuelBudgetManage(){
  const [active,setActive]=useState(false);
  const [copyName,setCopyName]=useState("");
  const [copySource,setCopySource]=useState<Budget|null>(null);
- const [jobSort,setJobSort]=useState<"job"|"dap"|"class">("dap");
- const [jobDescending,setJobDescending]=useState(false);
  const [jobFilter,setJobFilter]=useState<number|null>(null);
  const [dapFilter,setDapFilter]=useState<number|null>(null);
  const [classFilter,setClassFilter]=useState<number|null>(null);
@@ -66,7 +64,7 @@ export default function FuelBudgetManage(){
  const selectedBudget=budgets.find(b=>b.fuel_budget_id===selected);
  const loadDetail=useCallback(async(id:number)=>{
   setLoading(true);setError(null);setMessage(null);setEditing(null);
-  const result=await supabase.from("fuel_budget_activity").select("*").eq("fuel_budget_id",id).order("sequence_no").order("target_dap");
+  const result=await supabase.from("fuel_budget_activity").select("*").eq("fuel_budget_id",id).order("target_dap").order("vehicle_job_id");
   if(result.error)setError(result.error.message);
   else setRows((result.data||[]) as Activity[]);
   setLoading(false);
@@ -155,18 +153,32 @@ export default function FuelBudgetManage(){
    target_dap:0,planned_operations:1,include_trip_fuel:true
   }).select("fuel_budget_activity_id").single();
   setBusy(false);
-  if(result.error)setError(result.error.message);else if(selected){setMessage("Job added; edit its details below.");await loadDetail(selected);if(result.data){const newRow=await supabase.from("fuel_budget_activity").select("*").eq("fuel_budget_activity_id",result.data.fuel_budget_activity_id).single();if(newRow.data)startEdit(newRow.data as Activity);}}
+  if(result.error){setError(result.error.message);return;}
+  setNewJob(null);
+  setNewClass(null);
+  if(selected){
+   setMessage("Job added; edit its details below.");
+   await loadDetail(selected);
+   if(result.data){
+    const newRow=await supabase.from("fuel_budget_activity").select("*").eq("fuel_budget_activity_id",result.data.fuel_budget_activity_id).single();
+    if(newRow.data)startEdit(newRow.data as Activity);
+   }
+  }
  };
  const visibleJobs=useMemo(()=>{
   const list=rows.filter(a=>(jobFilter==null||Number(a.vehicle_job_id)===Number(jobFilter))&&(dapFilter==null||Number(a.target_dap)===Number(dapFilter))&&(classFilter==null||Number(a.tractor_class_id)===Number(classFilter)));
   list.sort((a,b)=>{
-   const va=jobSort==="job"?jobs.find(j=>j.vehicle_job_id===a.vehicle_job_id)?.vehicle_job_name??"":jobSort==="class"?tractors.find(t=>t.tractor_class_id===a.tractor_class_id)?.class_name??"":a.target_dap;
-   const vb=jobSort==="job"?jobs.find(j=>j.vehicle_job_id===b.vehicle_job_id)?.vehicle_job_name??"":jobSort==="class"?tractors.find(t=>t.tractor_class_id===b.tractor_class_id)?.class_name??"":b.target_dap;
-   const cmp=typeof va==="number"&&typeof vb==="number"?va-vb:String(va??"").localeCompare(String(vb??""),undefined,{numeric:true,sensitivity:"base"});
-   return jobDescending?-cmp:cmp;
+   const dapA=a.target_dap==null?Number.MAX_SAFE_INTEGER:Number(a.target_dap);
+   const dapB=b.target_dap==null?Number.MAX_SAFE_INTEGER:Number(b.target_dap);
+   const dapOrder=dapA-dapB;
+   if(dapOrder!==0)return dapOrder;
+   const jobA=jobs.find(j=>j.vehicle_job_id===a.vehicle_job_id)?.vehicle_job_name??"";
+   const jobB=jobs.find(j=>j.vehicle_job_id===b.vehicle_job_id)?.vehicle_job_name??"";
+   return jobA.localeCompare(jobB,undefined,{numeric:true,sensitivity:"base"})
+     || a.fuel_budget_activity_id-b.fuel_budget_activity_id;
   });
   return list;
- },[rows,jobFilter,dapFilter,classFilter,jobSort,jobDescending,jobs,tractors]);
+ },[rows,jobFilter,dapFilter,classFilter,jobs]);
  const filtered=useMemo(()=>budgets.filter(b=>crops.some(c=>c.crop_id===b.crop_id&&c.active)&&(filterCrop==null||b.crop_id===filterCrop)),[budgets,crops,filterCrop]);
  const cropName=(id:number|null)=>crops.find(c=>c.crop_id===id)?.crop_name||"Crop not set";
  const jobName=(id:number)=>jobs.find(j=>j.vehicle_job_id===id)?.vehicle_job_name||String(id);
@@ -204,10 +216,6 @@ export default function FuelBudgetManage(){
     <ThemedText type="subtitle">Budget Jobs ({visibleJobs.length} of {rows.length})</ThemedText>
     <View style={s.filterLine}>
       <Pressable style={s.button} onPress={()=>{setJobFilter(null);setDapFilter(null);setClassFilter(null);}}><ThemedText>Clear Filters</ThemedText></Pressable>
-      <View style={s.compactPicker}><Picker selectedValue={jobSort} onValueChange={v=>{setJobSort(v);setJobDescending(false);}}>
-       <Picker.Item label="Sort: Job A–Z" value="job"/><Picker.Item label="Sort: DAP" value="dap"/><Picker.Item label="Sort: Tractor class" value="class"/>
-      </Picker></View>
-      <Pressable style={s.button} onPress={()=>setJobDescending(v=>!v)}><ThemedText>{jobDescending?"Z–A / High–Low":"A–Z / Low–High"} ⇅</ThemedText></Pressable>
       <View style={s.compactPicker}><Picker selectedValue={dapFilter} onValueChange={v=>{setDapFilter(v);setJobFilter(null);setClassFilter(null);}}><Picker.Item label="All DAP" value={null}/>{[...new Set(rows.map(a=>a.target_dap).filter((x):x is number=>x!=null))].sort((a,b)=>a-b).map(v=><Picker.Item key={v} label={String(v)} value={v}/>)}</Picker></View>
       <View style={s.compactPicker}><Picker selectedValue={jobFilter} onValueChange={v=>{setJobFilter(v);setDapFilter(null);setClassFilter(null);}}><Picker.Item label="All Jobs" value={null}/>{jobs.filter(j=>rows.some(a=>a.vehicle_job_id===j.vehicle_job_id)).map(j=><Picker.Item key={j.vehicle_job_id} label={j.vehicle_job_name} value={j.vehicle_job_id}/>)}</Picker></View>
       <View style={s.compactPicker}><Picker selectedValue={classFilter} onValueChange={v=>{setClassFilter(v);setJobFilter(null);setDapFilter(null);}}><Picker.Item label="All Tractor Sizes" value={null}/>{tractors.filter(t=>rows.some(a=>a.tractor_class_id===t.tractor_class_id)).map(t=><Picker.Item key={t.tractor_class_id} label={t.class_name} value={t.tractor_class_id}/>)}</Picker></View>
@@ -215,7 +223,6 @@ export default function FuelBudgetManage(){
     {visibleJobs.length===0?<ThemedText style={s.small}>No matching jobs. Choose another filter or select Clear Filters.</ThemedText>:null}
     {visibleJobs.map(a=><View key={a.fuel_budget_activity_id} style={s.jobRow}>
      <View style={s.jobSummary}>
-      <ThemedText style={[s.bold]}>{a.sequence_no??"—"}</ThemedText>
       <ThemedText style={[s.bold,s.jobName]} numberOfLines={1}>{jobName(a.vehicle_job_id)}</ThemedText>
       <ThemedText style={s.jobData}>DAP {a.target_dap??"—"}</ThemedText>
       <ThemedText style={s.jobData}>{className(a.tractor_class_id)}</ThemedText>
