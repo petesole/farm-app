@@ -29,7 +29,7 @@ END;
 $function$;
 
 REVOKE ALL ON FUNCTION public.fuel_trace_is_agri_orange(bigint) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.fuel_trace_is_agri_orange(bigint) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.fuel_trace_is_agri_orange(bigint) TO anon, authenticated;
 
 CREATE OR REPLACE FUNCTION public.get_monthly_fuel_allocations(p_month date)
 RETURNS TABLE(bucket text, total_liters numeric)
