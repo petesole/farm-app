@@ -30,6 +30,7 @@ export default function MainDashboard() {
         <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Trace" description="TraceCode management" onPress={() => router.push("/(tabs)/field-dashboard")} /></View>
         <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Weighbridge" description="Weighbridge management" onPress={() => router.push("/weighbridge")} /></View>
         <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Fuel" description="Fuel management" onPress={() => router.push("/(tabs)/fuel")} /></View>
+        <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Pastel" description="Fuel Report and Monthly Allocations (view only)" onPress={() => router.push("/(tabs)/pastel-dashboard")} /></View>
         <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Stock" description="Purchase orders, receiving, issues and balances" onPress={() => router.push("/stock")} /></View>
         <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Labour" description="Daily labour entry and costing" onPress={() => router.push("/(tabs)/labour")} /></View>
         <View style={{ width: 240, maxWidth: "100%" }}><JsplDashboardButton title="Rainfall" description="Record readings and view rainfall reports" onPress={() => router.push("/home/rainfall/rainfall_index")} /></View>
